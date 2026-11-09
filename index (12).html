@@ -37,9 +37,10 @@
   .mv:hover{background:var(--panel2)}.mv.on{background:#5a5755}
   #moves{max-height:300px;overflow:auto}
   #board{touch-action:none}
-  #comment{height:240px;overflow-y:auto}   /* фиксированная высота: длинный текст прокручивается внутри, кнопки не двигаются */
+  #comment{height:240px;overflow-y:auto}
   .sq.dot::after{content:"";position:absolute;width:30%;height:30%;border-radius:50%;background:rgba(0,0,0,.22);z-index:3}
   .sq.cap::after{content:"";position:absolute;inset:3%;border-radius:50%;border:calc(var(--s)*.08) solid rgba(0,0,0,.22);z-index:3}
+  .dim{opacity:.4;pointer-events:none}
   @media(max-width:1023px){#moves{max-height:220px}}
 </style>
 </head>
@@ -56,13 +57,14 @@
       <select id="engine" class="ml-2 bg-[#3d3a37] text-white rounded px-2 py-1"><option value="lite" selected>Stockfish 19 lite (≈2 МБ, быстро)</option><option value="full">Stockfish 19 полный (≈99 МБ, максимум силы)</option></select>
     </label>
     <label class="text-neutral-400 text-sm">Режим
-      <select id="mode" class="ml-2 bg-[#3d3a37] text-white rounded px-2 py-1"><option value="fast" selected>Быстрый (≈5–10 с)</option><option value="deep">Глубокий (настройки ниже)</option></select>
-    </label>
-    <label class="text-neutral-400 text-sm">Глубина
-      <select id="depth" class="ml-2 bg-[#3d3a37] text-white rounded px-2 py-1"><option>12</option><option selected>14</option><option>16</option><option>18</option><option>20</option><option>30</option><option>50</option><option>99</option><option value="245">245 (макс.)</option></select>
+      <select id="mode" class="ml-2 bg-[#3d3a37] text-white rounded px-2 py-1">
+        <option value="fast" selected>Быстрый (≈10 с)</option>
+        <option value="standard">Стандарт (глубина 20)</option>
+        <option value="deep">Глубокий (глубина 26)</option>
+      </select>
     </label>
     <label class="text-neutral-400 text-sm">Время на позицию
-      <select id="tlim" class="ml-2 bg-[#3d3a37] text-white rounded px-2 py-1"><option value="0">без лимита</option><option value="2">2 с</option><option value="5" selected>5 с</option><option value="10">10 с</option><option value="30">30 с</option><option value="60">60 с</option></select>
+      <select id="tlim" class="ml-2 bg-[#3d3a37] text-white rounded px-2 py-1 dim"><option value="0">без лимита</option><option value="2">2 с</option><option value="5">5 с</option><option value="10">10 с</option><option value="30">30 с</option><option value="60">60 с</option></select>
     </label>
   </div>
   <div id="err" class="hidden mt-4 p-3 rounded-lg bg-[#5a2523] text-[#ffd2d0] text-sm"></div>
@@ -95,7 +97,7 @@
       <div class="text-xs text-neutral-500 px-1">Двигайте фигуры мышью — это свободный анализ. Правая кнопка мыши рисует стрелки и круги (Shift — красные, Ctrl — синие).</div>
       <label class="flex items-start gap-2 text-sm text-neutral-300 px-1"><input type="checkbox" id="arr" checked class="mt-1 accent-[#81b64c]">
         <span>Стрелки: <b style="color:#5aa93c">зелёная</b> — лучший ход, <b style="color:#d6382f">красная</b> — угроза соперника</span></label>
-      <label class="flex items-center gap-2 text-sm text-neutral-300 px-1"><input type="checkbox" id="voice" class="accent-[#81b64c]"><span>Озвучка важных ходов (блестящие, сильнейшие, ошибки, зевки)</span></label>
+      <label class="flex items-center gap-2 text-sm text-neutral-300 px-1"><input type="checkbox" id="voice" class="accent-[#81b64c]"><span>Озвучка важных ходов (блестящие, ошибки, зевки)</span></label>
       <div id="summary" class="bg-[#312e2b] rounded-lg p-3 text-sm"></div>
       <button id="back" class="btn2">Новая партия</button>
     </aside>
@@ -116,25 +118,79 @@ const B={
   book:{c:'#a88865',s:'📖',t:'Теория'},
   forced:{c:'#6fa83c',s:'➜',t:'Вынужденный ход'},
   brilliant:{c:'#1baca6',s:'!!',t:'Блестящий ход'},
-  great:{c:'#5c8bb0',s:'!',t:'Сильнейший ход'},
   best:{c:'#81b64c',s:'★',t:'Лучший ход'},
   excellent:{c:'#96bc4b',s:'✓',t:'Отлично'},
   good:{c:'#a0a79b',s:'✓',t:'Хорошо'},
   inaccuracy:{c:'#f0a030',s:'?!',t:'Неточность'},
   mistake:{c:'#e07a1f',s:'?',t:'Ошибка'},
-  blunder:{c:'#ca3431',s:'??',t:'Зевок'},
-  miss:{c:'#d9822b',s:'◎',t:'Упущенная возможность'}
+  blunder:{c:'#ca3431',s:'??',t:'Зевок'}
 };
-const badge=(k,sz)=>`<i class="bd ${sz}" style="background:${B[k].c}" title="${B[k].t}">${B[k].s}</i>`;
-
-/* ---------- Движок Stockfish в Web Worker ---------- */
-const SF19='https://cdn.jsdelivr.net/npm/stockfish@19.0.1/bin/stockfish-19-lite-single';
-const SF19F='https://unpkg.com/stockfish@19.0.1/bin/stockfish-19-single';   // полная версия ≈99 МБ (jsDelivr не отдаёт файлы >50 МБ)
 const SF16='https://cdn.jsdelivr.net/npm/stockfish@16.0.0/src/stockfish-nnue-16-single';
+
+/* ---------- Кэш движка в браузере (Cache API) ---------- */
+const ENGINE_CACHE = 'stockfish-engines-v1';
+const canCache = typeof caches !== 'undefined';
+
+async function readWithProgress(resp, onProgress) {
+  const total = +resp.headers.get('Content-Length') || 0;
+  if (!resp.body || !onProgress) return await resp.arrayBuffer();
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    onProgress(received, total);
+  }
+  const out = new Uint8Array(received);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out.buffer;
+}
+
+async function getCachedFile(url, onProgress) {
+  if (canCache) {
+    try {
+      const cache = await caches.open(ENGINE_CACHE);
+      const hit = await cache.match(url);
+      if (hit) {
+        if (onProgress) onProgress(-1, -1);      // сигнал «из кэша»
+        return await hit.arrayBuffer();
+      }
+    } catch (e) { console.warn('Cache read failed:', e); }
+  }
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' для ' + url);
+  const buf = await readWithProgress(resp, onProgress);
+  if (canCache) {
+    try {
+      const cache = await caches.open(ENGINE_CACHE);
+      await cache.put(url, new Response(buf, {
+        headers: { 'Content-Type': 'application/octet-stream' }
+      }));
+    } catch (e) { console.warn('Cache write failed:', e); }
+  }
+  return buf;
+}
+
+function reportEngineProgress(label, rec, tot) {
+  const st = document.getElementById('status');
+  if (!st) return;
+  if (rec < 0) { st.textContent = label + ' — из кэша'; return; }
+  if (tot > 0) {
+    const pct = Math.round(rec / tot * 100);
+    st.textContent = label + ': ' + pct + '% (' +
+      (rec / 1048576).toFixed(1) + ' / ' + (tot / 1048576).toFixed(1) + ' МБ)';
+  } else {
+    st.textContent = label + ': ' + (rec / 1048576).toFixed(1) + ' МБ';
+  }
+}
+
 class Engine{
   async init(kind){
     this.kind=kind||'lite';
-    // Порядок: Stockfish 19 (lite, WASM) -> Stockfish 16 NNUE (WASM) -> Stockfish.js 10 в Worker -> Stockfish.js 10 в основном потоке
     const tries=[
       ...(this.kind==='full'?[['Stockfish 19 NNUE (WASM, полная)',()=>this.initWorker([SF19F+'.js'],SF19F+'.wasm',300000)]]:[]),
       ['Stockfish 19 NNUE (WASM, lite)',()=>this.initWorker([SF19+'.js'],SF19+'.wasm',15000)],
@@ -147,17 +203,43 @@ class Engine{
       catch(e){last=e;console.warn(n,'недоступен:',e.message)}
     }
     if(!this.name)throw last;
-    this.send('setoption name MultiPV value 3');
-    if(this.modern)this.send('setoption name Hash value 64');
+
+    // === UCI-настройки в духе Chess.com ===
+    this.send('setoption name Hash value 64');       // 64 МБ TT
+    this.send('setoption name Threads value 2');     // игнорируется "-single", безопасно
+    this.send('setoption name MultiPV value 1');     // по умолчанию одна линия
+    this.multiPV = 1;
+    if(this.modern)this.send('setoption name UCI_ShowWDL value true');
     await this.cmd('isready','readyok');
   }
+  setMultiPV(n){ if(this.multiPV===n)return; this.multiPV=n; this.send('setoption name MultiPV value '+n); }
   reset(){if(this.w){try{this.w.terminate()}catch(_){}}this.w=null;this.waiter=null;this.search=null;this.main=false}
-  async initWorker(urls,wasm,ms){
+    async initWorker(urls,wasm,ms){
+    // 1) JS-обёртка движка
     let txt=null;
-    for(const u of urls){try{const r=await fetch(u);if(r.ok){txt=await r.text();break}}catch(e){}}
-    if(!txt)throw new Error('не удалось скачать движок');
-    // путь к .wasm передаётся через #hash адреса воркера (так работает сборка stockfish.js 16)
-    this.w=new Worker(URL.createObjectURL(new Blob([txt],{type:'application/javascript'}))+(wasm?'#'+wasm:''));
+    for(const u of urls){
+      try{
+        const buf = await getCachedFile(u, (r,t)=>reportEngineProgress('Движок (JS)', r, t));
+        txt = new TextDecoder().decode(buf);
+        break;
+      }catch(e){ console.warn('JS fetch failed:', u, e); }
+    }
+    if(!txt) throw new Error('не удалось скачать движок');
+
+    // 2) WASM (99 МБ для full) — через кэш + blob, чтобы воркер не ходил в сеть
+    let wasmUrl = wasm || '';
+    if(wasm){
+      try{
+        const wasmBuf = await getCachedFile(wasm, (r,t)=>reportEngineProgress('Движок (WASM)', r, t));
+        wasmUrl = URL.createObjectURL(new Blob([wasmBuf], {type:'application/wasm'}));
+        this._wasmBlobUrl = wasmUrl;
+      }catch(e){
+        console.warn('WASM cache failed, using direct URL:', e);
+        wasmUrl = wasm;
+      }
+    }
+
+    this.w=new Worker(URL.createObjectURL(new Blob([txt],{type:'application/javascript'}))+(wasmUrl?'#'+wasmUrl:''));
     this.w.onmessage=e=>this.onMsg(String(e.data));
     this.w.onerror=e=>console.error('Worker error',e);
     this.send=s=>this.w.postMessage(s);
@@ -187,8 +269,6 @@ class Engine{
     if(this.waiter&&m.startsWith(this.waiter.wait)){const w=this.waiter;this.waiter=null;w.res();return}
     if(this.search)this.search(m);
   }
-  // depth — предел глубины (до 245), ms — предел времени (0 = без лимита); live — «живой» поиск, который можно прервать stop().
-  // Запросы выстраиваются в очередь, чтобы результаты не перемешивались.
   analyse(fen,depth,ms,onInfo,live){
     const run=()=>new Promise(res=>{
       const lines={},black=fen.split(' ')[1]==='b';let dmax=0;
@@ -217,10 +297,21 @@ class Engine{
 /* ---------- Состояние ---------- */
 let accs=[],liveTok=0,eng=null,runId=0,hist=[],fens=[],evals=[],cls=[],cur=0,flip=false,headers={};
 
-const cpOf=l=>l.type==='mate'?Math.sign(l.v||1)*(10000-Math.abs(l.v)*10):l.v;
-const labelOf=l=>l.type==='mate'?'M'+Math.abs(l.v):(l.v>0?'+':'')+(l.v/100).toFixed(1);
-// Сжатие оценок: в выигранных позициях разница между +6 и +9 не важна
-const ev=cp=>{const a=Math.min(Math.abs(cp)/100,10);return Math.sign(cp)*(a<=3?a:3+(a-3)*.15)};
+/* ---------- Математика (Chess.com-совместимая) ---------- */
+const MATE_CP = 10000;
+const ACC_K   = 50;
+
+const cpOf = l => l.type === 'mate' ? (l.v > 0 ? MATE_CP : -MATE_CP) : l.v;
+const labelOf = l => l.type === 'mate'
+  ? 'M' + Math.abs(l.v)
+  : (l.v > 0 ? '+' : '') + (l.v / 100).toFixed(2);
+
+function winPct(cp){
+  if(cp >=  MATE_CP) return 100;
+  if(cp <= -MATE_CP) return 0;
+  const c = Math.max(-2000, Math.min(2000, cp));
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00361 * c)) - 1);
+}
 
 function material(c,color){
   let s=0;for(const row of c.board())for(const p of row)if(p)s+=(p.color===color?1:-1)*VAL[p.type];return s;
@@ -234,69 +325,62 @@ function sanOf(i,uci){
 /* ---------- Оценка позиций ---------- */
 async function evalPos(k,depth,ms){
   const c=new Chess(fens[k]);
-  if(c.in_checkmate())return{cp:c.turn()==='w'?-10000:10000,label:'#',lines:{},best:null,term:true};
-  if(c.game_over())return{cp:0,label:'0.0',lines:{},best:null,term:true};
+  if(c.in_checkmate())return{cp:c.turn()==='w'?-MATE_CP:MATE_CP,label:'#',lines:{},best:null,term:true};
+  if(c.game_over())return{cp:0,label:'0.00',lines:{},best:null,term:true};
   const r=await eng.analyse(fens[k],depth,ms);
   const l1=r.lines[1];
-  if(!l1)return{cp:0,label:'0.0',lines:{},best:r.best};
+  if(!l1)return{cp:0,label:'0.00',lines:{},best:r.best};
   return{cp:cpOf(l1),label:labelOf(l1),lines:r.lines,best:r.best,d:r.depth};
 }
 
-/* ---------- Классификация хода ---------- */
-// Жертва: по лучшей линии движка мы теряем ≥3 пунктов материала, но затем
-// ставим мат, возвращаем больше материала, чем отдали, или держим позицию без потерь в оценке.
-function sacrificeInfo(i){
-  // ЧЁТКОЕ ПРАВИЛО «Блестящего»: (1) отдана фигура, (2) из-за этого мат ИЛИ выигрыш материала минимум +3.
-  const mv=hist[i],mover=mv.color,c=new Chess(fens[i]),m0=material(c,mover);
-  const pv=VAL[mv.piece],cap=mv.captured?VAL[mv.captured]:0;
-  // (1) Ходящая фигура — минимум конь/слон, и она отдаётся не меньше чем на 2 пункта дороже, чем взято.
-  //     Размены (ферзь за ферзя, ладья за ладью, слон за коня) сюда не попадают: разница меньше 2.
-  if(pv<3||pv-cap<2)return false;
+/* ---------- Классификация хода (правила Chess.com) ---------- */
+
+function isSacrifice(i){
+  const mv = hist[i], mover = mv.color;
+  if(VAL[mv.piece] < 3) return false;
+  const c = new Chess(fens[i]);
+  const m0 = material(c, mover);
   c.move(mv);
-  // Фигуру соперник действительно может взять
-  if(!c.moves({verbose:true}).some(m=>m.to===mv.to&&m.captured))return false;
-  // (2) По лучшей линии движка после хода: мат в нашу пользу или итоговый выигрыш материала >= +3
-  const l=evals[i+1]&&evals[i+1].lines&&evals[i+1].lines[1];
-  if(!l||!l.full)return false;
-  if(l.type==='mate'&&((l.v>0)===(mover==='w')))return true;
-  const line=l.full.split(' ').filter(Boolean).slice(0,10);if(line.length%2)line.pop();
-  let last=material(c,mover);
-  for(const u of line){if(!c.move(uciToMove(u)))break;last=material(c,mover)}
-  return last-m0>=3;
+  const recaps = c.moves({verbose:true}).filter(m => m.to === mv.to && m.captured);
+  if(!recaps.length) return false;
+  let worst = material(c, mover);
+  for(const r of recaps){
+    const t = new Chess(c.fen()); t.move(r);
+    worst = Math.min(worst, material(t, mover));
+  }
+  return m0 - worst >= 1;
 }
-// Ожидаемый результат (0..1) по оценке в сантипешках
-const wp=cp=>1/(1+Math.exp(-0.004*Math.max(-1500,Math.min(1500,cp))));
+
 function classify(i){
-  const mover=hist[i].color,sg=mover==='w'?1:-1,L=evals[i].lines;
-  const played=hist[i].from+hist[i].to+(hist[i].promotion||'');
-  const isBest=played===evals[i].best;
-  const cpB=evals[i].cp*sg;
-  // Оценка сыгранного хода: если он есть среди линий MultiPV той же позиции,
-  // берём её (та же глубина, нет шума); иначе оценка следующей позиции.
-  let cpA=evals[i+1].cp*sg;
-  for(const k in L)if(L[k].pv===played)cpA=cpOf(L[k])*sg;
-  if(isBest)cpA=Math.max(cpA,cpB);
-  const wpl=c=>50+50*(2/(1+Math.exp(-0.00368208*Math.max(-1500,Math.min(1500,c))))-1);
-  accs[i]=Math.max(0,Math.min(100,103.1668*Math.exp(-0.04354*(wpl(cpB)-wpl(cpA)))-3.1669));
-  const Eb=ev(cpB),Ea=ev(cpA);
-  const delta=Math.max(0,wp(cpB)-wp(cpA));
-  if(new Chess(fens[i]).moves().length===1)return'forced';
-  if(Eb>=3&&Ea<=.7&&Ea>-2)return'miss';
-  // Бриллиант — только лучший ход движка (или равный ему) И настоящая жертва материала
-  const bestLike=isBest||Object.values(L).some(x=>x.pv===played&&Math.abs(wp(cpOf(x)*sg)-wp(cpB))<=.01);
-  if(bestLike&&delta<=.05&&sacrificeInfo(i))return'brilliant';
-  if(isBest&&L[2]&&Eb<5&&wp(cpOf(L[1])*sg)-wp(cpOf(L[2])*sg)>=.15)return'great';
-  if(i<10&&delta<=.04)return'book';   // «Теория» — только в первых 5 ходах (10 полуходов)
-  if(isBest)return'best';
-  if(delta<=.025)return'excellent';
-  if(delta<=.06)return'good';
-  if(delta<=.12)return'inaccuracy';
-  if(delta<=.25)return'mistake';
-  return'blunder';
+  const mv = hist[i], mover = mv.color, sg = mover === 'w' ? 1 : -1;
+  const played = uciOf(mv), L = evals[i].lines || {};
+
+  if(new Chess(fens[i]).moves().length === 1){ accs[i] = 100; return 'forced'; }
+
+  const cpBefore = evals[i].cp * sg;
+  let cpAfter = evals[i+1].cp * sg;
+  for(const k in L) if(L[k].pv === played) cpAfter = cpOf(L[k]) * sg;
+
+  const isBest = played === evals[i].best;
+  if(isBest) cpAfter = Math.max(cpAfter, cpBefore);
+
+  const cpLoss = Math.max(0, cpBefore - cpAfter);
+  const loss   = cpLoss / 100;
+
+  accs[i] = 100 * (1 - Math.tanh(cpLoss / ACC_K));
+
+  if(isBest && loss <= 0.10 && isSacrifice(i)) return 'brilliant';
+  if(i < 10 && cpLoss <= 10)                   return 'book';
+  if(isBest)                                   return 'best';
+  if(cpBefore > 200 && cpAfter < 50)           return 'blunder';
+  if(loss <= 0.10)                             return 'excellent';
+  if(loss <= 0.30)                             return 'good';
+  if(loss <= 0.75)                             return 'inaccuracy';
+  if(loss <= 1.50)                             return 'mistake';
+  return 'blunder';
 }
 
 /* ---------- Текстовые пояснения ---------- */
-/* ---------- Текстовые пояснения (с объяснением «почему») ---------- */
 const PN={p:'пешка',n:'конь',b:'слон',r:'ладья',q:'ферзь',k:'король'};
 const PA={p:'пешку',n:'коня',b:'слона',r:'ладью',q:'ферзя',k:'короля'};
 const PRON={p:'её',n:'его',b:'его',r:'её',q:'его',k:'его'};
@@ -304,12 +388,10 @@ const lc=s=>s?s[0].toLowerCase()+s.slice(1):s;
 const flipFen=f=>{const p=f.split(' ');p[1]=p[1]==='w'?'b':'w';p[3]='-';return p.join(' ')};
 const uciOf=m=>m.from+m.to+(m.promotion||'');
 const moveOf=(fen,uci)=>{try{return new Chess(fen).move(uciToMove(uci))}catch(e){return null}};
-const fmtCp=c=>Math.abs(c)>=9000?(c>0?'мат в вашу пользу':'мат против вас'):(c>0?'+':'')+(c/100).toFixed(1);
+const fmtCp=c=>Math.abs(c)>=MATE_CP?(c>0?'мат в вашу пользу':'мат против вас'):(c>0?'+':'')+(c/100).toFixed(1);
 const evTxt=(l,sg)=>l?(l.type==='mate'?(l.v*sg>0?'мат в ':'мат против вас в ')+Math.abs(l.v):((l.v*sg>0?'+':'')+(l.v*sg/100).toFixed(1))):'';
-// мат в пользу side? -> число ходов до мата или 0
 const mateFor=(l,side)=>l&&l.type==='mate'&&((l.v>0)===(side==='w'))?Math.abs(l.v):0;
 
-// Изменение материала для side по линии движка (первые n полуходов, считаем до конца полного хода)
 function swing(fen,full,side,n,base){
   try{
     const c=new Chess(fen),m0=material(new Chess(base||fen),side),mats=[];
@@ -319,7 +401,6 @@ function swing(fen,full,side,n,base){
     return{d:mats[k-1]-m0};
   }catch(e){return null}
 }
-// Лучшая «угроза взятия» для стороны side (даже если сейчас ход не её): выигрыш материала >= minGain
 function bestThreat(fen,side,minGain){
   try{
     const c=new Chess(fen.split(' ')[1]===side?fen:flipFen(fen));let best=null;
@@ -333,8 +414,6 @@ function bestThreat(fen,side,minGain){
     return best;
   }catch(e){return null}
 }
-// Фигуры соперника (ценой >= коня), которые фигура на поле sq атакует «с выгодой» — признак вилки.
-// fen — позиция, где ход стороны, ЧЕЙ ФИГУРА стоит на sq, уже сделан.
 function forkOf(fen,sq){
   try{
     const c=new Chess(flipFen(fen)),out=[];
@@ -348,9 +427,8 @@ function forkOf(fen,sq){
   }catch(e){return[]}
 }
 
-// Почему ход m (в позиции i) хорош. line — линия движка, начинающаяся с этого хода (может быть null).
 function whyMove(i,m,line){
-  const fen=fens[i],side=m.color,opp=side==='w'?'b':'w',sg=side==='w'?1:-1,out=[];
+  const fen=fens[i],side=m.color,opp=side==='w'?'b':'w',out=[];
   const g=new Chess(fen);g.move(m);const fenA=g.fen();
   if(m.san.includes('#'))return['Это мат — партия закончена.'];
   const mate=mateFor(line,side);
@@ -361,14 +439,12 @@ function whyMove(i,m,line){
       ?`Забирает ${PA[m.captured]}, и соперник не может отыграть материал (итог по линии: +${sw.d}).`
       :`Берёт ${PA[m.captured]} и упрощает позицию, сохраняя оценку.`);
   }
-  // Нейтрализует ли ход угрозу соперника?
   const thrB=bestThreat(fen,opp,2);
   if(thrB){
     const thrA=bestThreat(fenA,opp,2);
     if(!thrA||(uciOf(thrA.m)!==uciOf(thrB.m)&&thrA.gain<thrB.gain))
       out.push(`Нейтрализует угрозу: иначе соперник сыграл бы ${thrB.san} и выиграл бы ${PA[thrB.m.captured]}.`);
   }
-  // Создаёт ли свою угрозу / вилку?
   const fk=forkOf(fenA,m.to);
   if(fk.length>=2)out.push(`Двойной удар: ${PN[m.piece]} на ${m.to} одновременно атакует ${fk.slice(0,3).map(x=>PA[x.captured]+' на '+x.to).join(', ')}.`);
   else{
@@ -378,20 +454,19 @@ function whyMove(i,m,line){
   if(m.san.includes('+'))out.push('Шах ограничивает выбор ответов и сохраняет за вами инициативу.');
   if(m.flags&&/[kq]/.test(m.flags))out.push('Рокировка уводит короля в безопасность и включает ладью в игру.');
   if(m.promotion)out.push('Пешка доходит до последней горизонтали и превращается в новую фигуру.');
-  if(i<24&&(m.piece==='n'||m.piece==='b')&&m.from[1]===(side==='w'?'1':'8'))out.push(`Развивает ${PA[m.piece]} на активную позицию — это помогает бороться за центр.`);
+  if(i<24&&(m.piece==='n'||m.piece==='b')&&m.from[1]===(side==='w'?'1':'8'))out.push(`Развивает ${PA[m.piece]} на активную позицию.`);
   if(i<24&&m.piece==='p'&&['d4','e4','d5','e5'].includes(m.to))out.push('Занимает центр пешкой и открывает линии для фигур.');
   if(!out.length){
-    const x=(line?cpOf(line):evals[i+1].cp)*sg;
-    out.push(x>=150?'Сохраняет решающее преимущество и не оставляет сопернику контригры.'
-      :x<=-150?'Самая стойкая защита: другие ходы проигрывают быстрее.'
-      :Math.abs(x)<50?'Сохраняет равновесие и не создаёт слабостей в вашей позиции.'
-      :x>0?'Сохраняет небольшой перевес и улучшает расположение фигур.'
-      :'Не даёт сопернику развить преимущество и держит позицию.');
+    const x=(line?cpOf(line):evals[i+1].cp)*(side==='w'?1:-1);
+    out.push(x>=150?'Сохраняет решающее преимущество.'
+      :x<=-150?'Самая стойкая защита.'
+      :Math.abs(x)<50?'Сохраняет равновесие.'
+      :x>0?'Сохраняет перевес.'
+      :'Держит позицию.');
   }
   return out.slice(0,2);
 }
 
-// Что именно пошло не так после плохого хода
 function whyBad(i,k){
   const mv=hist[i],side=mv.color,opp=side==='w'?'b':'w',sg=side==='w'?1:-1;
   const fenA=fens[i+1],e1=evals[i+1]||{},th=e1.best,thL=e1.lines&&e1.lines[1];
@@ -403,23 +478,19 @@ function whyBad(i,k){
     :`Теперь у соперника форсированный мат в ${mate} (начинается с ${thm.san}).`;
   if(thm&&thm.captured&&gain>=1){
     if(thm.to===mv.to)return `Вы поставили ${PA[mv.piece]} под бой: ${thm.san} забирает ${PRON[mv.piece]} (материал: −${gain}).`;
-    const thr=bestThreat(fens[i],opp,1);
-    if(thr&&uciOf(thr.m)===th)return `Вы проигнорировали угрозу: соперник забирает ${PA[thm.captured]} ходом ${thm.san} (материал: −${gain}).`;
-    return `Ход ослабил защиту: теперь ${thm.san} выигрывает ${PA[thm.captured]} на ${thm.to} (материал: −${gain}).`;
+    return `Ход ослабил защиту: теперь ${thm.san} выигрывает ${PA[thm.captured]} (материал: −${gain}).`;
   }
   if(thm){
     const c=new Chess(fenA);c.move(thm);
-    const fk=forkOf(c.fen(),thm.to),chk=thm.san.includes('+');
-    if(fk.length>=2||(fk.length&&chk))
-      return `Соперник отвечает ${thm.san} с двойным ударом: ${PN[thm.piece]} атакует ${fk.slice(0,3).map(x=>PA[x.captured]+' на '+x.to).join(', ')}${chk?' и объявляет шах':''}.`;
-    if(gain>=1)return `Соперник отвечает ${thm.san} и по основной линии выигрывает материал (материал: −${gain}).`;
+    const fk=forkOf(c.fen(),thm.to);
+    if(fk.length>=2)
+      return `Соперник отвечает ${thm.san} с двойным ударом: ${PN[thm.piece]} атакует ${fk.slice(0,3).map(x=>PA[x.captured]).join(', ')}.`;
+    if(gain>=1)return `Соперник отвечает ${thm.san} и выигрывает материал (материал: −${gain}).`;
   }
   const cpB=evals[i].cp*sg,cpA=evals[i+1].cp*sg;
-  return `Позиция ${k==='inaccuracy'?'немного':'заметно'} ухудшилась: оценка изменилась с ${fmtCp(cpB)} на ${fmtCp(cpA)}`
-    +(thm?`, а сильнейший ответ соперника — ${thm.san}.`:'.');
+  return `Оценка ухудшилась с ${fmtCp(cpB)} до ${fmtCp(cpA)}`+(thm?`, сильнейший ответ — ${thm.san}.`:'.');
 }
 
-// Что было лучше
 function describeBest(i){
   const bu=evals[i].best;if(!bu||bu==='(none)')return'';
   const bm=moveOf(fens[i],bu);if(!bm)return'';
@@ -428,41 +499,32 @@ function describeBest(i){
   return `Лучше было ${bm.san}: ${lc(r).replace(/\.$/,'')} (оценка ${fmtCp(evals[i].cp*sg)}).`;
 }
 
-// Блестящий ход: что за жертва и почему она работает
 function whyBrilliant(i){
   const mv=hist[i],side=mv.color,sg=side==='w'?1:-1,l=evals[i+1]&&evals[i+1].lines&&evals[i+1].lines[1];
   const mate=mateFor(l,side);
   const sw=l&&l.full?swing(fens[i+1],l.full,side,8,fens[i]):null;
-  const variation=l&&l.full?pvSan(fens[i+1],l.full,4):'';
   let s=`Вы жертвуете ${PA[mv.piece]} на ${mv.to}`+(mv.captured?`, получая за ${PRON[mv.piece]} лишь ${PA[mv.captured]}`:'')+': ';
-  s+=mate?`соперник может взять фигуру, но после этого вы форсируете мат в ${mate}`
+  s+=mate?`соперник может взять фигуру, но после этого форсированный мат в ${mate}`
     :sw&&sw.d>=3?`после взятия вы возвращаете материал с избытком (итог по линии: +${sw.d})`
-    :`взамен вы получаете сильную инициативу, которая стоит больше потерянного материала`;
-  s+=variation?`. Например: ${variation}.`:'.';
-  if(!mate)s+=` Оценка позиции для вас: ${fmtCp(evals[i+1].cp*sg)}.`;
+    :`взамен вы получаете инициативу, которая стоит больше потерянного материала`;
+  if(!mate)s+=` Оценка для вас: ${fmtCp(evals[i+1].cp*sg)}.`;
   return s;
 }
 
 function explainSmart(i,k){
-  const mv=hist[i],sg=mv.color==='w'?1:-1,L=evals[i].lines||{};
+  const mv=hist[i],L=evals[i].lines||{};
   const played=uciOf(mv),lineP=Object.values(L).find(x=>x.pv===played)||null;
-  const cpB=evals[i].cp*sg,cpA=evals[i+1].cp*sg,best=sanOf(i,evals[i].best);
+  const best=sanOf(i,evals[i].best);
   switch(k){
     case'forced':return new Chess(fens[i]).in_check()
-      ?'Единственный легальный ход: король под шахом, и другого способа ответить нет.'
-      :'Единственный легальный ход — выбора здесь не было.';
+      ?'Единственный легальный ход: король под шахом.'
+      :'Единственный легальный ход.';
     case'book':return 'Дебютный ход: '+lc(whyMove(i,mv,lineP)[0]);
     case'brilliant':return whyBrilliant(i);
-    case'great':{
-      const l1=L[1],l2=L[2];
-      return (l2?`Единственный точный ход: следующий по силе вариант ${sanOf(i,l2.pv)} даёт ${evTxt(l2,sg)} вместо ${evTxt(l1,sg)}.`:'Единственный точный ход.')
-        +' '+whyMove(i,mv,lineP)[0];
-    }
     case'best':return whyMove(i,mv,lineP).join(' ');
     case'excellent':return whyMove(i,mv,lineP)[0]+' Оценка почти не изменилась.';
     case'good':return whyMove(i,mv,lineP)[0]+` Чуть точнее было ${best}.`;
     case'inaccuracy':case'mistake':case'blunder':return whyBad(i,k)+' '+describeBest(i);
-    case'miss':return `Вы упустили выигрыш: до хода у вас было ${fmtCp(cpB)}, а после — лишь ${fmtCp(cpA)}. `+describeBest(i);
   }
   return'';
 }
@@ -470,20 +532,17 @@ function explainSmart(i,k){
 function explain(i){
   const k=cls[i];if(!k)return'';
   try{const t=explainSmart(i,k);if(t)return t}catch(e){console.warn('explain:',e)}
-  // запасной вариант, если что-то пошло не так
   const best=sanOf(i,evals[i].best);
   return{
-    forced:'Вынужденный ход: других легальных ходов не было.',
-    book:'Дебютный ход: оценка позиции в норме.',
-    brilliant:'Блестящая жертва: тактика рассчитана верно, преимущество сохранено.',
-    great:'Сильнейший ход: остальные продолжения заметно слабее.',
+    forced:'Вынужденный ход.',
+    book:'Дебютный ход.',
+    brilliant:'Блестящая жертва: тактика рассчитана верно.',
     best:'Это первый выбор движка.',
     excellent:'Отличный ход, оценка почти не изменилась.',
-    good:'Хороший ход, но у движка есть чуть более точный вариант.',
+    good:'Хороший ход, но есть чуть более точный вариант.',
     inaccuracy:`Неточность. Лучше было ${best}.`,
     mistake:`Ошибка. Лучше было ${best}.`,
-    blunder:`Зевок. Лучше было ${best}.`,
-    miss:`Упущена возможность. Выигрыш начинался с ${best}.`
+    blunder:`Зевок. Лучше было ${best}.`
   }[k];
 }
 
@@ -494,14 +553,14 @@ let showArrows=true,voiceOn=false;
 const LET={a:'а',b:'бэ',c:'цэ',d:'дэ',e:'е',f:'эф',g:'гэ',h:'аш'},NM={K:'король',Q:'ферзь',R:'ладья',B:'слон',N:'конь'};
 const spoken=san=>san.startsWith('O-O-O')?'длинная рокировка':san.startsWith('O-O')?'короткая рокировка':
   [...san].map(ch=>NM[ch]||(ch==='x'?'берёт':ch==='+'?'шах':ch==='#'?'мат':ch==='='?'превращение в':LET[ch]||ch)).join(' ');
-const SAY={brilliant:'Блестящий ход! Отличная жертва.',great:'Сильнейший ход.',miss:'Упущенная возможность.',mistake:'Ошибка.',blunder:'Зевок!'};
+const SAY={brilliant:'Блестящий ход! Отличная жертва.',best:'Сильнейший ход.',mistake:'Ошибка.',blunder:'Зевок!'};
 function speak(){
   if(!window.speechSynthesis)return;
   speechSynthesis.cancel();
   if(!voiceOn||cur<1)return;
   const i=cur-1,k=cls[i];if(!SAY[k])return;
   let t=SAY[k];
-  if(['miss','mistake','blunder'].includes(k)&&evals[i].best&&evals[i].best!=='(none)')t+=' Лучше было: '+spoken(sanOf(i,evals[i].best))+'.';
+  if(['mistake','blunder'].includes(k)&&evals[i].best&&evals[i].best!=='(none)')t+=' Лучше было: '+spoken(sanOf(i,evals[i].best))+'.';
   const u=new SpeechSynthesisUtterance(t);u.lang='ru-RU';
   const v=speechSynthesis.getVoices().find(x=>x.lang&&x.lang.toLowerCase().startsWith('ru'));if(v)u.voice=v;
   speechSynthesis.speak(u);
@@ -517,10 +576,10 @@ const circle=(q,col)=>{const[x,y]=pt(q);return`<circle cx="${x}" cy="${y}" r=".4
 let marks={a:[],c:[]};
 function arrowsHtml(){
   let h='';
-  if(showArrows&&!free&&cur>=1&&['inaccuracy','mistake','blunder','miss'].includes(cls[cur-1])){
+  if(showArrows&&!free&&cur>=1&&['inaccuracy','mistake','blunder'].includes(cls[cur-1])){
     const bm=evals[cur-1].best,th=evals[cur]&&evals[cur].best;
-    if(th&&th!=='(none)')h+=arrow(th.slice(0,2),th.slice(2,4),'#d6382f');   // угроза соперника
-    if(bm&&bm!=='(none)')h+=arrow(bm.slice(0,2),bm.slice(2,4),'#5aa93c');   // лучший ход
+    if(th&&th!=='(none)')h+=arrow(th.slice(0,2),th.slice(2,4),'#d6382f');
+    if(bm&&bm!=='(none)')h+=arrow(bm.slice(0,2),bm.slice(2,4),'#5aa93c');
   }
   for(const c of marks.c)h+=circle(c.q,c.col);
   for(const a of marks.a)h+=arrow(a.f,a.t,a.col);
@@ -546,14 +605,19 @@ function render(){
   renderBar();renderComment();renderMoves();
 }
 function renderBar(){
-  const e=free?(free.cp==null?null:{cp:free.cp,label:free.label}):evals[cur];
-  if(!e){$('barW').style.height='50%';$('barT').textContent='';return}
-  const x=ev(e.cp),pct=50+50*Math.tanh(x/4),w=$('barW');
-  w.style.height=pct+'%';w.style.top=flip?'0':'auto';w.style.bottom=flip?'auto':'0';
-  const t=$('barT'),atBottom=(e.cp>=0)===!flip;
-  t.textContent=e.label==='#'?'#':e.label.replace('+','');
-  t.style.color=e.cp>=0?'#262522':'#fff';
-  t.style.top=atBottom?'auto':'0';t.style.bottom=atBottom?'0':'auto';
+  const e = free ? (free.cp == null ? null : {cp:free.cp}) : evals[cur];
+  if(!e){ $('barW').style.height='50%'; $('barT').textContent=''; return; }
+  const p = winPct(e.cp);
+  const w = $('barW');
+  w.style.height = p + '%';
+  w.style.top    = flip ? '0'    : 'auto';
+  w.style.bottom = flip ? 'auto' : '0';
+  const t = $('barT');
+  t.textContent = Math.abs(e.cp) >= MATE_CP ? '#' : (Math.abs(e.cp)/100).toFixed(1);
+  t.style.color = e.cp >= 0 ? '#262522' : '#fff';
+  const atBottom = (e.cp >= 0) !== flip;
+  t.style.top    = atBottom ? 'auto' : '0';
+  t.style.bottom = atBottom ? '0'    : 'auto';
 }
 function pvSan(fen,full,n){
   const c=new Chess(fen),p=fen.split(' ');let num=+p[5]||1,w=p[1]==='w';const out=[];
@@ -567,7 +631,7 @@ function pvSan(fen,full,n){
 function renderFree(){
   const g=free.g,L=free.lines||{};let rows='';
   for(const k of[1,2,3]){const l=L[k];if(!l)continue;
-    rows+=`<div class="flex gap-2 py-1 border-t border-[#4a4743] text-sm"><b class="w-12 flex-none">${labelOf(l)}</b><span class="text-neutral-300">${esc(pvSan(g.fen(),l.full,7))}</span></div>`}
+    rows+=`<div class="flex gap-2 py-1 border-t border-[#4a4743] text-sm"><b class="w-14 flex-none">${labelOf(l)}</b><span class="text-neutral-300">${esc(pvSan(g.fen(),l.full,7))}</span></div>`}
   const note=g.in_checkmate()?'Мат.':g.game_over()?'Ничья.':(rows?'':(eng?'Движок думает…':'Движок ещё загружается…'));
   $('comment').innerHTML=`<div class="flex items-center gap-2 mb-2"><b class="text-lg">Свободный анализ</b><span class="text-xs text-neutral-400">глубина ${free.depth||'—'}</span>
     <span class="ml-auto flex gap-2"><button class="btn2 !py-1" onclick="freeUndo()" title="Отменить ход">↶</button><button class="btn2 !py-1" onclick="freeExit()">К партии</button></span></div>${rows}<div class="text-sm text-neutral-400">${note}</div>`;
@@ -575,11 +639,12 @@ function renderFree(){
 async function startLive(){
   const tok=++liveTok,g=free.g;
   free.lines={};free.cp=null;free.depth=0;
-  if(g.game_over()){free.cp=g.in_checkmate()?(g.turn()==='w'?-10000:10000):0;free.label=g.in_checkmate()?'#':'0.0';renderFree();renderBar();return}
+  if(g.game_over()){free.cp=g.in_checkmate()?(g.turn()==='w'?-MATE_CP:MATE_CP):0;renderFree();renderBar();return}
   renderFree();renderBar();
   if(!eng)return;
   eng.stop();
-  await eng.analyse(g.fen(),eng.main?12:60,eng.main?2500:8000,(lines,d)=>{
+  eng.setMultiPV(3);
+  await eng.analyse(g.fen(),eng.main?12:20,eng.main?2500:6000,(lines,d)=>{
     if(tok!==liveTok||!free||!lines[1])return;
     free.lines={...lines};free.depth=d;free.cp=cpOf(lines[1]);free.label=labelOf(lines[1]);renderFree();renderBar();
   },true);
@@ -627,54 +692,89 @@ function renderSummary(){
 
 /* ---------- Запуск анализа ---------- */
 function showError(t){const e=$('err');e.textContent=t;e.classList.remove('hidden')}
+
+$('mode').onchange = () => {
+  const fast = $('mode').value === 'fast';
+  $('tlim').classList.toggle('dim', fast);
+};
+
 function start(){
   $('err').classList.add('hidden');
   const text=$('pgn').value.trim();
   if(!text)return showError('Вставьте PGN партии в текстовое поле.');
   let g;
   try{g=new Chess();if(!g.load_pgn(text,{sloppy:true}))throw 0}
-  catch(e){return showError('Не удалось разобрать PGN. Проверьте, что записаны ходы в стандартной алгебраической нотации (например, 1. e4 e5 2. Nf3 Nc6) и нет синтаксических ошибок.')}
+  catch(e){return showError('Не удалось разобрать PGN. Проверьте нотацию (например, 1. e4 e5 2. Nf3 Nc6).')}
   hist=g.history({verbose:true});
   if(!hist.length)return showError('В PGN не найдено ни одного хода.');
   headers=g.header();
   const c=headers.FEN?new Chess(headers.FEN):new Chess();
   fens=[c.fen()];
-  for(const m of hist){if(!c.move(m))return showError('Ошибка при воспроизведении партии: ход '+m.san+' недопустим.');fens.push(c.fen())}
+  for(const m of hist){if(!c.move(m))return showError('Ошибка при воспроизведении: ход '+m.san+' недопустим.');fens.push(c.fen())}
   evals=[];cls=[];accs=[];free=null;sel=null;cur=0;flip=false;
   $('names').textContent=`${headers.White||'Белые'} — ${headers.Black||'Чёрные'}${headers.Result?'  ('+headers.Result+')':''}`;
   $('summary').innerHTML='';$('prog').style.width='0';
   $('landing').classList.add('hidden');$('app').classList.remove('hidden');
-  render();run(+$('depth').value,+$('tlim').value,$('mode').value==='fast',$('engine').value);
-}
-async function run(depth,tl,fast,kind){
-  const id=++runId,st=$('status');
-  try{
-    if(eng&&eng.kind!==kind){eng.reset();eng=null}   // выбран другой движок — перезапускаем
-    if(!eng){st.textContent=kind==='full'?'Загрузка Stockfish 19 (полная версия ≈99 МБ, при первом запуске это долго)…':'Загрузка Stockfish 19…';const e=new Engine();await e.init(kind);eng=e}
-  }catch(e){st.textContent='Ошибка движка: '+e.message;st.style.color='#ff8a85';return}
-  let d=eng.main?Math.min(depth,12):depth,ms=tl*1000;
-  if(eng.main)ms=Math.min(ms||3000,3000);      // в основном потоке поиск нельзя прервать — держим короткие лимиты
-  else if(d>=30&&!ms)ms=10000;                  // очень большая глубина без лимита времени не закончится никогда
-  // Быстрый режим: общий бюджет ≈ 8 с. Дебют (первые 10 ходов) — мгновенный неглубокий проход,
-  // остальное время делится между миттельшпилем и эндшпилем (глубина до 18, но решает лимит времени).
-  const N=fens.length,openN=N>30?20:0,midMs=Math.max(60,Math.min(800,Math.round((8000-openN*40)/Math.max(1,N-openN))));
-  const t0=performance.now();
-  for(let k=0;k<N;k++){
-    if(id!==runId)return;
-    await new Promise(r=>setTimeout(r,fast?0:20));
-    let kd=d,kms=ms;
-    if(fast){if(k<openN){kd=8;kms=40}else{kd=eng.main?12:18;kms=eng.main?Math.min(midMs,1500):midMs}}
-    evals[k]=await evalPos(k,kd,kms);
-    if(id!==runId)return;
-    if(k>0)cls[k-1]=classify(k-1);
-    $('prog').style.width=((k+1)/fens.length*100)+'%';
-    st.textContent=`Анализ: позиция ${k+1} из ${fens.length}, глубина ${evals[k].d||'—'}`+` · ${eng.name}`;
-    if(k===cur||k===cur+1||k===0)render();else renderMoves();
-  }
-  st.textContent=`Анализ завершён за ${((performance.now()-t0)/1000).toFixed(1)} с · ${eng.name}`;render();renderSummary();
+  render();
+  run($('mode').value, +$('tlim').value, $('engine').value);
 }
 
-/* ---------- Звуки (WebAudio, без файлов) ---------- */
+async function run(mode, tl, kind){
+  const id=++runId, st=$('status');
+  try{
+    if(eng&&eng.kind!==kind){eng.reset();eng=null}
+    if(!eng){
+      st.textContent = kind==='full'
+        ? 'Загрузка Stockfish 19 (полная ≈99 МБ)…'
+        : 'Загрузка Stockfish 19…';
+      const e=new Engine(); await e.init(kind); eng=e;
+    }
+  }catch(e){ st.textContent='Ошибка движка: '+e.message; st.style.color='#ff8a85'; return }
+
+  // Game analysis: MultiPV 1 достаточно и ≈3× быстрее.
+  // cpAfter берётся из оценки следующей позиции (evals[i+1].cp), точность не теряется.
+  eng.setMultiPV(1);
+
+  const N = fens.length;
+  const t0 = performance.now();
+
+  // Пресеты
+  let D, ms, openN = 0, fastMidMs = 0;
+  const isFast = mode === 'fast';
+  if(isFast){
+    const budget = 8000;                                   // ≈8 с на весь разбор
+    openN = N > 30 ? 20 : 0;
+    fastMidMs = Math.max(50, Math.min(700, Math.round((budget - openN*25) / Math.max(1, N-openN))));
+    D = 16; ms = 0;
+  } else if(mode === 'deep'){
+    D = 26;
+    ms = tl > 0 ? tl*1000 : 8000;
+  } else {
+    D = 20;
+    ms = tl > 0 ? tl*1000 : 2000;
+  }
+  if(eng.main){ D = Math.min(D, 16); ms = Math.min(ms || 2000, 2000); }
+
+  for(let k=0;k<N;k++){
+    if(id!==runId)return;
+    await new Promise(r=>setTimeout(r,0));
+    let kd = D, kms = ms;
+    if(isFast){
+      if(k < openN){ kd = eng.main ? 8 : 10; kms = 25; }
+      else { kd = eng.main ? 12 : 16; kms = eng.main ? Math.min(fastMidMs,700) : fastMidMs; }
+    }
+    evals[k] = await evalPos(k, kd, kms);
+    if(id!==runId)return;
+    if(k>0) cls[k-1] = classify(k-1);
+    $('prog').style.width = ((k+1)/N*100)+'%';
+    st.textContent = `Анализ: ${k+1}/${N}, глубина ${evals[k].d||'—'} · ${eng.name}`;
+    if(k===cur||k===cur+1||k===0) render(); else renderMoves();
+  }
+  st.textContent = `Готово за ${((performance.now()-t0)/1000).toFixed(1)} с · ${eng.name} · ${isFast ? 'быстрый' : 'глубина '+D}`;
+  render(); renderSummary();
+}
+
+/* ---------- Звуки ---------- */
 let AC=null,soundOn=true;
 function tone(f,t0,d,type,g){const o=AC.createOscillator(),v=AC.createGain(),t=AC.currentTime+t0;o.type=type;o.frequency.value=f;v.gain.setValueAtTime(g,t);v.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(v);v.connect(AC.destination);o.start(t);o.stop(t+d)}
 function noise(d,g){const n=Math.floor(AC.sampleRate*d),b=AC.createBuffer(1,n,AC.sampleRate),a=b.getChannelData(0);for(let i=0;i<n;i++)a[i]=(Math.random()*2-1)*(1-i/n);const s=AC.createBufferSource(),v=AC.createGain();v.gain.value=g;s.buffer=b;s.connect(v);v.connect(AC.destination);s.start()}
@@ -690,7 +790,7 @@ function sfx(m){
   }catch(e){}
 }
 
-/* ---------- Навигация, анимация, автовоспроизведение ---------- */
+/* ---------- Навигация ---------- */
 function animMove(from,to){
   const bd=$('board'),el=bd.querySelector(`[data-sq="${to}"] .pc, [data-sq="${to}"] .pcg`);if(!el)return;
   const a=pt(from),b=pt(to),s=bd.clientWidth/8;
@@ -702,7 +802,6 @@ function go(n,noAnim){
   if(eggAudio)eggAudio.pause();
   cur=Math.max(0,Math.min(hist.length,n));render();
   if(!noAnim&&Math.abs(cur-old)===1){const m=hist[Math.max(cur,old)-1];cur>old?animMove(m.from,m.to):animMove(m.to,m.from)}
-  // Пасхалка: блестящая жертва ладьи — играет the-rook.mp3 (вместо обычного звука и голоса)
   if(soundOn&&cur>0&&cls[cur-1]==='brilliant'&&hist[cur-1].piece==='r'){
     if(window.speechSynthesis)speechSynthesis.cancel();
     try{eggAudio=eggAudio||new Audio(EGG_MP3);eggAudio.currentTime=0;eggAudio.play().catch(()=>{})}catch(e){}
@@ -732,7 +831,7 @@ $('flip').onclick=()=>{flip=!flip;render()};
 $('arr').onchange=e=>{showArrows=e.target.checked;render()};
 $('voice').onchange=e=>{voiceOn=e.target.checked;speak()};
 
-/* ---------- Доска: перетаскивание, свободный анализ, стрелки и круги ---------- */
+/* ---------- Доска ---------- */
 const bd=$('board');let mk=null,dr=null;
 function sqAt(e){
   const r=bd.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*8,y=(e.clientY-r.top)/r.height*8;
@@ -740,7 +839,7 @@ function sqAt(e){
   const f=Math.floor(x),rw=Math.floor(y);return'abcdefgh'[flip?7-f:f]+(8-(flip?7-rw:rw));
 }
 function tryMove(from,to,dropped){
-  const g=free?free.g:new Chess(fens[cur]),m=g.move({from,to,promotion:'q'});   // превращение — всегда в ферзя
+  const g=free?free.g:new Chess(fens[cur]),m=g.move({from,to,promotion:'q'});
   sel=null;
   if(!m){render();return}
   if(!free)free={g};
