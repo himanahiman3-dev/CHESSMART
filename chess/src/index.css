@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --board-light: #ebecd0;
+  --board-dark: #779556;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  background: #262421;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior-y: none;
+}
+
+button {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- доска ---- */
+.board-wrap {
+  border-radius: 4px;
+  overflow: visible;
+}
+.board-host.cg-wrap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.board-host cg-board {
+  background-color: var(--board-light);
+  background-image: conic-gradient(
+    var(--board-dark) 25%,
+    var(--board-light) 0 50%,
+    var(--board-dark) 0 75%,
+    var(--board-light) 0
+  );
+  background-size: 25% 25%;
+}
+.board-host cg-board square.last-move {
+  background-color: rgba(255, 235, 59, 0.5);
+}
+.board-host cg-board square.check {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 0, 0, 1) 0%,
+    rgba(231, 0, 0, 1) 25%,
+    rgba(169, 0, 0, 0) 89%,
+    rgba(158, 0, 0, 0) 100%
+  );
+}
+.board-host piece {
+  will-change: transform;
+}
+.coord-label {
+  font-size: clamp(8px, 1.6vw, 12px);
+  font-weight: 700;
+  line-height: 1;
+}
+.board-host svg.cg-shapes line {
+  stroke-opacity: 0.9;
+}
+
+/* ---- мобильная панель снизу ---- */
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 8px);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+textarea {
+  -webkit-appearance: none;
+}
