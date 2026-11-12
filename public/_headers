@@ -1,0 +1,10 @@
+# Netlify / Cloudflare Pages / Render-совместимый файл заголовков.
+# Нужны для SharedArrayBuffer (многопоточный Stockfish 19 WASM).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: cross-origin
+
+/engine/*
+  Cache-Control: public, max-age=31536000, immutable
+  Cross-Origin-Resource-Policy: cross-origin
