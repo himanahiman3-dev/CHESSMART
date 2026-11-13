@@ -1,6 +1,11 @@
 /**
  * Конвейер обзора партии: разбор PGN → анализ каждой позиции Stockfish 19 (MultiPV 2, с кэшем
  * в IndexedDB) → Win% → точность (CAPS2) → классификация 10 типов ходов → комментарии тренера.
+ *
+ * Бюджет времени: на всю партию отводится 0.6 с на каждый ход (10 ходов → 6 с, 20 → 12 с, 30 → 18 с…).
+ * Бюджет делится динамически: если позиция посчитана быстрее (достигнута целевая глубина, ход единственный,
+ * позиция взята из кэша), сэкономленное время достаётся следующим позициям, а общий анализ
+ * завершается раньше. Время зря не тратится — Stockfish останавливается, как только достиг глубины.
  */
 import { Chess, type Square } from "chess.js";
 import type { Cls, Color, EngineLine, GameReview, MoveReview, PositionEval, Score } from "../types";
@@ -63,15 +68,40 @@ export function parseGame(pgnText: string): ParsedGame {
   return { headers, startFen, moves, fens };
 }
 
-/** «Быстрый» режим: глубина ≤ 14 → максимум 4 секунды на позицию. */
-export const FAST_MAX_DEPTH = 14;
-export const FAST_MOVETIME_MS = 4000;
-/** Результаты, недосчитанные глубже этого порога, не кэшируем (иначе слабая оценка закрепится в кэше навсегда). */
-const MIN_CACHEABLE_DEPTH = 8;
+/* ------------------------------------------------------------------ */
+/*                        Бюджет времени анализа                       */
+/* ------------------------------------------------------------------ */
 
+/** Сколько миллисекунд на анализ всей партии приходится на один ход (10 ходов = 6 с). */
+export const TIME_PER_MOVE_MS = 600;
+/** Нижняя граница времени на одну позицию, чтобы движок успел выдать хоть какую-то оценку. */
+const MIN_POSITION_MS = 120;
+
+/** Общий бюджет времени на партию из `moveCount` ходов. */
+export function gameBudgetMs(moveCount: number): number {
+  return Math.max(0, Math.round(moveCount * TIME_PER_MOVE_MS));
+}
+
+/**
+ * Время на текущую позицию: всё ещё не израсходованное время делится поровну между оставшимися позициями.
+ * Недоиспользованное предыдущими позициями время автоматически переходит к следующим.
+ */
+export function slotForPosition(budgetMs: number, elapsedMs: number, positionsLeft: number): number {
+  const remaining = Math.max(0, budgetMs - elapsedMs);
+  return Math.max(MIN_POSITION_MS, Math.round(remaining / Math.max(1, positionsLeft)));
+}
+
+/** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
+export const FAST_MAX_DEPTH = 14;
+/** @deprecated Оставлено для совместимости. */
+export const FAST_MOVETIME_MS = 4000;
+/** @deprecated Используйте gameBudgetMs / slotForPosition. */
 export function moveTimeForDepth(depth: number): number | undefined {
   return depth <= FAST_MAX_DEPTH ? FAST_MOVETIME_MS : undefined;
 }
+
+/** Результаты, недосчитанные глубже этого порога, не кэшируем (иначе слабая оценка закрепится в кэше навсегда). */
+const MIN_CACHEABLE_DEPTH = 8;
 
 export interface AnalyzeProgress {
   done: number;
@@ -80,6 +110,10 @@ export interface AnalyzeProgress {
   targetDepth: number;
   cached: number;
   fen: string;
+  /** Общий бюджет времени на партию, мс. */
+  budgetMs?: number;
+  /** Сколько времени уже прошло с начала анализа, мс. */
+  elapsedMs?: number;
 }
 
 function terminalEval(fen: string): PositionEval | null {
@@ -143,23 +177,43 @@ function legalMoveCount(fen: string): number {
   }
 }
 
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+/**
+ * @param moveTimeMs  необязательный ФИКСИРОВАННЫЙ лимит на позицию (мс). Если не задан —
+ *                    используется адаптивный бюджет: 0.6 с × число ходов на всю партию.
+ */
 export async function reviewGame(
   pgn: string,
   depth: number,
   engine: StockfishEngine,
   onProgress: (p: AnalyzeProgress) => void,
   signal?: AbortSignal,
-  moveTimeMs: number | undefined = moveTimeForDepth(depth)
+  moveTimeMs?: number
 ): Promise<GameReview> {
   const game = parseGame(pgn);
   const N = game.moves.length;
+  const total = N + 1;
+  const budgetMs = gameBudgetMs(N);
+  const startedAt = now();
   engine.newGame();
   const positions: PositionEval[] = [];
   let cachedHits = 0;
   for (let i = 0; i <= N; i++) {
     if (signal?.aborted) throw new Error("cancelled");
     const fen = game.fens[i];
-    onProgress({ done: i, total: N + 1, depth: 0, targetDepth: depth, cached: cachedHits, fen });
+    // Время на эту позицию: остаток бюджета / число оставшихся позиций (экономия переходит дальше).
+    const slot = moveTimeMs ?? slotForPosition(budgetMs, now() - startedAt, total - i);
+    onProgress({
+      done: i,
+      total,
+      depth: 0,
+      targetDepth: depth,
+      cached: cachedHits,
+      fen,
+      budgetMs,
+      elapsedMs: now() - startedAt,
+    });
     const { evalResult, fromCache } = await evaluatePosition(
       engine,
       fen,
@@ -169,19 +223,30 @@ export async function reviewGame(
       (lines) => {
         onProgress({
           done: i,
-          total: N + 1,
+          total,
           depth: Math.min(...lines.map((l) => l.depth)),
           targetDepth: depth,
           cached: cachedHits,
           fen,
+          budgetMs,
+          elapsedMs: now() - startedAt,
         });
       },
-      moveTimeMs
+      slot
     );
     if (fromCache) cachedHits++;
     positions.push(evalResult);
   }
-  onProgress({ done: N + 1, total: N + 1, depth, targetDepth: depth, cached: cachedHits, fen: game.fens[N] });
+  onProgress({
+    done: total,
+    total,
+    depth,
+    targetDepth: depth,
+    cached: cachedHits,
+    fen: game.fens[N],
+    budgetMs,
+    elapsedMs: now() - startedAt,
+  });
   return buildReview(game, positions, depth);
 }
 
