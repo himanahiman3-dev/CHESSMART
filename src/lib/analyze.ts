@@ -63,6 +63,16 @@ export function parseGame(pgnText: string): ParsedGame {
   return { headers, startFen, moves, fens };
 }
 
+/** «Быстрый» режим: глубина ≤ 14 → максимум 4 секунды на позицию. */
+export const FAST_MAX_DEPTH = 14;
+export const FAST_MOVETIME_MS = 4000;
+/** Результаты, недосчитанные глубже этого порога, не кэшируем (иначе слабая оценка закрепится в кэше навсегда). */
+const MIN_CACHEABLE_DEPTH = 8;
+
+export function moveTimeForDepth(depth: number): number | undefined {
+  return depth <= FAST_MAX_DEPTH ? FAST_MOVETIME_MS : undefined;
+}
+
 export interface AnalyzeProgress {
   done: number;
   total: number;
@@ -87,13 +97,14 @@ export async function evaluatePosition(
   depth: number,
   multipv: number,
   signal?: AbortSignal,
-  onInfo?: (lines: EngineLine[]) => void
+  onInfo?: (lines: EngineLine[]) => void,
+  movetimeMs?: number
 ): Promise<{ evalResult: PositionEval; fromCache: boolean }> {
   const term = terminalEval(fen);
   if (term) return { evalResult: term, fromCache: true };
   const cached = await getCachedPosition(fen, depth, multipv);
   if (cached) return { evalResult: cached, fromCache: true };
-  const handle = engine.search({ fen, depth, multipv, onInfo });
+  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
   let lines: EngineLine[];
@@ -105,7 +116,11 @@ export async function evaluatePosition(
   if (signal?.aborted) throw new Error("cancelled");
   if (!lines.length) throw new Error("Движок не вернул результат");
   const reached = Math.min(...lines.map((l) => l.depth));
-  await putCachedPosition(fen, depth, multipv, lines, reached);
+  // Недосчитанный по глубине (из-за лимита времени) результат кэшируем, только если он не слишком слабый.
+  // В кэше хранится реально достигнутая глубина (reached), а ключ — запрошенная.
+  if (reached >= Math.min(depth, MIN_CACHEABLE_DEPTH)) {
+    await putCachedPosition(fen, depth, multipv, lines, reached);
+  }
   return { evalResult: { fen, depth: reached, lines }, fromCache: false };
 }
 
@@ -133,7 +148,8 @@ export async function reviewGame(
   depth: number,
   engine: StockfishEngine,
   onProgress: (p: AnalyzeProgress) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  moveTimeMs: number | undefined = moveTimeForDepth(depth)
 ): Promise<GameReview> {
   const game = parseGame(pgn);
   const N = game.moves.length;
@@ -144,16 +160,24 @@ export async function reviewGame(
     if (signal?.aborted) throw new Error("cancelled");
     const fen = game.fens[i];
     onProgress({ done: i, total: N + 1, depth: 0, targetDepth: depth, cached: cachedHits, fen });
-    const { evalResult, fromCache } = await evaluatePosition(engine, fen, depth, 2, signal, (lines) => {
-      onProgress({
-        done: i,
-        total: N + 1,
-        depth: Math.min(...lines.map((l) => l.depth)),
-        targetDepth: depth,
-        cached: cachedHits,
-        fen,
-      });
-    });
+    const { evalResult, fromCache } = await evaluatePosition(
+      engine,
+      fen,
+      depth,
+      2,
+      signal,
+      (lines) => {
+        onProgress({
+          done: i,
+          total: N + 1,
+          depth: Math.min(...lines.map((l) => l.depth)),
+          targetDepth: depth,
+          cached: cachedHits,
+          fen,
+        });
+      },
+      moveTimeMs
+    );
     if (fromCache) cachedHits++;
     positions.push(evalResult);
   }
@@ -181,7 +205,12 @@ export function buildReview(game: ParsedGame, positions: PositionEval[], depth: 
     const playedIsBest = bestUci === m.uci;
 
     const scoreBefore = top.score;
-    const scoreAfter: Score = playedIsBest ? top.score : after.lines[0].score;
+    // При лимите времени позиции считаются до разной глубины. Если сыгран ход со 2-й линии,
+    // его оценка уже есть в поиске «до хода»; берём ту из двух оценок, что посчитана глубже
+    // (терминальные позиции с depth 0 не трогаем), чтобы разница глубин не давала ложный winLoss.
+    const playedSecond = !playedIsBest && !!second && second.pv[0] === m.uci;
+    const preferSecond = playedSecond && after.depth > 0 && after.depth < second!.depth;
+    const scoreAfter: Score = playedIsBest ? top.score : preferSecond ? second!.score : after.lines[0].score;
     const winBefore = winFor(scoreBefore, color);
     const winAfter = playedIsBest ? winBefore : winFor(scoreAfter, color);
     const winLoss = Math.max(0, winBefore - winAfter);
