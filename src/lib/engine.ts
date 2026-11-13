@@ -15,8 +15,13 @@ export interface SearchOptions {
   fen: string;
   depth: number;
   multipv: number;
+  /** Жёсткий лимит времени поиска (мс). Поиск остановится по глубине ИЛИ по времени, что наступит раньше. */
+  movetimeMs?: number;
   onInfo?: (lines: EngineLine[]) => void;
 }
+
+/** Запас поверх movetime, после которого мы сами шлём "stop" (страховка, если движок не уложился во время). */
+const WATCHDOG_GRACE_MS = 1500;
 
 export class StockfishEngine {
   readonly threaded: boolean;
@@ -95,6 +100,7 @@ export class StockfishEngine {
   search(opts: SearchOptions): SearchHandle {
     let cancelled = false;
     let active = false;
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
     const turn = opts.fen.split(" ")[1] === "b" ? "b" : "w";
     const promise = this.tail.then(
       () =>
@@ -113,6 +119,7 @@ export class StockfishEngine {
             } else if (l.startsWith("bestmove")) {
               this.listeners.delete(handler);
               active = false;
+              if (watchdog) clearTimeout(watchdog);
               resolve(sorted());
             }
           };
@@ -122,7 +129,16 @@ export class StockfishEngine {
             this.lastMultiPv = opts.multipv;
           }
           this.send(`position fen ${opts.fen}`);
-          this.send(`go depth ${opts.depth}`);
+          const limit = opts.movetimeMs && opts.movetimeMs > 0 ? Math.round(opts.movetimeMs) : 0;
+          // Stockfish завершает поиск, как только достигнута глубина ИЛИ вышло время.
+          this.send(limit ? `go depth ${opts.depth} movetime ${limit}` : `go depth ${opts.depth}`);
+          if (limit) {
+            // Страховка: если по какой-то причине движок не остановился сам — принудительный stop.
+            // Движок на stop всегда отвечает bestmove, так что очередь не зависнет.
+            watchdog = setTimeout(() => {
+              if (active) this.send("stop");
+            }, limit + WATCHDOG_GRACE_MS);
+          }
         })
     );
     this.tail = promise.then(
