@@ -1,193 +1,139 @@
 /**
- * Обёртка над Stockfish 19 (WASM) в Web Worker с UCI-протоколом.
- * Воркер Stockfish.js читает URL .wasm из location.hash, поэтому мы запускаем
- * blob:-воркер из кэшированных файлов:  new Worker(blobJs + "#" + encodeURIComponent(blobWasm)).
+ * Тонкая обёртка над IndexedDB.
+ * Хранилища:
+ *   positions — кэш анализа позиций (ключ: FEN + глубина + MultiPV)
+ *   files     — резервное хранилище бинарников движка (если Cache API недоступен)
+ *   meta      — манифест закэшированных файлов движка и настройки
  */
-import type { EngineLine, Score } from "../types";
-import type { EngineBundle } from "./engineFiles";
+import type { EngineLine, PositionEval } from "../types";
+import { fenKey } from "./format";
 
-export interface SearchHandle {
-  promise: Promise<EngineLine[]>;
-  stop: () => void;
-}
+const DB_NAME = "chess-review-db";
+const DB_VERSION = 1;
+const STORES = ["positions", "files", "meta"] as const;
+type StoreName = (typeof STORES)[number];
 
-export interface SearchOptions {
-  fen: string;
-  depth: number;
-  multipv: number;
-  /** Жёсткий лимит времени поиска (мс). Поиск остановится по глубине ИЛИ по времени, что наступит раньше. */
-  movetimeMs?: number;
-  onInfo?: (lines: EngineLine[]) => void;
-}
+let dbPromise: Promise<IDBDatabase | null> | null = null;
 
-/** Запас поверх movetime, после которого мы сами шлём "stop" (страховка, если движок не уложился во время). */
-const WATCHDOG_GRACE_MS = 1500;
-
-export class StockfishEngine {
-  readonly threaded: boolean;
-  readonly threads: number;
-  readonly variant: string;
-  private worker: Worker;
-  private listeners = new Set<(line: string) => void>();
-  private tail: Promise<void> = Promise.resolve();
-  private lastMultiPv = 0;
-  private dead = false;
-
-  private constructor(bundle: EngineBundle, threads: number) {
-    this.threaded = bundle.set.threaded;
-    this.threads = threads;
-    this.variant = bundle.set.variant;
-    this.worker = new Worker(bundle.jsUrl + "#" + encodeURIComponent(bundle.wasmUrl));
-    this.worker.onmessage = (ev: MessageEvent) => {
-      const data = ev.data;
-      if (typeof data !== "string") return;
-      for (const l of Array.from(this.listeners)) l(data);
-    };
-  }
-
-  static async create(bundle: EngineBundle, hashMb = 128): Promise<StockfishEngine> {
-    const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-    const threads = bundle.set.threaded ? Math.max(1, Math.min(8, hw - 1)) : 1;
-    const eng = new StockfishEngine(bundle, threads);
-    await eng.init(hashMb);
-    return eng;
-  }
-
-  private send(cmd: string) {
-    if (!this.dead) this.worker.postMessage(cmd);
-  }
-
-  private waitFor(pred: (l: string) => boolean, timeoutMs: number): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.listeners.delete(h);
-        reject(new Error("Таймаут ожидания движка"));
-      }, timeoutMs);
-      const errHandler = (e: ErrorEvent) => {
-        clearTimeout(timer);
-        this.listeners.delete(h);
-        this.worker.removeEventListener("error", errHandler);
-        reject(new Error(e.message || "Ошибка воркера движка"));
-      };
-      const h = (l: string) => {
-        if (pred(l)) {
-          clearTimeout(timer);
-          this.listeners.delete(h);
-          this.worker.removeEventListener("error", errHandler);
-          resolve(l);
-        }
-      };
-      this.worker.addEventListener("error", errHandler);
-      this.listeners.add(h);
-    });
-  }
-
-  private async init(hashMb: number) {
-    const uciok = this.waitFor((l) => l === "uciok", 180000);
-    this.send("uci");
-    await uciok;
-    this.send(`setoption name Threads value ${this.threads}`);
-    this.send(`setoption name Hash value ${this.threaded ? hashMb : Math.min(hashMb, 64)}`);
-    const ready = this.waitFor((l) => l === "readyok", 120000);
-    this.send("isready");
-    await ready;
-  }
-
-  newGame() {
-    this.send("ucinewgame");
-  }
-
-  search(opts: SearchOptions): SearchHandle {
-    let cancelled = false;
-    let active = false;
-    let watchdog: ReturnType<typeof setTimeout> | undefined;
-    const turn = opts.fen.split(" ")[1] === "b" ? "b" : "w";
-    const promise = this.tail.then(
-      () =>
-        new Promise<EngineLine[]>((resolve) => {
-          if (cancelled || this.dead) return resolve([]);
-          active = true;
-          const lines = new Map<number, EngineLine>();
-          const sorted = () => Array.from(lines.values()).sort((a, b) => a.multipv - b.multipv);
-          const handler = (l: string) => {
-            if (l.startsWith("info ")) {
-              const parsed = parseInfo(l, turn);
-              if (parsed) {
-                lines.set(parsed.multipv, parsed);
-                opts.onInfo?.(sorted());
-              }
-            } else if (l.startsWith("bestmove")) {
-              this.listeners.delete(handler);
-              active = false;
-              if (watchdog) clearTimeout(watchdog);
-              resolve(sorted());
-            }
-          };
-          this.listeners.add(handler);
-          if (this.lastMultiPv !== opts.multipv) {
-            this.send(`setoption name MultiPV value ${opts.multipv}`);
-            this.lastMultiPv = opts.multipv;
-          }
-          this.send(`position fen ${opts.fen}`);
-          const limit = opts.movetimeMs && opts.movetimeMs > 0 ? Math.round(opts.movetimeMs) : 0;
-          // Stockfish завершает поиск, как только достигнута глубина ИЛИ вышло время.
-          this.send(limit ? `go depth ${opts.depth} movetime ${limit}` : `go depth ${opts.depth}`);
-          if (limit) {
-            // Страховка: если по какой-то причине движок не остановился сам — принудительный stop.
-            // Движок на stop всегда отвечает bestmove, так что очередь не зависнет.
-            watchdog = setTimeout(() => {
-              if (active) this.send("stop");
-            }, limit + WATCHDOG_GRACE_MS);
-          }
-        })
-    );
-    this.tail = promise.then(
-      () => undefined,
-      () => undefined
-    );
-    return {
-      promise,
-      stop: () => {
-        cancelled = true;
-        if (active) this.send("stop");
-      },
-    };
-  }
-
-  terminate() {
-    this.dead = true;
+function openDb(): Promise<IDBDatabase | null> {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve) => {
+    if (typeof indexedDB === "undefined") return resolve(null);
     try {
-      this.worker.postMessage("quit");
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        for (const s of STORES) if (!db.objectStoreNames.contains(s)) db.createObjectStore(s);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
     } catch {
-      /* ignore */
+      resolve(null);
     }
-    this.worker.terminate();
+  });
+  return dbPromise;
+}
+
+function wrap<T>(req: IDBRequest<T>): Promise<T | undefined> {
+  return new Promise((resolve) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(undefined);
+  });
+}
+
+export async function idbGet<T>(store: StoreName, key: string): Promise<T | undefined> {
+  const db = await openDb();
+  if (!db) return undefined;
+  try {
+    return await wrap<T>(db.transaction(store, "readonly").objectStore(store).get(key));
+  } catch {
+    return undefined;
   }
 }
 
-function parseInfo(line: string, turn: "w" | "b"): EngineLine | null {
-  if (!line.includes(" score ") || !line.includes(" pv ")) return null;
-  if (line.includes(" lowerbound") || line.includes(" upperbound")) return null;
-  const tokens = line.split(/\s+/);
-  let depth = 0;
-  let multipv = 1;
-  let score: Score | null = null;
-  let pv: string[] = [];
-  for (let i = 1; i < tokens.length; i++) {
-    const t = tokens[i];
-    if (t === "depth") depth = parseInt(tokens[++i], 10);
-    else if (t === "multipv") multipv = parseInt(tokens[++i], 10);
-    else if (t === "score") {
-      const kind = tokens[++i];
-      const val = parseInt(tokens[++i], 10);
-      const sign = turn === "w" ? 1 : -1;
-      if (kind === "cp") score = { cp: val * sign };
-      else if (kind === "mate") score = { mate: val * sign };
-    } else if (t === "pv") {
-      pv = tokens.slice(i + 1);
-      break;
+export async function idbPut(store: StoreName, key: string, value: unknown): Promise<boolean> {
+  const db = await openDb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(store, "readwrite");
+      tx.objectStore(store).put(value, key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      tx.onabort = () => resolve(false);
+    } catch {
+      resolve(false);
     }
+  });
+}
+
+export async function idbDelete(store: StoreName, key: string): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  await wrap(db.transaction(store, "readwrite").objectStore(store).delete(key));
+}
+
+export async function idbCount(store: StoreName): Promise<number> {
+  const db = await openDb();
+  if (!db) return 0;
+  return (await wrap<number>(db.transaction(store, "readonly").objectStore(store).count())) ?? 0;
+}
+
+export async function idbClear(store: StoreName): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  await wrap(db.transaction(store, "readwrite").objectStore(store).clear());
+}
+
+/* ------------------------- Кэш позиций ------------------------- */
+
+interface StoredPosition {
+  lines: EngineLine[];
+  depth: number;
+  at: number;
+}
+
+const memory = new Map<string, StoredPosition>();
+
+export function positionKey(fen: string, depth: number, multipv: number): string {
+  return `${fenKey(fen)}|d${depth}|pv${multipv}`;
+}
+
+export async function getCachedPosition(
+  fen: string,
+  depth: number,
+  multipv: number
+): Promise<PositionEval | undefined> {
+  const key = positionKey(fen, depth, multipv);
+  let rec = memory.get(key);
+  if (!rec) {
+    rec = await idbGet<StoredPosition>("positions", key);
+    if (rec) memory.set(key, rec);
   }
-  if (!score || !pv.length) return null;
-  return { multipv, depth, score, pv };
+  if (!rec) return undefined;
+  return { fen, depth: rec.depth, lines: rec.lines };
+}
+
+export async function putCachedPosition(
+  fen: string,
+  depth: number,
+  multipv: number,
+  lines: EngineLine[],
+  reachedDepth: number
+): Promise<void> {
+  if (!lines.length) return;
+  const key = positionKey(fen, depth, multipv);
+  const rec: StoredPosition = { lines, depth: reachedDepth, at: Date.now() };
+  memory.set(key, rec);
+  await idbPut("positions", key, rec);
+}
+
+export async function clearPositionCache(): Promise<void> {
+  memory.clear();
+  await idbClear("positions");
+}
+
+export async function positionCacheSize(): Promise<number> {
+  return idbCount("positions");
 }
