@@ -11,6 +11,35 @@ export function winPercent(score: Score): number {
   return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
 }
 
+/**
+ * Chess.com (Classification V2) оценивает ходы в «ожидаемых очках», которые зависят от РЕЙТИНГА игрока:
+ * у новичка одна и та же оценка движка даёт менее решающий шанс на победу, чем у мастера.
+ * Точная модель закрытая. Здесь используется эмпирическое приближение (подогнанное сторонним проектом
+ * к ~6000 меток Chess.com): кривая Lichess, у которой наклон уменьшен до 0.35× при рейтинге 500
+ * и 0.8× при 2000 (линейно между, постоянен за границами, 1500 — если рейтинг неизвестен).
+ */
+export function slopeFactor(elo?: number): number {
+  const r = elo !== undefined && Number.isFinite(elo) ? Math.max(500, Math.min(2000, elo)) : 1500;
+  return 0.35 + ((0.8 - 0.35) * (r - 500)) / 1500;
+}
+
+/** Ожидаемые очки в % (0..100) для БЕЛЫХ с учётом рейтинга игрока. Мат — 100 / 0. */
+export function winPercentRated(score: Score, elo?: number): number {
+  if (score.mate !== undefined) {
+    if (score.mate > 0) return 100;
+    if (score.mate < 0) return 0;
+    return 50;
+  }
+  const cp = Math.max(-10000, Math.min(10000, score.cp));
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * slopeFactor(elo) * cp)) - 1);
+}
+
+/** Ожидаемые очки в % для заданной стороны с учётом её рейтинга. */
+export function winForRated(score: Score, color: Color, elo?: number): number {
+  const w = winPercentRated(score, elo);
+  return color === "w" ? w : 100 - w;
+}
+
 /** Win% для заданной стороны. */
 export function winFor(score: Score, color: Color): number {
   const w = winPercent(score);
