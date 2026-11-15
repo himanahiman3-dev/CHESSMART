@@ -25,10 +25,29 @@ function openDb(): Promise<IDBDatabase | null> {
         const db = req.result;
         for (const s of STORES) if (!db.objectStoreNames.contains(s)) db.createObjectStore(s);
       };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-      req.onblocked = () => resolve(null);
+      req.onsuccess = () => {
+        const db = req.result;
+        // другая вкладка обновляет схему / соединение закрыто браузером — не держим «мёртвое» соединение
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
+        db.onclose = () => {
+          dbPromise = null;
+        };
+        resolve(db);
+      };
+      // при ошибке не кэшируем null навсегда: следующий вызов попробует открыть базу заново
+      req.onerror = () => {
+        dbPromise = null;
+        resolve(null);
+      };
+      req.onblocked = () => {
+        dbPromise = null;
+        resolve(null);
+      };
     } catch {
+      dbPromise = null;
       resolve(null);
     }
   });
@@ -71,19 +90,31 @@ export async function idbPut(store: StoreName, key: string, value: unknown): Pro
 export async function idbDelete(store: StoreName, key: string): Promise<void> {
   const db = await openDb();
   if (!db) return;
-  await wrap(db.transaction(store, "readwrite").objectStore(store).delete(key));
+  try {
+    await wrap(db.transaction(store, "readwrite").objectStore(store).delete(key));
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function idbCount(store: StoreName): Promise<number> {
   const db = await openDb();
   if (!db) return 0;
-  return (await wrap<number>(db.transaction(store, "readonly").objectStore(store).count())) ?? 0;
+  try {
+    return (await wrap<number>(db.transaction(store, "readonly").objectStore(store).count())) ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function idbClear(store: StoreName): Promise<void> {
   const db = await openDb();
   if (!db) return;
-  await wrap(db.transaction(store, "readwrite").objectStore(store).clear());
+  try {
+    await wrap(db.transaction(store, "readwrite").objectStore(store).clear());
+  } catch {
+    /* ignore */
+  }
 }
 
 /* ------------------------- Кэш позиций ------------------------- */
@@ -124,6 +155,9 @@ export async function putCachedPosition(
 ): Promise<void> {
   if (!lines.length) return;
   const key = positionKey(fen, depth, multipv);
+  // не затираем более глубокую оценку менее глубокой
+  const prev = memory.get(key) ?? (await idbGet<StoredPosition>("positions", key));
+  if (prev && prev.depth >= reachedDepth) return;
   const rec: StoredPosition = { lines, depth: reachedDepth, at: Date.now() };
   memory.set(key, rec);
   await idbPut("positions", key, rec);
