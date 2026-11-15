@@ -152,7 +152,7 @@ export function buildComment(ctx: CoachContext): string {
             : `${san} — отличная жертва! ${side} отдают ${piece} ради инициативы: компенсации достаточно, чтобы удержать позицию (${formatScore(ctx.scoreAfter)}).`
         );
       }
-      parts.push("Это лучший ход, и найти его непросто.");
+      parts.push(ctx.playedIsBest ? "Это лучший ход, и найти его непросто." : "Это лучший или почти лучший ход, и найти его непросто.");
       break;
     }
     case "great": {
