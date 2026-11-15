@@ -15,7 +15,7 @@ import { getCachedPosition, putCachedPosition } from "./db";
 import { analyzeBook, openingForCode } from "./openings";
 import { detectSacrifice } from "./see";
 import { buildComment } from "./coach";
-import { cpFor, estimateGameRating, gameAccuracy, moveAccuracy, winFor, winPercent } from "./winprob";
+import { cpFor, estimateGameRating, gameAccuracy, moveAccuracy, winFor, winForRated, winPercent } from "./winprob";
 
 export interface ParsedMove {
   san: string;
@@ -102,6 +102,68 @@ export function moveTimeForDepth(depth: number): number | undefined {
 
 /** Результаты, недосчитанные глубже этого порога, не кэшируем (иначе слабая оценка закрепится в кэше навсегда). */
 const MIN_CACHEABLE_DEPTH = 8;
+/** Кэшированная оценка не глубже этого значения считается «слишком слабой» и пересчитывается. */
+const CACHE_ACCEPT_DEPTH = 16;
+
+/* ------------------------------------------------------------------ */
+/*        Параметры классификации (по Chess.com Classification V2)     */
+/* ------------------------------------------------------------------ */
+/*
+ * Что известно из официальной справки Chess.com (support.chess.com, статья «How are moves classified?»):
+ *  - ходы классифицируются по потере «ожидаемых очков» (0..1), которые зависят от рейтинга игрока и оценки движка:
+ *    Best 0, Excellent ≤0.02, Good ≤0.05, Inaccuracy ≤0.10, Mistake ≤0.20, Blunder >0.20;
+ *  - Brilliant: всегда лучший или почти лучший ход + хорошая жертва ФИГУРЫ; после него позиция не плохая;
+ *    без него вы не были бы полностью выигрывающим; для новичков определение жертвы щедрее;
+ *  - Great: ход, критичный для исхода (проигрыш → равенство, равенство → выигрыш, единственный хороший ход);
+ *    для новичков щедрее;
+ *  - Miss: не использовали ошибку соперника; пороги «выигрыш/равенство/проигрыш» зависят от рейтинга.
+ * Конкретные числа ниже, помеченные «приближение», Chess.com не публикует.
+ */
+
+/** Brilliant — «лучший или почти лучший ход»: максимум потерянных ожидаемых очков, п.п. (приближение). */
+const BRILLIANT_MAX_LOSS = 3;
+/** После жертвы позиция не должна быть плохой: ожидаемые очки не ниже, % (приближение). */
+const BRILLIANT_MIN_AFTER = 40;
+/**
+ * «Не были полностью выигрывающим, даже не найдя этот ход»: ожидаемые очки лучшей АЛЬТЕРНАТИВЫ
+ * не выше этого значения, % (приближение). Так как ожидаемые очки уже зависят от рейтинга,
+ * порог почти одинаков; у новичков чуть мягче.
+ */
+function brilliantAltLimit(elo?: number): number {
+  if (elo === undefined) return 85;
+  if (elo < 1000) return 88;
+  if (elo < 1800) return 85;
+  return 82;
+}
+
+/** Best: лучший ход движка либо ход, теряющий пренебрежимо мало (п.п. ожидаемых очков). */
+const BEST_EPS = 0.1;
+
+/** Great: на сколько п.п. ожидаемых очков вторая линия хуже лучшей (для новичков щедрее; приближение). */
+function greatGapFor(elo?: number): number {
+  if (elo === undefined) return 14;
+  if (elo < 800) return 10;
+  if (elo < 1400) return 12;
+  return 14;
+}
+/** Границы «проигрыш / равенство / выигрыш» в ожидаемых очках, % (приближение). */
+const BAND_LOSING = 35;
+const BAND_WINNING = 65;
+const bandOf = (w: number) => (w >= BAND_WINNING ? 2 : w >= BAND_LOSING ? 1 : 0);
+
+/** Углублённая перепроверка ходов-жертв (см. refineSacrifices). */
+const REFINE_DEPTH_BONUS = 6;
+const REFINE_MOVETIME_MS = 3000;
+const REFINE_MAX_MOVES = 8;
+/** Общий потолок времени на перепроверку, мс. */
+const REFINE_TOTAL_BUDGET_MS = 30000;
+/** Кандидат на перепроверку: потеря по «быстрому» анализу меньше этого значения (п.п.). */
+const REFINE_CANDIDATE_LOSS = 12;
+
+function playerElo(headers: Record<string, string>, c: Color): number | undefined {
+  const v = parseInt(headers[c === "w" ? "WhiteElo" : "BlackElo"] ?? "", 10);
+  return Number.isFinite(v) && v > 0 ? v : undefined;
+}
 
 export interface AnalyzeProgress {
   done: number;
@@ -137,7 +199,9 @@ export async function evaluatePosition(
   const term = terminalEval(fen);
   if (term) return { evalResult: term, fromCache: true };
   const cached = await getCachedPosition(fen, depth, multipv);
-  if (cached) return { evalResult: cached, fromCache: true };
+  // Раньше любой кэш (даже глубины 8, посчитанный за 120 мс) навсегда подменял анализ на заданную глубину.
+  // Теперь кэш принимается, только если он достаточно глубок; иначе позиция пересчитывается.
+  if (cached && cached.depth >= Math.min(depth, CACHE_ACCEPT_DEPTH)) return { evalResult: cached, fromCache: true };
   const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
@@ -150,6 +214,8 @@ export async function evaluatePosition(
   if (signal?.aborted) throw new Error("cancelled");
   if (!lines.length) throw new Error("Движок не вернул результат");
   const reached = Math.min(...lines.map((l) => l.depth));
+  // новый результат не глубже старого кэша — оставляем старый
+  if (cached && cached.depth >= reached) return { evalResult: cached, fromCache: true };
   // Недосчитанный по глубине (из-за лимита времени) результат кэшируем, только если он не слишком слабый.
   // В кэше хранится реально достигнутая глубина (reached), а ключ — запрошенная.
   if (reached >= Math.min(depth, MIN_CACHEABLE_DEPTH)) {
@@ -247,7 +313,64 @@ export async function reviewGame(
     budgetMs,
     elapsedMs: now() - startedAt,
   });
+  await refineSacrifices(game, positions, depth, engine, onProgress, signal);
   return buildReview(game, positions, depth);
+}
+
+/**
+ * Быстрый анализ (0.6 с на ход) на малой глубине часто «не видит» компенсации за жертву, и жертвенный ход
+ * выглядит как потеря нескольких процентов. Поэтому ходы-жертвы перепроверяем глубже:
+ * перезаписываем оценки позиций «до» и «после» хода, если новый результат глубже прежнего.
+ * Общее время ограничено REFINE_TOTAL_BUDGET_MS.
+ */
+async function refineSacrifices(
+  game: ParsedGame,
+  positions: PositionEval[],
+  depth: number,
+  engine: StockfishEngine,
+  onProgress: (p: AnalyzeProgress) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const N = game.moves.length;
+  const book = analyzeBook(game.moves.map((m) => m.san));
+  const candidates: { i: number; amount: number }[] = [];
+  for (let i = 0; i < N; i++) {
+    const m = game.moves[i];
+    if (book.isBook[i] || m.piece === "k" || m.piece === "p") continue;
+    const top = positions[i].lines[0];
+    const after = positions[i + 1].lines[0];
+    if (!top || !after || positions[i + 1].depth === 0) continue; // терминальные позиции не трогаем
+    const elo = playerElo(game.headers, m.color);
+    const quickLoss =
+      top.pv[0] === m.uci ? 0 : Math.max(0, winForRated(top.score, m.color, elo) - winForRated(after.score, m.color, elo));
+    if (quickLoss >= REFINE_CANDIDATE_LOSS) continue;
+    const sac = detectSacrifice(m.fenBefore, m.uci, elo);
+    if (sac.sacrifice) candidates.push({ i, amount: sac.amount });
+  }
+  candidates.sort((a, b) => b.amount - a.amount);
+  const targetDepth = depth + REFINE_DEPTH_BONUS;
+  const startedAt = now();
+  for (const { i } of candidates.slice(0, REFINE_MAX_MOVES)) {
+    for (const idx of [i, i + 1]) {
+      if (signal?.aborted) throw new Error("cancelled");
+      if (now() - startedAt > REFINE_TOTAL_BUDGET_MS) return;
+      onProgress({
+        done: game.moves.length,
+        total: game.moves.length + 1,
+        depth: 0,
+        targetDepth,
+        cached: 0,
+        fen: game.fens[idx],
+      });
+      try {
+        const { evalResult } = await evaluatePosition(engine, game.fens[idx], targetDepth, 2, signal, undefined, REFINE_MOVETIME_MS);
+        if (evalResult.depth > positions[idx].depth) positions[idx] = evalResult;
+      } catch (e) {
+        if (e instanceof Error && e.message === "cancelled") throw e;
+        /* перепроверка — это бонус: при любой другой ошибке остаёмся с быстрой оценкой */
+      }
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -258,6 +381,7 @@ export function buildReview(game: ParsedGame, positions: PositionEval[], depth: 
   const N = game.moves.length;
   const book = analyzeBook(game.moves.map((m) => m.san));
   const reviews: MoveReview[] = [];
+  const eloOf = (c: Color): number | undefined => playerElo(game.headers, c);
 
   for (let i = 0; i < N; i++) {
     const m = game.moves[i];
@@ -276,9 +400,15 @@ export function buildReview(game: ParsedGame, positions: PositionEval[], depth: 
     const playedSecond = !playedIsBest && !!second && second.pv[0] === m.uci;
     const preferSecond = playedSecond && after.depth > 0 && after.depth < second!.depth;
     const scoreAfter: Score = playedIsBest ? top.score : preferSecond ? second!.score : after.lines[0].score;
-    const winBefore = winFor(scoreBefore, color);
-    const winAfter = playedIsBest ? winBefore : winFor(scoreAfter, color);
+    const elo = eloOf(color);
+    // Ожидаемые очки с учётом рейтинга игрока (как в Chess.com Classification V2) — для классификации.
+    const winBefore = winForRated(scoreBefore, color, elo);
+    const winAfter = playedIsBest ? winBefore : winForRated(scoreAfter, color, elo);
     const winLoss = Math.max(0, winBefore - winAfter);
+    // Точность хода считается по стандартной кривой (формула Lichess), без рейтинга.
+    const stdBefore = winFor(scoreBefore, color);
+    const stdAfter = playedIsBest ? stdBefore : winFor(scoreAfter, color);
+    const accuracyLoss = Math.max(0, stdBefore - stdAfter);
 
     const cpBefore = cpFor(scoreBefore, color);
     const cpAfter = cpFor(scoreAfter, color);
@@ -291,8 +421,8 @@ export function buildReview(game: ParsedGame, positions: PositionEval[], depth: 
 
     // --- жертва для Brilliant ---
     let sac = { sacrifice: false, amount: 0, pieceType: "" };
-    if (!isBook && (playedIsBest || winLoss < 1) && m.piece !== "k") {
-      sac = detectSacrifice(m.fenBefore, m.uci);
+    if (!isBook && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS) && m.piece !== "k" && m.piece !== "p") {
+      sac = detectSacrifice(m.fenBefore, m.uci, elo);
     }
 
     const mateForMoverBefore = scoreBefore.mate !== undefined && cpBefore > 0;
@@ -305,30 +435,43 @@ export function buildReview(game: ParsedGame, positions: PositionEval[], depth: 
     let gapWin = 0;
     if (second) {
       gapCp = cpBefore - cpFor(second.score, color);
-      gapWin = winBefore - winFor(second.score, color);
+      gapWin = winBefore - winForRated(second.score, color, elo);
     }
 
     let cls: Cls;
     let exceptionPawn = false;
 
+    // Brilliant (Chess.com): хорошая жертва фигуры, ход лучший или почти лучший,
+    // после него позиция не плохая, и без него вы не были бы полностью выигрывающим.
+    // «Лучшая альтернатива»: если сыгран лучший ход — вторая линия; если почти лучший — лучшая линия.
+    const altWin = playedIsBest ? (second ? winForRated(second.score, color, elo) : null) : winBefore;
+    const isBrilliant =
+      sac.sacrifice &&
+      legal > 1 &&
+      altWin !== null &&
+      !lostMate &&
+      !allowedMate &&
+      winLoss <= BRILLIANT_MAX_LOSS &&
+      altWin <= brilliantAltLimit(elo) &&
+      winAfter >= BRILLIANT_MIN_AFTER;
+
     if (isBook) {
       cls = "book";
-    } else if (playedIsBest || winLoss < 1) {
+    } else if (isBrilliant) {
+      cls = "brilliant";
+    } else if (playedIsBest || winLoss < BEST_EPS) {
       cls = "best";
-      // «опорная» оценка до хода: если жертва — единственный путь к выигрышу, смотрим на 2-ю линию
-      const refCp = second ? Math.min(cpBefore, cpFor(second.score, color)) : cpBefore;
-      const prevMove = i > 0 ? game.moves[i - 1] : null;
-      const isRecapture = !!m.captured && !!prevMove?.captured && prevMove.to === m.to;
-      if (sac.sacrifice && refCp <= 450 && winAfter >= 40 && m.piece !== "k") {
-        cls = "brilliant";
-      } else if (
+      // Great (Chess.com): критичный ход — единственный хороший ход (вторая линия заметно хуже)
+      // либо ход, сохраняющий/переводящий позицию в более высокую категорию, чем любая альтернатива.
+      const secondWin = winBefore - gapWin;
+      const crossesBand = bandOf(winBefore) > bandOf(secondWin) && gapWin >= 5;
+      if (
         playedIsBest &&
         second &&
         legal > 1 &&
-        (gapCp > 150 || gapWin > 10) &&
+        (gapWin >= greatGapFor(elo) || crossesBand) &&
         winBefore <= 90 &&
-        winBefore >= 8 &&
-        !isRecapture
+        winBefore >= 8
       ) {
         cls = "great";
       }
@@ -348,16 +491,18 @@ export function buildReview(game: ParsedGame, positions: PositionEval[], depth: 
         exceptionPawn = true;
       }
 
-      // Упущенное: соперник ошибся, а ход не нашёл опровержения → преимущество растаяло
+      // Miss (Chess.com): соперник ошибся, а ход не использовал это и вернул большую часть (от половины до
+      // двойного размера ошибки) выигрышных шансов → позиция стала равной или хуже. Пороги — приближение.
       if (
         (cls === "inaccuracy" || cls === "mistake" || cls === "blunder") &&
         !exceptionPawn &&
         !allowedMate &&
         prevLoss >= 10 &&
-        winLoss >= 10 &&
-        winBefore >= 62 &&
-        winAfter >= 30 &&
-        winAfter <= 68
+        winLoss >= Math.max(8, prevLoss * 0.5) &&
+        winLoss <= prevLoss * 2 &&
+        winBefore >= 58 &&
+        winAfter >= 25 &&
+        winAfter <= 62
       ) {
         cls = "miss";
       }
@@ -369,7 +514,7 @@ export function buildReview(game: ParsedGame, positions: PositionEval[], depth: 
     const isMateMove = positions[i + 1].lines[0].score.terminal === true && positions[i + 1].lines[0].score.mate !== undefined;
     const isCheck = m.san.includes("+") || m.san.includes("#");
 
-    const accuracy = moveAccuracy(winLoss);
+    const accuracy = moveAccuracy(accuracyLoss);
 
     const comment = buildComment({
       cls,
