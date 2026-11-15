@@ -43,6 +43,17 @@ export class StockfishEngine {
       if (typeof data !== "string") return;
       for (const l of Array.from(this.listeners)) l(data);
     };
+    // Если воркер упал посреди поиска, ждущие поиски иначе никогда не завершатся (анализ «зависнет»).
+    const crash = () => this.failAll();
+    this.worker.addEventListener("error", crash);
+    this.worker.addEventListener("messageerror", crash);
+  }
+
+  /** Помечает движок мёртвым и завершает все ожидающие поиски (они вернут то, что успели собрать). */
+  private failAll() {
+    if (this.dead) return;
+    this.dead = true;
+    for (const l of Array.from(this.listeners)) l("bestmove (none)");
   }
 
   static async create(bundle: EngineBundle, hashMb = 128): Promise<StockfishEngine> {
@@ -61,6 +72,7 @@ export class StockfishEngine {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.listeners.delete(h);
+        this.worker.removeEventListener("error", errHandler);
         reject(new Error("Таймаут ожидания движка"));
       }, timeoutMs);
       const errHandler = (e: ErrorEvent) => {
@@ -94,7 +106,8 @@ export class StockfishEngine {
   }
 
   newGame() {
-    this.send("ucinewgame");
+    // через очередь: ucinewgame нельзя слать посреди идущего поиска
+    this.tail = this.tail.then(() => this.send("ucinewgame"));
   }
 
   search(opts: SearchOptions): SearchHandle {
@@ -115,6 +128,10 @@ export class StockfishEngine {
               if (parsed) {
                 lines.set(parsed.multipv, parsed);
                 opts.onInfo?.(sorted());
+              } else {
+                // lowerbound/upperbound: берём как запасной вариант, только если точной оценки этой линии ещё нет
+                const bound = parseInfo(l, turn, true);
+                if (bound && !lines.has(bound.multipv)) lines.set(bound.multipv, bound);
               }
             } else if (l.startsWith("bestmove")) {
               this.listeners.delete(handler);
@@ -155,6 +172,7 @@ export class StockfishEngine {
   }
 
   terminate() {
+    this.failAll();
     this.dead = true;
     try {
       this.worker.postMessage("quit");
@@ -165,9 +183,10 @@ export class StockfishEngine {
   }
 }
 
-function parseInfo(line: string, turn: "w" | "b"): EngineLine | null {
+function parseInfo(line: string, turn: "w" | "b", allowBound = false): EngineLine | null {
   if (!line.includes(" score ") || !line.includes(" pv ")) return null;
-  if (line.includes(" lowerbound") || line.includes(" upperbound")) return null;
+  const isBound = line.includes(" lowerbound") || line.includes(" upperbound");
+  if (isBound !== allowBound) return null;
   const tokens = line.split(/\s+/);
   let depth = 0;
   let multipv = 1;
