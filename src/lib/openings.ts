@@ -4168,11 +4168,10 @@ for (const [eco, en, ru, moves] of [...LICHESS_ROWS, ...ROWS]) {
 export function openingForCode(code: string): OpeningInfo | undefined {
   const c = code.toUpperCase().trim();
   if (!/^[A-E]\d\d$/.test(c)) return undefined;
-  return byEco.get(c) ?? FAMILIES.find(([a, b]) => c >= a && c <= b)?.slice(2).reduce((acc, value, i) => {
-    if (i === 0) acc.en = value;
-    else acc.ru = value;
-    return acc;
-  }, { eco: c, en: "", ru: "" } as OpeningInfo);
+  const known = byEco.get(c);
+  if (known) return known;
+  const family = FAMILIES.find(([from, to]) => c >= from && c <= to);
+  return family ? { eco: c, en: family[2], ru: family[3] } : undefined;
 }
 
 /** Количество уникальных ECO-линий в доступном каталоге. */
