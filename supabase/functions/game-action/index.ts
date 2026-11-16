@@ -247,7 +247,7 @@ Deno.serve(async (req: Request) => {
         if (invitationError.code === "23505") return fail("Приглашение уже ожидает ответа.");
         throw new Error("Не удалось отправить приглашение.");
       }
-      return json({ sent: true, username: target.username });
+      return json({ sent: true, username: target.username, game });
     }
     if (action === "list_invitations") {
       const { data, error } = await admin.from("online_invites")
