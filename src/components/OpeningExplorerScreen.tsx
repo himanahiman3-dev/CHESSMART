@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Chess } from "chess.js";
-import { searchOpenings, type OpeningCatalogEntry } from "../lib/openings";
+import { openingCatalogCount, searchOpenings, type OpeningCatalogEntry } from "../lib/openings";
 import { copyText } from "../lib/clipboard";
 import { GameBoard } from "./GameBoard";
 
