@@ -174,13 +174,17 @@ export function recordBotGame(
 }
 
 export const BOT_DIFFICULTIES = [
-  { id: "beginner", label: "100–300 · Начинающий", elo: 200 },
-  { id: "novice", label: "400–600 · Новичок", elo: 500 },
-  { id: "casual", label: "700–1000 · Любитель", elo: 850 },
-  { id: "club", label: "1100–1300 · Средний любитель", elo: 1200 },
-  { id: "advanced", label: "1400–1700 · Продвинутый", elo: 1550 },
-  { id: "tournament", label: "1800–2000 · Турнирный игрок", elo: 1900 },
-  { id: "maximum", label: "2100–3000 · Максимальный", elo: 2500 },
+  { id: "random", label: "100 Elo · Почти случайно", elo: 100 },
+  { id: "beginner", label: "200 Elo · Начинающий", elo: 200 },
+  { id: "easy", label: "300 Elo · Новичок", elo: 300 },
+  { id: "novice", label: "500 Elo · Любитель", elo: 500 },
+  { id: "casual", label: "700 Elo · Клубный новичок", elo: 700 },
+  { id: "club", label: "900 Elo · Клубный игрок", elo: 900 },
+  { id: "intermediate", label: "1100 Elo · Уверенный любитель", elo: 1100 },
+  { id: "advanced", label: "1400 Elo · Продвинутый", elo: 1400 },
+  { id: "tournament", label: "1800 Elo · Турнирный игрок", elo: 1800 },
+  { id: "master", label: "2200 Elo · Мастер", elo: 2200 },
+  { id: "maximum", label: "2800 Elo · Сильнейший Stockfish", elo: 2800 },
 ] as const;
 
 export interface BotStrength {
@@ -189,15 +193,20 @@ export interface BotStrength {
   elo?: number;
   depth: number;
   movetimeMs: number;
+  multipv: number;
 }
 
-/** Для значений ниже 1320 используется Skill Level; UCI_Elo ограничиваем поддерживаемым диапазоном. */
+/** Нижние уровни ослабляются не только Skill Level, но и отдельным выбором слабых ходов. */
 export function botStrengthForElo(elo: number): BotStrength {
-  if (elo <= 300) return { skillLevel: 0, limitStrength: false, depth: 2, movetimeMs: 250 };
-  if (elo <= 600) return { skillLevel: 1, limitStrength: false, depth: 3, movetimeMs: 350 };
-  if (elo <= 1000) return { skillLevel: 3, limitStrength: false, depth: 5, movetimeMs: 550 };
-  if (elo <= 1300) return { skillLevel: 5, limitStrength: false, depth: 7, movetimeMs: 750 };
-  if (elo <= 1700) return { skillLevel: 20, limitStrength: true, elo: clamp(elo, 1320, 3190), depth: 9, movetimeMs: 1000 };
-  if (elo <= 2000) return { skillLevel: 20, limitStrength: true, elo: clamp(elo, 1320, 3190), depth: 11, movetimeMs: 1300 };
-  return { skillLevel: 20, limitStrength: true, elo: clamp(elo, 1320, 3190), depth: 13, movetimeMs: 1600 };
+  if (elo <= 150) return { skillLevel: 0, limitStrength: false, depth: 4, movetimeMs: 380, multipv: 5 };
+  if (elo <= 250) return { skillLevel: 0, limitStrength: false, depth: 5, movetimeMs: 480, multipv: 5 };
+  if (elo <= 350) return { skillLevel: 0, limitStrength: false, depth: 5, movetimeMs: 520, multipv: 5 };
+  if (elo <= 550) return { skillLevel: 1, limitStrength: false, depth: 6, movetimeMs: 600, multipv: 5 };
+  if (elo <= 750) return { skillLevel: 2, limitStrength: false, depth: 7, movetimeMs: 700, multipv: 5 };
+  if (elo <= 950) return { skillLevel: 3, limitStrength: false, depth: 8, movetimeMs: 800, multipv: 4 };
+  if (elo <= 1150) return { skillLevel: 5, limitStrength: false, depth: 9, movetimeMs: 900, multipv: 4 };
+  if (elo <= 1500) return { skillLevel: 8, limitStrength: false, depth: 10, movetimeMs: 1000, multipv: 3 };
+  if (elo <= 1800) return { skillLevel: 20, limitStrength: true, elo: 1800, depth: 11, movetimeMs: 1200, multipv: 2 };
+  if (elo <= 2300) return { skillLevel: 20, limitStrength: true, elo: 2300, depth: 13, movetimeMs: 1500, multipv: 1 };
+  return { skillLevel: 20, limitStrength: true, elo: 2800, depth: 15, movetimeMs: 1900, multipv: 1 };
 }
