@@ -32,10 +32,18 @@ interface Props {
   extraSquareStyles?: Record<string, CSSProperties>;
   /** Меняйте при каждом переходе к ходу — по смене ключа анимация проигрывается заново. */
   animKey?: number;
+  /** Визуальная тема клеток доски. */
+  theme?: BoardTheme;
 }
 
-const LIGHT = "#ebecd0";
-const DARK = "#779556";
+export type BoardTheme = "classic" | "blue" | "walnut" | "violet";
+
+const BOARD_PALETTES: Record<BoardTheme, { light: string; dark: string; accent: string }> = {
+  classic: { light: "#ebecd0", dark: "#779556", accent: "#a3d160" },
+  blue: { light: "#e8edf5", dark: "#6b83a5", accent: "#8fb5e8" },
+  walnut: { light: "#ead7ba", dark: "#9a6748", accent: "#d9aa72" },
+  violet: { light: "#ece4f4", dark: "#856a9b", accent: "#c19cde" },
+};
 
 /** Ходы, у которых значок появляется с анимацией (как на Chess.com): клетка окрашивается, затем «выпрыгивает» значок. */
 const ANIMATED: Cls[] = ["brilliant", "great"];
@@ -72,6 +80,7 @@ export function GameBoard({
   onMove,
   extraSquareStyles,
   animKey = 0,
+  theme = "classic",
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -146,8 +155,8 @@ export function GameBoard({
           id: "review-board",
           position: fen,
           boardOrientation: orientation,
-          darkSquareStyle: { backgroundColor: DARK },
-          lightSquareStyle: { backgroundColor: LIGHT },
+          darkSquareStyle: { backgroundColor: BOARD_PALETTES[theme].dark },
+          lightSquareStyle: { backgroundColor: BOARD_PALETTES[theme].light },
           animationDurationInMs: 180,
           showAnimations: true,
           allowDragging: interactive,
