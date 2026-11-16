@@ -5,7 +5,8 @@ import { CLS_META } from "../types";
 import { useEngine } from "../hooks/useEngine";
 import { getCachedPosition, putCachedPosition } from "../lib/db";
 import { loadSoundEnabled, playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/sound";
-import { downloadAnnotatedPgn } from "../lib/pgnExport";
+import { createAnnotatedPgn, downloadAnnotatedPgn } from "../lib/pgnExport";
+import { copyText } from "../lib/clipboard";
 import { winFor } from "../lib/winprob";
 import { GameBoard, type BoardArrow, type BoardMove } from "./GameBoard";
 import { EvalBar } from "./EvalBar";
@@ -52,8 +53,30 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
   const [showBest, setShowBest] = useState(true);
   const [sound, setSound] = useState(loadSoundEnabled);
   const [live, setLive] = useState<EngineLine[]>([]);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
 
   useEffect(() => setSoundEnabled(sound), [sound]);
+  useEffect(() => () => {
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+  }, []);
+
+  const announceCopy = useCallback((message: string) => {
+    setCopyNotice(message);
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = window.setTimeout(() => setCopyNotice(null), 1800);
+  }, []);
+
+  const copyCurrentFen = useCallback(async () => {
+    const copied = await copyText(displayFen);
+    announceCopy(copied ? "FEN скопирован" : "Не удалось скопировать FEN");
+  }, [displayFen, announceCopy]);
+
+  const copyAnnotatedPgn = useCallback(async () => {
+    const copied = await copyText(createAnnotatedPgn(review));
+    announceCopy(copied ? "PGN скопирован" : "Не удалось скопировать PGN");
+  }, [review, announceCopy]);
   // заранее загружаем звуки мата и шаха (mp3), чтобы они играли без задержки
   useEffect(() => {
     preloadSounds();
@@ -106,18 +129,34 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      if (e.key === "ArrowLeft") {
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return;
+      }
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+      if (showShortcuts) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setShowShortcuts(false);
+        }
+        return;
+      }
+
+      if (e.key === "?") {
+        e.preventDefault();
+        setShowShortcuts(true);
+      } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         goPrev();
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         goNext();
-      } else if (e.key === "ArrowUp") {
+      } else if (e.key === "ArrowUp" || e.key === "Home") {
         e.preventDefault();
         seek(0);
-      } else if (e.key === "ArrowDown") {
+      } else if (e.key === "ArrowDown" || e.key === "End") {
         e.preventDefault();
         seek(N);
       } else if (e.key === "f" || e.key === "F") {
@@ -126,7 +165,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goPrev, goNext, seek, N]);
+  }, [goPrev, goNext, seek, N, showShortcuts]);
 
   /* ------------------------ ходы на доске ------------------------ */
   const handleBoardMove = useCallback(
@@ -362,6 +401,35 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
           <div className="mt-1.5 text-center text-xs text-[#8b8987]">
             {retry ? "Режим «Попробовать снова»" : explore ? "Свой вариант" : ply === 0 ? "Начальная позиция" : `Ход ${ply} из ${N}`}
           </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => void copyCurrentFen()}
+                className="rounded-lg bg-[#262421] px-3 py-2 text-xs font-bold text-[#dcdbd7] hover:bg-[#3d3a37]"
+                title="Скопировать FEN текущей позиции"
+              >
+                FEN ⧉
+              </button>
+              <button
+                onClick={() => void copyAnnotatedPgn()}
+                className="rounded-lg bg-[#262421] px-3 py-2 text-xs font-bold text-[#dcdbd7] hover:bg-[#3d3a37]"
+                title="Скопировать PGN с комментариями тренера"
+              >
+                Копировать PGN
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              {copyNotice && <span role="status" aria-live="polite" className="text-[11px] text-[#a3d160]">{copyNotice}</span>}
+              <button
+                onClick={() => setShowShortcuts(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#262421] text-sm font-black text-[#dcdbd7] hover:bg-[#3d3a37]"
+                title="Горячие клавиши (?)"
+                aria-label="Показать горячие клавиши"
+              >
+                ?
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* ------------------------- панель ------------------------- */}
@@ -426,6 +494,48 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
           </div>
         </aside>
       </div>
+      {showShortcuts && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full cursor-default bg-black/70"
+            aria-label="Закрыть подсказку горячих клавиш"
+            onClick={() => setShowShortcuts(false)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shortcuts-title"
+            className="relative z-10 w-full max-w-sm rounded-2xl border border-[#4b4844] bg-[#262421] p-5 shadow-2xl"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 id="shortcuts-title" className="text-lg font-extrabold">Горячие клавиши</h2>
+              <button
+                onClick={() => setShowShortcuts(false)}
+                className="rounded-lg bg-[#3d3a37] px-3 py-1.5 text-sm font-bold hover:bg-[#4b4844]"
+                aria-label="Закрыть"
+              >
+                Esc
+              </button>
+            </div>
+            <div className="space-y-2 text-sm">
+              {[
+                ["← / →", "Предыдущий / следующий ход"],
+                ["↑ / Home", "Перейти к началу партии"],
+                ["↓ / End", "Перейти к последней позиции"],
+                ["F", "Перевернуть доску"],
+                ["?", "Открыть эту подсказку"],
+              ].map(([key, description]) => (
+                <div key={key} className="flex items-center justify-between gap-3 rounded-lg bg-[#1f1d1b] px-3 py-2">
+                  <kbd className="min-w-20 rounded bg-[#3d3a37] px-2 py-1 text-center font-mono text-xs font-bold text-[#a3d160]">{key}</kbd>
+                  <span className="text-right text-[#c7c6c2]">{description}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-[11px] leading-relaxed text-[#8b8987]">Горячие клавиши не перехватывают ввод в полях и выпадающих списках.</p>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
