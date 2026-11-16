@@ -170,7 +170,12 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
         if (cancelled) return;
         if (profileData.profile) setOnlineProfile(profileData.profile);
         setSession(saved);
-        if (storedId) {
+        if (profileData.game) {
+          if (!cancelled) {
+            setGame(profileData.game);
+            localStorage.setItem(GAME_KEY, profileData.game.id);
+          }
+        } else if (storedId) {
           try {
             const data = await callAction(url, key, saved, "get", { gameId: storedId });
             if (!cancelled && data.game) setGame(data.game);
