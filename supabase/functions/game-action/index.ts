@@ -187,6 +187,12 @@ Deno.serve(async (req: Request) => {
       return json(game ? { game, queued: false } : { queued: true, ratingType: type });
     }
     if (action === "cancel_match") {
+      const { data: activeGame } = await admin.from("online_games").select("*").eq("status", "active")
+        .or("white_id.eq." + user.id + ",black_id.eq." + user.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (activeGame) {
+        await admin.from("online_matchmaking_queue").delete().eq("user_id", user.id);
+        return json({ game: activeGame, cancelled: false });
+      }
       const { error } = await admin.from("online_matchmaking_queue").delete().eq("user_id", user.id);
       if (error) throw new Error("Не удалось остановить поиск соперника.");
       return json({ cancelled: true });
