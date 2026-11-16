@@ -95,8 +95,8 @@ begin
         when 'blitz' then me.blitz_rating
         else me.rapid_rating end),
       q.created_at
-    for update of q skip locked
-    limit 1;
+    limit 1
+    for update of q skip locked;
 
   if opponent_queue.user_id is null then
     insert into public.online_matchmaking_queue(user_id, rating_type, rating, minutes, increment_seconds, created_at, updated_at)
