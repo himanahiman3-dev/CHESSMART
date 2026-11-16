@@ -70,31 +70,12 @@ async function participantGame(gameId: string, userId: string): Promise<GameRow>
   if (data.white_id !== userId && data.black_id !== userId) throw new Error("Ты не участник этой партии.");
   return data;
 }
-async function updateRating(game: GameRow, result: string) {
-  if (!game.rated || !game.black_id || game.white_rating == null || game.black_rating == null) return game;
-  const field = ratingField(game.rating_type);
-  const games = gamesField(game.rating_type);
-  const { data: profiles, error } = await admin.from("online_profiles").select("*").in("user_id", [game.white_id, game.black_id]);
-  if (error || !profiles || profiles.length !== 2) throw new Error("Не удалось обновить рейтинг игроков.");
-  const white = profiles.find((p: GameRow) => p.user_id === game.white_id);
-  const black = profiles.find((p: GameRow) => p.user_id === game.black_id);
-  if (!white || !black) throw new Error("Сетевой профиль игрока не найден.");
-  const rw = Number(white[field]);
-  const rb = Number(black[field]);
-  const expectedWhite = 1 / (1 + 10 ** ((rb - rw) / 400));
-  const scoreWhite = result === "white_win" ? 1 : result === "black_win" ? 0 : 0.5;
-  const kw = Number(white[games]) < 30 ? 40 : 32;
-  const kb = Number(black[games]) < 30 ? 40 : 32;
-  const nextWhite = Math.max(100, Math.min(4000, Math.round(rw + kw * (scoreWhite - expectedWhite))));
-  const nextBlack = Math.max(100, Math.min(4000, Math.round(rb + kb * ((1 - scoreWhite) - (1 - expectedWhite)))));
-  const now = new Date().toISOString();
-  const [whiteUpdate, blackUpdate] = await Promise.all([
-    admin.from("online_profiles").update({ [field]: nextWhite, [games]: Number(white[games]) + 1, updated_at: now }).eq("user_id", game.white_id),
-    admin.from("online_profiles").update({ [field]: nextBlack, [games]: Number(black[games]) + 1, updated_at: now }).eq("user_id", game.black_id),
-  ]);
-  if (whiteUpdate.error || blackUpdate.error) throw new Error("Результат сохранён, но не удалось пересчитать Elo.");
-  const { data: updated } = await admin.from("online_games").update({ white_rating: nextWhite, black_rating: nextBlack, updated_at: now }).eq("id", game.id).select("*").single();
-  return updated ?? { ...game, white_rating: nextWhite, black_rating: nextBlack };
+async function updateRating(game: GameRow, _result: string) {
+  if (!game.rated || !game.black_id) return game;
+  const { data, error } = await admin.rpc("apply_online_game_rating", { p_game_id: game.id });
+  if (error) throw new Error("Не удалось атомарно обновить рейтинг игроков: " + error.message);
+  const updated = Array.isArray(data) ? data[0] : data;
+  return updated ?? game;
 }
 async function finishGame(game: GameRow, result: string, reason: string, whiteMs = game.white_ms, blackMs = game.black_ms) {
   const now = new Date().toISOString();
