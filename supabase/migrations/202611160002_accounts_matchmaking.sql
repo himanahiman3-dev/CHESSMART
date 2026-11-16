@@ -44,6 +44,7 @@ declare
   me public.online_profiles%rowtype;
   opponent_queue public.online_matchmaking_queue%rowtype;
   opponent public.online_profiles%rowtype;
+  existing_game public.online_games%rowtype;
   game_id uuid;
   invite text;
   initial_ms integer;
@@ -62,12 +63,16 @@ begin
   delete from public.online_matchmaking_queue
     where created_at < now() - interval '5 minutes';
 
-  -- Avoid entering the queue twice or pairing a player who already has an active game.
-  if exists (
-    select 1 from public.online_games g
+  -- Return an already-started game if the browser polls again after being paired.
+  select * into existing_game
+    from public.online_games g
     where g.status = 'active' and (g.white_id = p_user_id or g.black_id = p_user_id)
-  ) then
-    raise exception 'Finish your active game first';
+    order by g.created_at desc
+    limit 1;
+  if existing_game.id is not null then
+    delete from public.online_matchmaking_queue where user_id = p_user_id;
+    return query select * from public.online_games where id = existing_game.id;
+    return;
   end if;
 
   waited_seconds := 0;
@@ -207,3 +212,43 @@ revoke all on function public.match_online_player(uuid, text, integer, integer) 
 revoke all on function public.accept_online_invite(uuid, uuid) from public;
 grant execute on function public.match_online_player(uuid, text, integer, integer) to service_role;
 grant execute on function public.accept_online_invite(uuid, uuid) to service_role;
+
+create table if not exists public.online_auth_rate_limits (
+  bucket_key text primary key,
+  window_started_at timestamptz not null default now(),
+  hits integer not null default 0
+);
+alter table public.online_auth_rate_limits enable row level security;
+
+create or replace function public.consume_chessmart_auth_limit(
+  p_bucket_key text,
+  p_max_hits integer,
+  p_window_seconds integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $rate_limit$
+declare
+  hit_count integer;
+  window_seconds integer := greatest(60, least(86400, p_window_seconds));
+begin
+  insert into public.online_auth_rate_limits as existing(bucket_key, window_started_at, hits)
+  values (p_bucket_key, now(), 1)
+  on conflict (bucket_key) do update
+    set window_started_at = case
+      when existing.window_started_at <= now() - make_interval(secs => window_seconds) then now()
+      else existing.window_started_at
+    end,
+    hits = case
+      when existing.window_started_at <= now() - make_interval(secs => window_seconds) then 1
+      else existing.hits + 1
+    end
+  returning online_auth_rate_limits.hits into hit_count;
+  return hit_count <= greatest(1, p_max_hits);
+end;
+$rate_limit$;
+
+revoke all on function public.consume_chessmart_auth_limit(text, integer, integer) from public;
+grant execute on function public.consume_chessmart_auth_limit(text, integer, integer) to service_role;
