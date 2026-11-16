@@ -263,7 +263,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     searchBusyRef.current = true;
     try {
       const [minutes, increment] = timeControl.split("+").map(Number);
-      const data = await callAction(url, key, session, "find_match", { minutes, increment });
+      const data = await callAction(url, key, session, "find_match", { minutes, increment, rated });
       if (data.game) {
         setGame(data.game);
         setSearching(false);
