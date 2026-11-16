@@ -3,6 +3,7 @@
  * Вызывается только из действия пользователя (клик по кнопке).
  */
 export async function copyText(text: string): Promise<boolean> {
+  let field: HTMLTextAreaElement | null = null;
   try {
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       try {
@@ -14,7 +15,7 @@ export async function copyText(text: string): Promise<boolean> {
     }
 
     if (typeof document === "undefined") return false;
-    const field = document.createElement("textarea");
+    field = document.createElement("textarea");
     field.value = text;
     field.setAttribute("readonly", "");
     field.setAttribute("aria-hidden", "true");
@@ -26,10 +27,10 @@ export async function copyText(text: string): Promise<boolean> {
     field.focus();
     field.select();
     field.setSelectionRange(0, field.value.length);
-    const copied = document.execCommand("copy");
-    field.remove();
-    return copied;
+    return document.execCommand("copy");
   } catch {
     return false;
+  } finally {
+    field?.remove();
   }
 }
