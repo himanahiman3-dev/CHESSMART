@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import type { PlayerProfile } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
@@ -112,6 +112,7 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
   const [now, setNow] = useState(Date.now());
   const [copied, setCopied] = useState(false);
   const [lastSync, setLastSync] = useState(Date.now());
+  const timeoutRequestedRef = useRef(false);
 
   useEffect(() => {
     if (!configured) return;
@@ -153,6 +154,23 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
   }, [game?.id, game?.status, session, refresh]);
 
   useEffect(() => {
+    timeoutRequestedRef.current = false;
+  }, [game?.fen, game?.status]);
+
+  useEffect(() => {
+    if (!session || !game || game.status !== "active" || timeoutRequestedRef.current) return;
+    const expired = (turn === "w" && whiteClock <= 0) || (turn === "b" && blackClock <= 0);
+    if (!expired) return;
+    timeoutRequestedRef.current = true;
+    void callAction(url, key, session, "timeout", { gameId: game.id })
+      .then((data) => { if (data.game) setGame(data.game); })
+      .catch((reason: unknown) => {
+        timeoutRequestedRef.current = false;
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+  }, [session, game?.id, game?.fen, game?.status, turn, whiteClock, blackClock, url, key]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, []);
@@ -167,6 +185,17 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
   const blackClock = game ? game.black_ms - (turn === "b" ? activeElapsed : 0) : 0;
   const isMyTurn = !!game && game.status === "active" && !!myColor && turn === myColor && !movePending;
   const myRating = game && myColor === "w" ? game.white_rating : game?.black_rating;
+  const resultLabel = game?.result === "white_win"
+    ? (myColor === "w" ? "Победа" : "Поражение")
+    : game?.result === "black_win"
+      ? (myColor === "b" ? "Победа" : "Поражение")
+      : game?.result === "draw" ? "Ничья" : game?.result ?? "Результат сохранён";
+  const reasonLabel = game?.reason === "checkmate" ? "мат"
+    : game?.reason === "timeout" ? "время вышло"
+      : game?.reason === "resignation" ? "соперник сдался"
+        : game?.reason === "stalemate" ? "пат"
+          : game?.reason === "threefold_repetition" ? "троекратное повторение"
+            : game?.reason === "insufficient_material" ? "недостаточно материала" : "";
   const opponentName = game && myColor === "w" ? (game.black_name ?? "Ожидаем игрока") : game?.white_name ?? "Соперник";
 
   const rememberGame = (next: OnlineGame) => {
@@ -329,7 +358,7 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
             <aside className="space-y-3">
               {game.status === "waiting" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-sm font-extrabold text-[#d7edbd]">Комната создана</div><div className="mt-2 font-mono text-2xl font-black tracking-[0.2em]">{game.invite_code}</div><p className="mt-2 text-xs text-[#b7cba0]">Отправь код или ссылку другу. Игра начнётся после его подключения.</p></section>}
               {game.status === "active" && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="text-sm font-bold">Статус партии</div><p className="mt-2 text-sm text-[#c9c8c1]">{isMyTurn ? "Ваш ход" : "Ход соперника"}{movePending ? " · отправляем ход…" : ""}</p><p className="mt-2 text-[10px] text-[#85847d]">Синхронизация: {Math.max(0, Math.floor((now - lastSync) / 1000))} сек. назад</p>{game.rated && <p className="mt-2 text-xs text-[#a3c86d]">Рейтинг {game.rating_type}: {myRating ?? "—"}</p>}</section>}
-              {game.status === "completed" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-lg font-extrabold">Партия завершена</div><p className="mt-2 text-sm text-[#d7edbd]">{game.result ?? "Результат сохранён"}</p>{game.rated && <p className="mt-2 text-xs text-[#b7cba0]">Рейтинг обновлён на сервере. Ваш новый рейтинг: {myRating ?? "—"}</p>}</section>}
+              {game.status === "completed" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-lg font-extrabold">Партия завершена</div><p className="mt-2 text-sm text-[#d7edbd]">{resultLabel}{reasonLabel ? " · " + reasonLabel : ""}</p>{game.rated && <p className="mt-2 text-xs text-[#b7cba0]">Рейтинг обновлён на сервере. Ваш новый рейтинг: {myRating ?? "—"}</p>}</section>}
               <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4">
                 <div className="mb-2 text-sm font-bold">Ходы</div>
                 <div className="max-h-72 overflow-y-auto text-xs leading-7 text-[#c9c8c1]">
