@@ -95,7 +95,7 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
           <div className="rounded-xl bg-[#1f1d1b] p-5 text-center">
             <div className="text-xs font-bold uppercase tracking-widest text-[#a7a6a2]">Текущий рейтинг</div>
             <div className="mt-1 text-5xl font-black tabular-nums text-[#a3d160]">{profile.rating}</div>
-            <div className="mt-1 text-xs text-[#77746f]">Elo · победы против Stockfish</div>
+            <div className="mt-1 text-xs text-[#77746f]">Elo · винрейт {winRate.toFixed(1)}% против Stockfish</div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
