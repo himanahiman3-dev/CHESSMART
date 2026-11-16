@@ -52,9 +52,8 @@ alter table public.online_games enable row level security;
 drop policy if exists "public profiles are readable" on public.online_profiles;
 create policy "public profiles are readable" on public.online_profiles for select using (true);
 
+-- Elo and game results are writable only by the server Edge Function using the service role.
 drop policy if exists "players update own profile" on public.online_profiles;
-create policy "players update own profile" on public.online_profiles for update
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "participants read games" on public.online_games;
 create policy "participants read games" on public.online_games for select
@@ -62,4 +61,3 @@ create policy "participants read games" on public.online_games for select
 
 grant select on public.online_profiles to anon, authenticated;
 grant select on public.online_games to authenticated;
-grant update on public.online_profiles to authenticated;
