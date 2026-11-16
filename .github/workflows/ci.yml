@@ -19,6 +19,20 @@ jobs:
     name: Typecheck and production build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: chessmart_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d chessmart_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,5 +53,16 @@ jobs:
           deno-version: v2.x
       - name: Typecheck Supabase Edge Function
         run: deno check --node-modules-dir=auto --no-lock supabase/functions/game-action/index.ts
+      - name: Validate online SQL migrations and matchmaking
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: chessmart_test
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          bash scripts/validate-online-sql.sh
       - name: Production build
         run: npm run build
