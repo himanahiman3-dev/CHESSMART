@@ -104,12 +104,6 @@ begin
     when 'blitz' then 'blitz_rating'
     else 'rapid_rating'
   end;
-  games_name := case g.rating_type
-    when 'bullet' then 'bullet_games'
-    when 'blitz' then 'blitz_games'
-    else 'rapid_games'
-  end;
-
   if field_name = 'bullet_rating' then
     expected_white := 1 / (1 + power(10::numeric, (black_profile.bullet_rating - white_profile.bullet_rating)::numeric / 400));
     k_white := case when white_profile.bullet_games < 30 then 40 else 32 end;
