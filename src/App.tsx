@@ -12,6 +12,7 @@ import { MistakeTrainerScreen } from "./components/MistakeTrainerScreen";
 import { PuzzleLibraryScreen } from "./components/PuzzleLibraryScreen";
 import { EndgameTrainingScreen } from "./components/EndgameTrainingScreen";
 import { OpeningExplorerScreen } from "./components/OpeningExplorerScreen";
+import { PositionLabScreen } from "./components/PositionLabScreen";
 import { reviewGame, type AnalyzeProgress } from "./lib/analyze";
 import {
   loadPlayerProfile,
@@ -22,8 +23,8 @@ import {
 import type { GameReview } from "./types";
 
 type Stage = "import" | "analyzing" | "review";
-type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "endgame" | "openings";
-type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "endgame" | "openings" | "profile";
+type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "endgame" | "openings" | "lab";
+type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "endgame" | "openings" | "profile" | "lab";
 
 const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconName }> = [
   { id: "review", label: "Анализ партий", group: "Играть", icon: "analysis" },
@@ -34,6 +35,7 @@ const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconN
   { id: "endgame", label: "Эндшпиль", group: "Тренировка", icon: "endgame" },
   { id: "openings", label: "Дебютная база", group: "Изучать", icon: "openings" },
   { id: "profile", label: "Статистика", group: "Изучать", icon: "profile" },
+  { id: "lab", label: "Лаборатория позиции", group: "Изучать", icon: "lab" },
 ];
 
 function NavIcon({ name, active = false }: { name: IconName; active?: boolean }) {
@@ -49,6 +51,7 @@ function NavIcon({ name, active = false }: { name: IconName; active?: boolean })
       {name === "endgame" && <><path {...common} d="M4 20h16M6 20V8l6-4 6 4v12" /><path {...common} d="M9 11h6M9 15h6" /></>}
       {name === "openings" && <><path {...common} d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" /></>}
       {name === "profile" && <><circle {...common} cx="12" cy="8" r="3.2" /><path {...common} d="M4.5 20a7.5 7.5 0 0 1 15 0" /></>}
+      {name === "lab" && <><path {...common} d="m14.5 6.5 3-3 3 3-3 3" /><path {...common} d="m3 21 8-8M12 5a5 5 0 0 0 7 7L10 21l-7-7 4-4" /></>}
     </svg>
   );
 }
@@ -115,6 +118,7 @@ function Main() {
   else if (mode === "mistakes") page = <MistakeTrainerScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "endgame") page = <EndgameTrainingScreen engine={engine} onBack={() => changeMode("review")} />;
   else if (mode === "openings") page = <OpeningExplorerScreen onBack={() => changeMode("review")} />;
+  else if (mode === "lab") page = <PositionLabScreen engine={engine} onBack={() => changeMode("review")} />;
   else if (stage === "review" && review) page = <ReviewScreen review={review} onNew={() => { setReview(null); setMode("review"); setStage("import"); }} />;
   else {
     page = (
