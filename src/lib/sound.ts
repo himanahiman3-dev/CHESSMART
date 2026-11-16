@@ -5,9 +5,25 @@ export type SoundKind = "move" | "capture" | "check" | "mate" | "castle" | "prom
 
 let ctx: AudioContext | null = null;
 let enabled = true;
+const SOUND_STORAGE_KEY = "chess-review:sound-enabled:v1";
+
+/** Загружает пользовательское предпочтение; по умолчанию звуки включены. */
+export function loadSoundEnabled(): boolean {
+  try {
+    const saved = localStorage.getItem(SOUND_STORAGE_KEY);
+    return saved === null ? true : saved === "true";
+  } catch {
+    return true;
+  }
+}
 
 export function setSoundEnabled(v: boolean) {
   enabled = v;
+  try {
+    localStorage.setItem(SOUND_STORAGE_KEY, String(v));
+  } catch {
+    // Запрет хранилища в приватном режиме не должен ломать звук.
+  }
 }
 export function isSoundEnabled() {
   return enabled;
