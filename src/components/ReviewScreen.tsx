@@ -8,7 +8,7 @@ import { loadSoundEnabled, playSound, preloadSounds, setSoundEnabled, soundForSa
 import { createAnnotatedPgn, downloadAnnotatedPgn } from "../lib/pgnExport";
 import { copyText } from "../lib/clipboard";
 import { winFor } from "../lib/winprob";
-import { GameBoard, type BoardArrow, type BoardMove } from "./GameBoard";
+import { GameBoard, type BoardArrow, type BoardMove, type BoardTheme } from "./GameBoard";
 import { EvalBar } from "./EvalBar";
 import { CoachCard, type RetryState } from "./CoachCard";
 import { ReportTab } from "./ReportTab";
@@ -56,6 +56,17 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const noticeTimerRef = useRef<number | null>(null);
+  const [focusMode, setFocusMode] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [autoPlayDelay, setAutoPlayDelay] = useState(1200);
+  const [boardTheme, setBoardTheme] = useState<BoardTheme>(() => {
+    try {
+      const saved = localStorage.getItem("chess-review:board-theme");
+      return saved === "blue" || saved === "walnut" || saved === "violet" ? saved : "classic";
+    } catch {
+      return "classic";
+    }
+  });
 
   useEffect(() => setSoundEnabled(sound), [sound]);
   useEffect(() => () => {
@@ -70,6 +81,30 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
   const move = ply > 0 ? review.moves[ply - 1] : null;
   const exploreFen = explore ? (explore.idx > 0 ? explore.moves[explore.idx - 1].fenAfter : explore.base) : null;
   const displayFen = retry ? (retryFen ?? review.moves[retry.idx].fenBefore) : (exploreFen ?? review.fens[ply]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("chess-review:board-theme", boardTheme);
+    } catch {
+      // Настройка темы необязательна и не должна мешать обзору.
+    }
+  }, [boardTheme]);
+
+  // Автопроигрывание использует один timeout на ход: ручная навигация и пауза
+  // немедленно очищают таймер, а конец партии останавливает воспроизведение.
+  useEffect(() => {
+    if (!autoPlay || retry || explore) return;
+    if (ply >= N) {
+      setAutoPlay(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const next = review.moves[ply];
+      if (next) playSound(soundForSan(next.san, ply + 1 === N && next.san.includes("#")));
+      setPly((current) => Math.min(N, current + 1));
+    }, autoPlayDelay);
+    return () => window.clearTimeout(timer);
+  }, [autoPlay, autoPlayDelay, ply, N, retry, explore, review.moves]);
 
   const announceCopy = useCallback((message: string) => {
     setCopyNotice(message);
@@ -93,6 +128,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
   const seek = useCallback(
     (p: number, silent = false) => {
       const target = Math.max(0, Math.min(N, p));
+      setAutoPlay(false);
       setRetry(null);
       setRetryFen(null);
       setExplore(null);
@@ -343,6 +379,9 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
               {info.threaded ? `${info.threads} потоков` : "1 поток"}
             </span>
           )}
+          <button onClick={() => setFocusMode((value) => !value)} className="rounded-lg bg-[#3d3a37] px-2.5 py-1.5 font-bold hover:bg-[#4b4844]" title="Режим фокуса" aria-label={focusMode ? "Показать панель анализа" : "Скрыть панель анализа"}>
+            {focusMode ? "⤢" : "⛶"}
+          </button>
           <button onClick={() => setSound((s) => !s)} className="rounded-lg bg-[#3d3a37] px-2.5 py-1.5 hover:bg-[#4b4844]" title="Звук" aria-label={sound ? "Выключить звук" : "Включить звук"}>
             {sound ? "🔊" : "🔇"}
           </button>
@@ -360,9 +399,9 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1240px] flex-col gap-4 p-2 sm:p-4 lg:flex-row lg:items-start lg:justify-center">
+      <div className={`mx-auto flex ${focusMode ? "max-w-[1500px]" : "max-w-[1240px]"} flex-col gap-4 p-2 sm:p-4 lg:flex-row lg:items-start lg:justify-center`}>
         {/* ------------------------- доска ------------------------- */}
-        <div className="w-full lg:w-[min(calc(100vh-190px),calc(100vw-500px),760px)] lg:shrink-0">
+        <div className={`w-full lg:shrink-0 ${focusMode ? "lg:w-[min(calc(100vh-170px),calc(100vw-40px),900px)]" : "lg:w-[min(calc(100vh-190px),calc(100vw-500px),760px)]"}`}>
           <PlayerBar {...top} />
           <div className="flex items-stretch gap-2">
             <EvalBar score={score} flipped={flipped} />
@@ -373,6 +412,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
                 lastMove={lastMove}
                 badge={badge}
                 animKey={ply}
+                theme={boardTheme}
                 arrows={arrows}
                 interactive={boardInteractive}
                 allowedColor={allowedColor}
@@ -401,6 +441,53 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
           </div>
           <div className="mt-1.5 text-center text-xs text-[#8b8987]">
             {retry ? "Режим «Попробовать снова»" : explore ? "Свой вариант" : ply === 0 ? "Начальная позиция" : `Ход ${ply} из ${N}`}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl border border-[#4b4844]/70 bg-[#262421] p-2.5">
+            <button
+              onClick={() => {
+                if (autoPlay) {
+                  setAutoPlay(false);
+                } else {
+                  if (ply >= N) setPly(0);
+                  setRetry(null);
+                  setRetryFen(null);
+                  setExplore(null);
+                  setAutoPlay(true);
+                }
+              }}
+              disabled={!!retry || !!explore || N === 0}
+              className={`rounded-lg px-3 py-2 text-xs font-extrabold transition disabled:opacity-40 ${autoPlay ? "bg-[#d7a94b] text-[#241c0e]" : "bg-[#81b64c] text-[#17210f] hover:bg-[#95c75f]"}`}
+              title="Автоматически проиграть партию"
+            >
+              {autoPlay ? "Ⅱ Пауза" : "▶ Автопроигрывание"}
+            </button>
+            <label className="flex items-center gap-1.5 text-[11px] text-[#a7a6a2]">
+              Скорость
+              <select
+                value={autoPlayDelay}
+                onChange={(event) => setAutoPlayDelay(Number(event.target.value))}
+                className="rounded-lg border border-[#4b4844] bg-[#1f1d1b] px-2 py-2 text-xs text-white outline-none focus:border-[#81b64c]"
+                aria-label="Скорость автопроигрывания"
+              >
+                <option value={2200}>Медленно</option>
+                <option value={1200}>Нормально</option>
+                <option value={600}>Быстро</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-[11px] text-[#a7a6a2]">
+              Доска
+              <select
+                value={boardTheme}
+                onChange={(event) => setBoardTheme(event.target.value as BoardTheme)}
+                className="rounded-lg border border-[#4b4844] bg-[#1f1d1b] px-2 py-2 text-xs text-white outline-none focus:border-[#81b64c]"
+                aria-label="Цветовая тема доски"
+              >
+                <option value="classic">Классика</option>
+                <option value="blue">Синяя</option>
+                <option value="walnut">Орех</option>
+                <option value="violet">Фиолетовая</option>
+              </select>
+            </label>
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap gap-2">
@@ -434,7 +521,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
         </div>
 
         {/* ------------------------- панель ------------------------- */}
-        <aside className="flex w-full flex-col gap-3 lg:w-[400px] lg:shrink-0">
+        {!focusMode && <aside className="flex w-full flex-col gap-3 lg:w-[400px] lg:shrink-0">
           <CoachCard
             review={review}
             ply={ply}
@@ -493,7 +580,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
               />
             )}
           </div>
-        </aside>
+        </aside>}
       </div>
       {showShortcuts && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
