@@ -89,16 +89,26 @@ async function loadPuzzleBank(signal: AbortSignal, onProgress: (count: number) =
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null") as Puzzle[] | null;
     if (Array.isArray(cached) && cached.length >= TARGET) return cached.slice(0, TARGET);
   } catch { /* ignore stale cache */ }
+
   const found = new Map<string, Puzzle>();
-  const pages = Array.from({ length: TARGET / PAGE_SIZE }, (_, i) => i * PAGE_SIZE);
-  // Ограничиваем параллелизм, чтобы не перегружать публичный dataset viewer.
-  for (let i = 0; i < pages.length; i += 4) {
-    const batch = await Promise.all(pages.slice(i, i + 4).map((offset) => fetchPage(offset, signal)));
-    for (const page of batch) for (const puzzle of page) if (!found.has(puzzle.id)) found.set(puzzle.id, puzzle);
-    onProgress(Math.min(TARGET, (i + batch.length) * PAGE_SIZE));
+  // Берём столько страниц, сколько нужно для 3 000 именно легальных задач, а не просто CSV-строк.
+  const maxRawRows = TARGET * 8;
+  for (let offset = 0; found.size < TARGET && offset < maxRawRows; offset += PAGE_SIZE * 4) {
+    const offsets = [offset, offset + PAGE_SIZE, offset + PAGE_SIZE * 2, offset + PAGE_SIZE * 3];
+    const batch = await Promise.all(offsets.map((pageOffset) => fetchPage(pageOffset, signal)));
+    let emptyPages = 0;
+    for (const page of batch) {
+      if (page.length === 0) emptyPages++;
+      for (const puzzle of page) if (!found.has(puzzle.id)) found.set(puzzle.id, puzzle);
+    }
+    onProgress(Math.min(TARGET, found.size));
+    if (emptyPages === batch.length) break;
   }
+
   const bank = [...found.values()].slice(0, TARGET);
-  if (bank.length < 1000) throw new Error("Получено только " + bank.length + " корректных задач. Сервер набора вернул неполные данные.");
+  if (bank.length < TARGET) {
+    throw new Error("Удалось проверить только " + bank.length + " из " + TARGET + " задач. Повтори загрузку, чтобы добрать полный набор.");
+  }
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(bank)); } catch { /* continue without cache */ }
   return bank;
 }
@@ -202,7 +212,7 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
     if (!current || feedback === "solved" || feedback === "revealed" || !playerMove) return false;
     if (move.uci !== playerMove) {
       setFeedback("wrong");
-      setStats((previous) => ({ ...previous, attempts: previous.attempts + 1 }));
+      setStats((previous) => ({ ...previous, attempts: previous.attempts + 1, streak: 0 }));
       return false;
     }
     try {
