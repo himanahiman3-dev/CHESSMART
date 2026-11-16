@@ -16,7 +16,14 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
   const { info } = useEngine();
   const [pgn, setPgn] = useState("");
   const [link, setLink] = useState("");
-  const [depthId, setDepthId] = useState<(typeof DEPTHS)[number]["id"]>("fast");
+  const [depthId, setDepthId] = useState<(typeof DEPTHS)[number]["id"]>(() => {
+    try {
+      const saved = localStorage.getItem("chess-review:analysis-depth");
+      return DEPTHS.find((item) => item.id === saved)?.id ?? "fast";
+    } catch {
+      return "fast";
+    }
+  });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cacheCount, setCacheCount] = useState(0);
@@ -26,12 +33,19 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
     void positionCacheSize().then(setCacheCount);
   }, []);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("chess-review:analysis-depth", depthId);
+    } catch {
+      // Недоступное хранилище не должно мешать анализу.
+    }
+  }, [depthId]);
+
   const go = (text: string) => {
     try {
-      const g = parseGame(text);
+      parseGame(text);
       setError(null);
       onStart(text, DEPTHS.find((d) => d.id === depthId)!.depth);
-      return g;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -52,8 +66,27 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
 
   const onFile = async (f: File | undefined) => {
     if (!f) return;
-    setPgn(await f.text());
-    setError(null);
+    try {
+      const text = await f.text();
+      if (!text.trim()) throw new Error("Файл пустой.");
+      setPgn(text);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось прочитать файл.");
+    }
+  };
+
+  const pastePgn = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) throw new Error("Буфер обмена пустой.");
+      setPgn(text);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error
+        ? reason.message
+        : "Не удалось прочитать буфер обмена. Вставь PGN вручную.");
+    }
   };
 
   return (
@@ -88,9 +121,16 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
             <button onClick={() => fileRef.current?.click()} className="rounded-lg bg-[#3d3a37] px-4 py-2 text-sm font-semibold hover:bg-[#4b4844]">
               📂 Загрузить .pgn
             </button>
-            <input ref={fileRef} type="file" accept=".pgn,.txt,text/plain" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
+            <input ref={fileRef} type="file" accept=".pgn,.txt,text/plain" hidden onChange={(e) => { void onFile(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+            <button
+              onClick={() => void pastePgn()}
+              className="rounded-lg bg-[#3d3a37] px-4 py-2 text-sm font-semibold hover:bg-[#4b4844]"
+              title="Вставить PGN из буфера обмена"
+            >
+              Вставить из буфера
+            </button>
             {pgn && (
-              <button onClick={() => setPgn("")} className="rounded-lg bg-[#3d3a37] px-4 py-2 text-sm font-semibold hover:bg-[#4b4844]">
+              <button onClick={() => { setPgn(""); setError(null); }} className="rounded-lg bg-[#3d3a37] px-4 py-2 text-sm font-semibold hover:bg-[#4b4844]">
                 Очистить
               </button>
             )}
