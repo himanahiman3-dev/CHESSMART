@@ -146,6 +146,12 @@ export function PositionLabScreen({ engine, onBack }: { engine: StockfishEngine;
     setFenInput(fen);
     setFilter("all");
   }, [fen]);
+  useEffect(() => {
+    requestRef.current?.stop();
+    requestRef.current = null;
+    setAnalyzing(false);
+    setLines([]);
+  }, [fen]);
   useEffect(() => () => requestRef.current?.stop(), []);
 
   const copy = async (value: string, label: string) => {
