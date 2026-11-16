@@ -69,13 +69,12 @@ returns setof public.online_games
 language plpgsql
 security definer
 set search_path = public, pg_temp
-as $
+as $chessmart$
 declare
   g public.online_games%rowtype;
   white_profile public.online_profiles%rowtype;
   black_profile public.online_profiles%rowtype;
   field_name text;
-  games_name text;
   expected_white numeric;
   score_white numeric;
   k_white integer;
@@ -142,7 +141,7 @@ begin
 
   return query select * from public.online_games where id = p_game_id;
 end;
-$;
+$chessmart$;
 
 revoke all on function public.apply_online_game_rating(uuid) from public;
 grant execute on function public.apply_online_game_rating(uuid) to service_role;
