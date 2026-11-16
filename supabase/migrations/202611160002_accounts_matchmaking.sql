@@ -86,6 +86,8 @@ begin
     join public.online_profiles p on p.user_id = q.user_id
     where q.user_id <> p_user_id
       and q.rating_type = p_rating_type
+      and q.minutes = p_minutes
+      and q.increment_seconds = p_increment_seconds
       and abs(q.rating - case p_rating_type
         when 'bullet' then me.bullet_rating
         when 'blitz' then me.blitz_rating
