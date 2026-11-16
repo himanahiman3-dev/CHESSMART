@@ -200,7 +200,7 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
       if (!data.session || !data.profile) throw new Error("Сервер не вернул профиль или сессию.");
       const nextSession = {
         ...data.session,
-        expires_at: data.session.expires_at || Date.now() + 3600_000,
+        expires_at: data.session.expires_at ? data.session.expires_at * 1000 : Date.now() + 3600_000,
       };
       saveSession(nextSession);
       setSession(nextSession);
