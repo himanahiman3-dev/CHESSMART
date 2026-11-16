@@ -4150,15 +4150,18 @@ export interface OpeningCatalogEntry extends OpeningInfo {
   plyCount: number;
 }
 
-// Импортированная база строит длинные линии; локальная таблица идёт последней
-// и поэтому сохраняет вручную выверенные русские названия.
+// ECO-подписи берём из локально выверенного словаря, затем дополняем Lichess.
+for (const [eco, en, ru] of ROWS) if (!byEco.has(eco)) byEco.set(eco, { eco, en, ru });
+for (const [eco, en, ru] of LICHESS_ROWS) if (!byEco.has(eco)) byEco.set(eco, { eco, en, ru });
+
+// Импортированные линии индексируются первыми, а старые ручные записи идут последними
+// и перекрывают их на совпадающих последовательностях.
 for (const [eco, en, ru, moves] of [...LICHESS_ROWS, ...ROWS]) {
   const seq = moves.split(" ").filter(Boolean);
   const info = { eco, en, ru };
   const key = seq.join(" ");
   exact.set(key, info);
   for (let i = 1; i <= seq.length; i++) prefixes.add(seq.slice(0, i).join(" "));
-  if (!byEco.has(eco)) byEco.set(eco, info);
   catalog.set(`${eco}|${key}`, { ...info, moves: key, plyCount: seq.length });
 }
 
