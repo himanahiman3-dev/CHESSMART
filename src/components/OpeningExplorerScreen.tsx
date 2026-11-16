@@ -65,7 +65,7 @@ export function OpeningExplorerScreen({ onBack }: Props) {
             {query && <button onClick={() => setQuery("")} className="rounded-xl bg-[#44413b] px-4 py-2 text-sm font-bold hover:bg-[#514e47]">Очистить</button>}
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#85827b]">
-            <span>{query ? `Найдено: ${results.length}` : `В базе более 4 000 линий · показаны первые ${results.length}`}</span>
+            <span>{query ? `Найдено: ${results.length}` : `В базе ${openingCatalogCount().toLocaleString("ru-RU")} линий · показаны первые ${results.length}`}</span>
             <span>Источник: Lichess Openings · ECO A00–E99</span>
           </div>
         </section>
