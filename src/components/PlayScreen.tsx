@@ -5,6 +5,7 @@ import { BOT_DIFFICULTIES, botStrengthForElo, recordBotGame } from "../lib/playe
 import type { BoardMove } from "./GameBoard";
 import { GameBoard } from "./GameBoard";
 import type { PlayerProfile } from "../lib/playerProfile";
+import { chooseBotMove, botMistakeLabel } from "../lib/botBrain";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -66,7 +67,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     const handle = engine.search({
       fen,
       depth: strength.depth,
-      multipv: 1,
+      multipv: strength.multipv,
       movetimeMs: strength.movetimeMs,
       strength: {
         skillLevel: strength.skillLevel,
@@ -79,7 +80,8 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     handle.promise
       .then((lines) => {
         if (stale) return;
-        const uci = lines[0]?.pv[0];
+        const legalUci = game.moves({ verbose: true }).map((move) => move.from + move.to + (move.promotion ?? ""));
+        const uci = chooseBotMove(lines, legalUci, botElo);
         if (!uci) {
           setEngineError("Stockfish не вернул ход. Попробуй перезапустить партию.");
           setThinking(false);
@@ -106,7 +108,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
       stale = true;
       handle.stop();
     };
-  }, [started, finished, fen, botColor, engine, strength]);
+  }, [started, finished, fen, botColor, engine, strength, game, botElo]);
 
   // Фиксируем результат только один раз — в том числе если мат поставил бот.
   useEffect(() => {
@@ -184,7 +186,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
                 {BOT_DIFFICULTIES.map((option) => <option key={option.id} value={option.elo}>{option.label}</option>)}
               </select>
               <div className="mt-2 rounded-lg bg-[#1f1d1b] p-3 text-xs leading-relaxed text-[#a7a6a2]">
-                Бот: <b className="text-white">{difficulty?.elo ?? botElo} Elo</b>. Это ориентир силы Stockfish, а не гарантия точного рейтинга на любой скорости игры.
+                Бот: <b className="text-white">{difficulty?.elo ?? botElo} Elo</b>. {botMistakeLabel(botElo)}. Сила примерная, не официальный рейтинг FIDE или Chess.com.
               </div>
               <div className="mt-3 text-sm font-bold">За кого играешь?</div>
               <div className="mt-2 grid grid-cols-2 gap-2">
