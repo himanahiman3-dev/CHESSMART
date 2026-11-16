@@ -32,6 +32,7 @@ interface OnlineGame {
   rated: boolean;
   rating_type: "bullet" | "blitz" | "rapid";
   result: string | null;
+  reason: string | null;
   white_rating: number | null;
   black_rating: number | null;
 }
@@ -113,6 +114,7 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
   const [copied, setCopied] = useState(false);
   const [lastSync, setLastSync] = useState(Date.now());
   const timeoutRequestedRef = useRef(false);
+  const timeoutLastAttemptRef = useRef(0);
 
   useEffect(() => {
     if (!configured) return;
@@ -158,19 +160,6 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
   }, [game?.fen, game?.status]);
 
   useEffect(() => {
-    if (!session || !game || game.status !== "active" || timeoutRequestedRef.current) return;
-    const expired = (turn === "w" && whiteClock <= 0) || (turn === "b" && blackClock <= 0);
-    if (!expired) return;
-    timeoutRequestedRef.current = true;
-    void callAction(url, key, session, "timeout", { gameId: game.id })
-      .then((data) => { if (data.game) setGame(data.game); })
-      .catch((reason: unknown) => {
-        timeoutRequestedRef.current = false;
-        setError(reason instanceof Error ? reason.message : String(reason));
-      });
-  }, [session, game?.id, game?.fen, game?.status, turn, whiteClock, blackClock, url, key]);
-
-  useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, []);
@@ -183,6 +172,20 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
   const activeElapsed = game?.turn_started_at ? Math.max(0, now - new Date(game.turn_started_at).getTime()) : 0;
   const whiteClock = game ? game.white_ms - (turn === "w" ? activeElapsed : 0) : 0;
   const blackClock = game ? game.black_ms - (turn === "b" ? activeElapsed : 0) : 0;
+
+  useEffect(() => {
+    if (!session || !game || game.status !== "active" || timeoutRequestedRef.current) return;
+    const expired = (turn === "w" && whiteClock <= 0) || (turn === "b" && blackClock <= 0);
+    if (!expired || now - timeoutLastAttemptRef.current < 2500) return;
+    timeoutRequestedRef.current = true;
+    timeoutLastAttemptRef.current = now;
+    void callAction(url, key, session, "timeout", { gameId: game.id })
+      .then((data) => { if (data.game) setGame(data.game); })
+      .catch((reason: unknown) => {
+        timeoutRequestedRef.current = false;
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+  }, [session, game?.id, game?.fen, game?.status, turn, whiteClock, blackClock, now, url, key]);
   const isMyTurn = !!game && game.status === "active" && !!myColor && turn === myColor && !movePending;
   const myRating = game && myColor === "w" ? game.white_rating : game?.black_rating;
   const resultLabel = game?.result === "white_win"
