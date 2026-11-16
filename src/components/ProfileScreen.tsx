@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { PlayerProfile } from "../lib/playerProfile";
 import { updatePlayerName } from "../lib/playerProfile";
 import { PHASE_LABELS, type GamePhase } from "../lib/learningStats";
 import { sanRu } from "../lib/format";
+import { downloadProfileBackup, parseProfileBackup } from "../lib/profileBackup";
 
 interface Props {
   profile: PlayerProfile;
@@ -33,6 +34,21 @@ function RatingChart({ values }: { values: number[] }) {
 
 export function ProfileScreen({ profile, onChange, onBack }: Props) {
   const [name, setName] = useState(profile.name);
+  const [backupNotice, setBackupNotice] = useState<string | null>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
+
+  const restoreBackup = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const restored = parseProfileBackup(await file.text());
+      if (!window.confirm("Заменить текущий профиль данными из резервной копии? Текущие данные будут перезаписаны.")) return;
+      onChange(restored);
+      setName(restored.name);
+      setBackupNotice("Профиль восстановлен из резервной копии");
+    } catch (error) {
+      setBackupNotice(error instanceof Error ? error.message : "Не удалось прочитать резервную копию");
+    }
+  };
   const winRate = profile.games ? (profile.wins / profile.games) * 100 : 0;
   const ratingValues = [1000, ...profile.history.map((entry) => entry.ratingAfter)].slice(-31);
   const reviewRecords = profile.reviews ?? [];
@@ -91,6 +107,36 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
             <label className="min-w-[180px] flex-1"><span className="mb-1 block text-xs font-bold text-[#a7a6a2]">Имя игрока</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} className="w-full rounded-lg border border-[#4b4844] bg-[#1f1d1b] px-3 py-2 outline-none focus:border-[#81b64c]" /></label>
             <button onClick={() => onChange(updatePlayerName(profile, name))} className="rounded-lg bg-[#81b64c] px-4 py-2 font-bold text-[#17210f] hover:bg-[#95c75f]">Сохранить</button>
           </div>
+
+          <section className="rounded-xl bg-[#2b2926] p-3">
+            <div className="mb-1 font-extrabold">Резервная копия профиля</div>
+            <p className="mb-3 text-xs leading-relaxed text-[#a7a6a2]">Сохрани рейтинг, историю партий, статистику и задачи в JSON-файл. Файл остаётся на твоём устройстве.</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => downloadProfileBackup(profile)}
+                className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold hover:bg-[#4b4844]"
+              >
+                Скачать резервную копию
+              </button>
+              <button
+                onClick={() => backupInputRef.current?.click()}
+                className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold hover:bg-[#4b4844]"
+              >
+                Восстановить из файла
+              </button>
+              <input
+                ref={backupInputRef}
+                type="file"
+                accept=".json,application/json"
+                hidden
+                onChange={(event) => {
+                  void restoreBackup(event.target.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </div>
+            {backupNotice && <p role="status" aria-live="polite" className="mt-2 text-xs text-[#a3d160]">{backupNotice}</p>}
+          </section>
 
           <div className="rounded-xl bg-[#1f1d1b] p-5 text-center">
             <div className="text-xs font-bold uppercase tracking-widest text-[#a7a6a2]">Текущий рейтинг</div>
