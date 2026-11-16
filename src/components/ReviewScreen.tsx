@@ -5,6 +5,7 @@ import { CLS_META } from "../types";
 import { useEngine } from "../hooks/useEngine";
 import { getCachedPosition, putCachedPosition } from "../lib/db";
 import { loadSoundEnabled, playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/sound";
+import { downloadAnnotatedPgn } from "../lib/pgnExport";
 import { winFor } from "../lib/winprob";
 import { GameBoard, type BoardArrow, type BoardMove } from "./GameBoard";
 import { EvalBar } from "./EvalBar";
@@ -304,6 +305,14 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
           )}
           <button onClick={() => setSound((s) => !s)} className="rounded-lg bg-[#3d3a37] px-2.5 py-1.5 hover:bg-[#4b4844]" title="Звук">
             {sound ? "🔊" : "🔇"}
+          </button>
+          <button
+            onClick={() => downloadAnnotatedPgn(review)}
+            className="rounded-lg bg-[#3d3a37] px-2.5 py-1.5 font-bold hover:bg-[#4b4844]"
+            title="Скачать PGN с комментариями тренера"
+            aria-label="Скачать разобранную партию в PGN"
+          >
+            PGN ↓
           </button>
           <button onClick={onNew} className="rounded-lg bg-[#81b64c] px-3 py-1.5 font-bold hover:bg-[#95c75f]">
             + Новая партия
