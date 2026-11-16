@@ -161,7 +161,10 @@ Deno.serve(async (req: Request) => {
     if (action === "profile") {
       const { data: profile, error } = await admin.from("online_profiles").select("*").eq("user_id", user.id).maybeSingle();
       if (error || !profile) return fail("Профиль игрока не найден.", 404);
-      return json({ profile });
+      const { data: game } = await admin.from("online_games").select("*").eq("status", "active")
+        .or("white_id.eq." + user.id + ",black_id.eq." + user.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (game) await admin.from("online_matchmaking_queue").delete().eq("user_id", user.id);
+      return json({ profile, game: game ?? undefined });
     }
     if (action === "lookup_player") {
       const username = normalizeUsername(body.username);
