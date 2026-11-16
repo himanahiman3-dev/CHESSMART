@@ -4175,6 +4175,11 @@ export function openingForCode(code: string): OpeningInfo | undefined {
   }, { eco: c, en: "", ru: "" } as OpeningInfo);
 }
 
+/** Количество уникальных ECO-линий в доступном каталоге. */
+export function openingCatalogCount(): number {
+  return catalog.size;
+}
+
 /** Поиск по ECO, английскому/русскому названию и SAN-последовательности. */
 export function searchOpenings(query = "", limit = 80): OpeningCatalogEntry[] {
   const q = query.trim().toLocaleLowerCase();
