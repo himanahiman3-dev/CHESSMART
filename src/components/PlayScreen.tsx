@@ -22,7 +22,7 @@ function resultText(result: Result): string {
 }
 
 export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
-  const [botElo, setBotElo] = useState(BOT_DIFFICULTIES[2].elo);
+  const [botElo, setBotElo] = useState<number>(BOT_DIFFICULTIES[2].elo);
   const [playerColor, setPlayerColor] = useState<"w" | "b">("w");
   const [fen, setFen] = useState(START_FEN);
   const [started, setStarted] = useState(false);
