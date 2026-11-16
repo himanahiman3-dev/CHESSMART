@@ -92,8 +92,13 @@ begin
     return;
   end if;
 
-  select * into white_profile from public.online_profiles where user_id = g.white_id for update;
-  select * into black_profile from public.online_profiles where user_id = g.black_id for update;
+  -- Lock both rows in a stable order to avoid deadlocks when players finish games concurrently.
+  perform user_id from public.online_profiles
+    where user_id in (g.white_id, g.black_id)
+    order by user_id
+    for update;
+  select * into white_profile from public.online_profiles where user_id = g.white_id;
+  select * into black_profile from public.online_profiles where user_id = g.black_id;
   if white_profile.user_id is null or black_profile.user_id is null then
     raise exception 'Player profile not found';
   end if;
