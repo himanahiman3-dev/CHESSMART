@@ -288,8 +288,10 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const stopSearch = async () => {
     if (!session) return;
     setSearching(false);
-    try { await callAction(url, key, session, "cancel_match"); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+    try {
+      const data = await callAction(url, key, session, "cancel_match");
+      if (data.game) rememberGame(data.game);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
   };
 
   const myColor = session && game ? (game.white_id === session.user.id ? "w" : game.black_id === session.user.id ? "b" : null) : null;
