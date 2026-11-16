@@ -22,7 +22,7 @@ Never put SUPABASE_SERVICE_ROLE_KEY in a Vite variable or browser bundle.
 - Server-side legality checks for every UCI move using chess.js.
 - Server timestamps and increment clocks; the browser cannot submit a new FEN.
 - Checkmate, stalemate, insufficient material, threefold repetition, resignation and timeout results.
-- Separate Bullet, Blitz and Rapid ratings. Each rated result is scored server-side with an Elo expected-score calculation and a provisional K-factor for the first 30 games.
+- Separate Bullet, Blitz and Rapid ratings. A PostgreSQL function locks the completed game and both player profiles, updates both ratings in one transaction, and records that the rating has been applied exactly once. The K-factor is 40 for the first 30 games and 32 after that.
 - Optimistic position checks prevent two requests from applying moves to the same old board state.
 
 ## Scope and fair play
