@@ -62,6 +62,15 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
     if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
   }, []);
 
+  // заранее загружаем звуки мата и шаха (mp3), чтобы они играли без задержки
+  useEffect(() => {
+    preloadSounds();
+  }, []);
+
+  const move = ply > 0 ? review.moves[ply - 1] : null;
+  const exploreFen = explore ? (explore.idx > 0 ? explore.moves[explore.idx - 1].fenAfter : explore.base) : null;
+  const displayFen = retry ? (retryFen ?? review.moves[retry.idx].fenBefore) : (exploreFen ?? review.fens[ply]);
+
   const announceCopy = useCallback((message: string) => {
     setCopyNotice(message);
     if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
@@ -77,14 +86,6 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
     const copied = await copyText(createAnnotatedPgn(review));
     announceCopy(copied ? "PGN скопирован" : "Не удалось скопировать PGN");
   }, [review, announceCopy]);
-  // заранее загружаем звуки мата и шаха (mp3), чтобы они играли без задержки
-  useEffect(() => {
-    preloadSounds();
-  }, []);
-
-  const move = ply > 0 ? review.moves[ply - 1] : null;
-  const exploreFen = explore ? (explore.idx > 0 ? explore.moves[explore.idx - 1].fenAfter : explore.base) : null;
-  const displayFen = retry ? (retryFen ?? review.moves[retry.idx].fenBefore) : (exploreFen ?? review.fens[ply]);
 
   /* ---------------------------- навигация ---------------------------- */
   const plyRef = useRef(0);
