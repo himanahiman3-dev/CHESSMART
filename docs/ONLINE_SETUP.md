@@ -15,7 +15,7 @@ Run these files in the Supabase SQL Editor, in this order:
 1. supabase/migrations/202611160001_online_chess.sql
 2. supabase/migrations/202611160002_accounts_matchmaking.sql
 
-The first migration creates online profiles, games and protected Elo updates. The second adds nickname-account matchmaking, the queue and direct invitations.
+The first migration creates online profiles, games and protected Elo updates. The second adds nickname-account matchmaking, the queue, direct invitations and rate limits for registration/login.
 
 ## 3. Deploy the Edge Function
 
@@ -37,7 +37,7 @@ Save and rebuild/redeploy the static site. Vite embeds public VITE_ variables at
 
 ## Accounts
 
-Players register with a unique nickname (3–18 lowercase Latin letters, digits or _) and a password of at least 8 characters. A recovery email is optional. If no email is supplied, an internal non-deliverable address is used for authentication, so a forgotten password cannot be recovered. Store the password safely.
+Players register with a unique nickname (3–18 lowercase Latin letters, digits or _) and a password of at least 8 characters. No email is required. The account uses a private synthetic email address only for Supabase Auth, so password recovery is not available yet. Players must keep their password safe.
 
 Online ratings are stored server-side and kept separately for Bullet, Blitz and Rapid. The local Stockfish rating and local puzzle rating are not used for matchmaking.
 
