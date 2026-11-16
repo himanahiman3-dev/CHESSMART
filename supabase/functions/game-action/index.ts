@@ -117,20 +117,31 @@ Deno.serve(async (req: Request) => {
 
     // Nickname + password accounts. The synthetic email is private and used only by Supabase Auth.
     if (action === "register" || action === "login") {
+      const remoteAddress = req.headers.get("cf-connecting-ip")
+        ?? req.headers.get("x-real-ip")
+        ?? req.headers.get("x-forwarded-for")?.split(",").pop()?.trim()
+        ?? "unknown";
+      const rateInput = new TextEncoder().encode(action + ":" + remoteAddress);
+      const rateDigest = await crypto.subtle.digest("SHA-256", rateInput);
+      const rateBucket = Array.from(new Uint8Array(rateDigest), (value) => value.toString(16).padStart(2, "0")).join("");
+      const { data: allowed, error: rateError } = await admin.rpc("consume_chessmart_auth_limit", {
+        p_bucket_key: rateBucket,
+        p_max_hits: action === "register" ? 8 : 30,
+        p_window_seconds: action === "register" ? 3600 : 900,
+      });
+      if (rateError) throw new Error("Сервис авторизации временно недоступен.");
+      if (allowed !== true) return fail("Слишком много попыток. Попробуй позже.", 429);
+
       const username = normalizeUsername(body.username);
       const password = String(body.password ?? "");
       if (password.length < 8 || password.length > 128) return fail("Пароль должен содержать от 8 до 128 символов.");
       const client = await publicAuthClient();
 
       if (action === "register") {
-        const recoveryEmail = String(body.email ?? "").trim().toLowerCase();
-        if (recoveryEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail)) {
-          return fail("Проверь адрес почты или оставь поле пустым.");
-        }
         const { data: existing } = await admin.from("online_profiles").select("user_id").eq("username", username).maybeSingle();
         if (existing) return fail("Этот ник уже занят. Выбери другой.");
 
-        const email = recoveryEmail || accountEmail(username);
+        const email = accountEmail(username);
         const { data: created, error: createError } = await admin.auth.admin.createUser({
           email,
           password,
