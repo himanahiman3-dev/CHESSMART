@@ -4,6 +4,7 @@ create table if not exists public.online_matchmaking_queue (
   rating integer not null check (rating between 100 and 4000),
   minutes integer not null check (minutes between 1 and 60),
   increment_seconds integer not null check (increment_seconds between 0 and 60),
+  rated boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -33,7 +34,8 @@ create or replace function public.match_online_player(
   p_user_id uuid,
   p_rating_type text,
   p_minutes integer,
-  p_increment_seconds integer
+  p_increment_seconds integer,
+  p_rated boolean
 )
 returns setof public.online_games
 language plpgsql
@@ -57,7 +59,7 @@ begin
     raise exception 'Invalid rating type';
   end if;
 
-  select * into me from public.online_profiles where user_id = p_user_id;
+  select * into me from public.online_profiles where user_id = p_user_id for update;
   if me.user_id is null then raise exception 'Player profile not found'; end if;
 
   delete from public.online_matchmaking_queue
@@ -88,6 +90,7 @@ begin
       and q.rating_type = p_rating_type
       and q.minutes = p_minutes
       and q.increment_seconds = p_increment_seconds
+      and q.rated = p_rated
       and abs(q.rating - case p_rating_type
         when 'bullet' then me.bullet_rating
         when 'blitz' then me.blitz_rating
@@ -106,13 +109,14 @@ begin
     for update of q skip locked;
 
   if opponent_queue.user_id is null then
-    insert into public.online_matchmaking_queue(user_id, rating_type, rating, minutes, increment_seconds, created_at, updated_at)
+    insert into public.online_matchmaking_queue(user_id, rating_type, rating, minutes, increment_seconds, rated, created_at, updated_at)
     values (
       p_user_id,
       p_rating_type,
       case p_rating_type when 'bullet' then me.bullet_rating when 'blitz' then me.blitz_rating else me.rapid_rating end,
       p_minutes,
       p_increment_seconds,
+      p_rated,
       now(),
       now()
     )
@@ -121,6 +125,7 @@ begin
           rating = excluded.rating,
           minutes = excluded.minutes,
           increment_seconds = excluded.increment_seconds,
+          rated = excluded.rated,
           updated_at = now();
     return;
   end if;
@@ -151,7 +156,7 @@ begin
     case when black_id = p_user_id then me.username else opponent.username end,
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     '[]'::jsonb, p_minutes, p_increment_seconds, p_increment_seconds * 1000,
-    initial_ms, initial_ms, now(), true, p_rating_type,
+    initial_ms, initial_ms, now(), p_rated, p_rating_type,
     case when white_id = p_user_id then
       case p_rating_type when 'bullet' then me.bullet_rating when 'blitz' then me.blitz_rating else me.rapid_rating end
     else
@@ -186,12 +191,20 @@ begin
   if invitation.id is null then raise exception 'Invitation not found or expired'; end if;
 
   select * into g from public.online_games where id = invitation.game_id for update;
-  if g.status <> 'waiting' or g.black_id is not null then
+  if g.id is null or g.status <> 'waiting' or g.black_id is not null then
     update public.online_invites set status = 'expired', responded_at = now() where id = invitation.id;
     raise exception 'Game invitation has already expired';
   end if;
-  select * into player from public.online_profiles where user_id = p_user_id;
+  select * into player from public.online_profiles where user_id = p_user_id for update;
   if player.user_id is null then raise exception 'Player profile not found'; end if;
+  if exists (
+    select 1 from public.online_games active_game
+    where active_game.status = 'active'
+      and (active_game.white_id = p_user_id or active_game.black_id = p_user_id)
+  ) then
+    raise exception 'Finish your active game first';
+  end if;
+  delete from public.online_matchmaking_queue where user_id = p_user_id;
 
   update public.online_games
     set black_id = p_user_id,
@@ -210,9 +223,9 @@ begin
 end;
 $accept$;
 
-revoke all on function public.match_online_player(uuid, text, integer, integer) from public;
+revoke all on function public.match_online_player(uuid, text, integer, integer, boolean) from public;
 revoke all on function public.accept_online_invite(uuid, uuid) from public;
-grant execute on function public.match_online_player(uuid, text, integer, integer) to service_role;
+grant execute on function public.match_online_player(uuid, text, integer, integer, boolean) to service_role;
 grant execute on function public.accept_online_invite(uuid, uuid) to service_role;
 
 create table if not exists public.online_auth_rate_limits (
