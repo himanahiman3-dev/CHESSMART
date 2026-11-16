@@ -63,10 +63,16 @@ function Main() {
   }, []);
 
   const nav = (
-    <div className="sticky top-0 z-40 border-b border-[#4b4844] bg-[#262421]/95 px-3 py-2 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-bold text-[#a7a6a2]">{profile.name} · {profile.rating} Elo</div>
-        <div className="flex flex-wrap gap-1 rounded-lg bg-[#1f1d1b] p-1">
+    <div className="sticky top-0 z-40 border-b border-[#3e3b36] bg-[#1d1c1a]/95 px-3 py-2.5 shadow-xl shadow-black/20 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#81b64c] text-xl text-[#17210f] shadow-[0_3px_0_#4e7537]">♞</span>
+          <div className="min-w-0">
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-[#e9e6de]">Chess Review</div>
+            <div className="truncate text-[10px] font-semibold text-[#85827b]">{profile.name} <span className="px-1 text-[#5b5953]">·</span> {profile.rating} Elo</div>
+          </div>
+        </div>
+        <nav aria-label="Главная навигация" className="flex max-w-full flex-wrap gap-1 rounded-xl border border-[#3d3a35] bg-[#151513] p-1">
           {([
             ["review", "Обзор"],
             ["play", "Играть"],
@@ -75,9 +81,16 @@ function Main() {
             ["endgame", "Эндшпиль"],
             ["openings", "Дебюты"],
           ] as const).map(([id, label]) => (
-            <button key={id} onClick={() => changeMode(id)} className={`rounded-md px-2.5 py-1.5 text-xs font-bold ${mode === id ? "bg-[#4b4844] text-white" : "text-[#a7a6a2] hover:text-white"}`}>{label}</button>
+            <button
+              key={id}
+              onClick={() => changeMode(id)}
+              aria-current={mode === id ? "page" : undefined}
+              className={`rounded-lg px-2.5 py-2 text-[11px] font-extrabold transition sm:px-3 sm:text-xs ${mode === id ? "bg-[#81b64c] text-[#17210f] shadow-[0_2px_0_#4e7537]" : "text-[#a7a6a2] hover:bg-[#302e2b] hover:text-white"}`}
+            >
+              {label}
+            </button>
           ))}
-        </div>
+        </nav>
       </div>
     </div>
   );
