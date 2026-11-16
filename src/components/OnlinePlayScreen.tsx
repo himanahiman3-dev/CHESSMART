@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
-import type { PlayerProfile } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
 
 interface OnlineSession {
@@ -61,7 +60,6 @@ interface ActionResponse {
 type AuthMode = "login" | "register";
 const SESSION_KEY = "chessmart:account-session:v2";
 const GAME_KEY = "chessmart:online-game:v2";
-const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 async function callPublicAction(url: string, key: string, action: string, payload: Record<string, unknown> = {}): Promise<ActionResponse> {
   const response = await fetch(url + "/functions/v1/game-action", {
@@ -122,7 +120,7 @@ function reasonText(reason: string | null): string {
   return reason ? labels[reason] ?? reason : "";
 }
 
-export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; onBack: () => void }) {
+export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, "") ?? "";
   const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? "";
   const configured = !!url && !!key;
@@ -364,7 +362,8 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
       const [minutes, increment] = timeControl.split("+").map(Number);
       const data = await callAction(url, key, session, "challenge_player", { username: inviteUsername.trim(), minutes, increment, rated });
       if (!data.sent) throw new Error(data.error || "Не удалось отправить вызов.");
-      setNotice("Приглашение отправлено игроку @" + inviteUsername.trim().toLowerCase() + ".");
+      if (data.game) rememberGame(data.game);
+      setNotice("Приглашение отправлено игроку @" + inviteUsername.trim().toLowerCase() + ". Ожидаем ответа.");
       setInviteUsername("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -524,7 +523,7 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
                 <h2 className="text-lg font-extrabold">Найти соперника</h2>
                 <p className="mt-1 text-xs leading-relaxed text-[#a6a59f]">Система ищет живого игрока с похожим рейтингом. Чем дольше поиск, тем шире допустимый диапазон Elo.</p>
                 {!searching ? (
-                  <button onClick={() => { setError(null); void findMatch(); }} disabled={busy} className="mt-5 w-full rounded-lg bg-[#81b64c] px-4 py-3 text-sm font-extrabold text-[#17210f] disabled:opacity-40">Найти соперника</button>
+                  <button onClick={() => { setError(null); setSearching(true); void findMatch(); }} disabled={busy} className="mt-5 w-full rounded-lg bg-[#81b64c] px-4 py-3 text-sm font-extrabold text-[#17210f] disabled:opacity-40">Найти соперника</button>
                 ) : (
                   <div className="mt-5 rounded-lg border border-[#596d47] bg-[#293625] p-3">
                     <div className="flex items-center gap-2 text-sm font-bold text-[#d7edbd]"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#9ccf6d]" />Ищем соперника…</div>
