@@ -245,7 +245,7 @@ begin
       when existing.window_started_at <= now() - make_interval(secs => window_seconds) then 1
       else existing.hits + 1
     end
-  returning online_auth_rate_limits.hits into hit_count;
+  returning hits into hit_count;
   return hit_count <= greatest(1, p_max_hits);
 end;
 $rate_limit$;
