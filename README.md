@@ -118,3 +118,13 @@ GitHub Actions автоматически запускает чистую уст
 Онлайн-режим не активируется только статическим деплоем. Нужен собственный Supabase backend. Полная инструкция, SQL-схема, Edge Function и безопасная настройка секретов находятся в [docs/ONLINE_SETUP.md](docs/ONLINE_SETUP.md). Без переменных окружения приложение показывает экран настройки, а не имитирует подключённую сеть.
 
 Сейчас реализованы **комнаты по приглашению**. Публичный случайный матчмейкинг, поиск друзей, турниры, чат, модерация и полноценная античит-система остаются отдельными задачами и не заявляются как готовые функции.
+
+
+## Nickname accounts, live matchmaking and beginner bots
+
+* Online accounts use a unique nickname and password. The profile is stored in Supabase, not just localStorage. A session token is cached in the browser, while the same account can sign in from another device.
+* Players can challenge a username directly, accept/decline incoming invitations, or use **Find opponent**. Queue matching is grouped by Bullet/Blitz/Rapid and starts within a nearby Elo range that widens over time.
+* Public matchmaking and invitations are implemented in Supabase server functions; the browser never writes Elo or game positions directly. The server validates moves and applies rating changes once per finished rated game.
+* Static hosting on Render is supported. Supabase migrations and Edge Function must be applied/deployed separately; see [docs/ONLINE_SETUP.md](docs/ONLINE_SETUP.md).
+* Low-level Stockfish bots now deliberately make occasional random legal moves and choose weaker MultiPV alternatives. This makes the 100–700 levels noticeably less accurate rather than trusting Stockfish's Skill Level alone.
+* Training tasks have mission filters for mate in 1, mate in 2, mate in 3, punishing mistakes, forks, defensive moves and winning material. The default difficulty filter is Easy (up to 1200 puzzle rating).

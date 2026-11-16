@@ -18,10 +18,6 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 });
 const fail = (message: string, status = 400) => json({ error: message }, status);
 
-function cleanName(value: unknown, fallback: string): string {
-  const name = String(value ?? "").replace(/[^\p{L}\p{N}_ -]/gu, "").trim().slice(0, 24);
-  return name || fallback;
-}
 function ratingField(type: string): string {
   return type === "bullet" ? "bullet_rating" : type === "blitz" ? "blitz_rating" : "rapid_rating";
 }
@@ -37,6 +33,19 @@ function makeCode(): string {
   const values = crypto.getRandomValues(new Uint8Array(7));
   return Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
 }
+function normalizeUsername(value: unknown): string {
+  const username = String(value ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,18}$/.test(username)) {
+    throw new Error("Ник: 3–18 символов, только латинские буквы, цифры и _.");
+  }
+  return username;
+}
+function accountEmail(username: string): string {
+  return username + "@accounts.chessmart.invalid";
+}
+async function publicAuthClient() {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+}
 async function authUser(req: Request) {
   const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) throw new Error("Нужна авторизация.");
@@ -44,25 +53,6 @@ async function authUser(req: Request) {
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) throw new Error("Сетевая сессия истекла. Перезагрузи страницу.");
   return data.user;
-}
-async function ensureProfile(userId: string, username: string) {
-  const { data: existing } = await admin.from("online_profiles").select("*").eq("user_id", userId).maybeSingle();
-  if (existing) {
-    if (existing.username !== username) {
-      const { error } = await admin.from("online_profiles").update({ username, updated_at: new Date().toISOString() }).eq("user_id", userId);
-      if (error) throw new Error("Это имя уже занято. Измени имя профиля в Chessmart.");
-      return { ...existing, username };
-    }
-    return existing;
-  }
-  let name = username;
-  let { data, error } = await admin.from("online_profiles").insert({ user_id: userId, username: name }).select("*").single();
-  if (error) {
-    name = (username.slice(0, 18) + "_" + userId.slice(0, 4)).slice(0, 24);
-    ({ data, error } = await admin.from("online_profiles").insert({ user_id: userId, username: name }).select("*").single());
-  }
-  if (error || !data) throw new Error("Не удалось создать сетевой профиль.");
-  return data;
 }
 async function participantGame(gameId: string, userId: string): Promise<GameRow> {
   const { data, error } = await admin.from("online_games").select("*").eq("id", gameId).maybeSingle();
@@ -99,14 +89,189 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return fail("Используй POST.", 405);
   try {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SERVICE_ROLE_KEY) return fail("Серверная функция не настроена.", 503);
-    const user = await authUser(req);
     const body = await req.json() as Record<string, unknown>;
     const action = String(body.action ?? "");
+
+    // Nickname + password accounts. The synthetic email is private and used only by Supabase Auth.
+    if (action === "register" || action === "login") {
+      const remoteAddress = req.headers.get("cf-connecting-ip")
+        ?? req.headers.get("x-real-ip")
+        ?? req.headers.get("x-forwarded-for")?.split(",").pop()?.trim()
+        ?? "unknown";
+      const rateInput = new TextEncoder().encode(action + ":" + remoteAddress);
+      const rateDigest = await crypto.subtle.digest("SHA-256", rateInput);
+      const rateBucket = Array.from(new Uint8Array(rateDigest), (value) => value.toString(16).padStart(2, "0")).join("");
+      const { data: allowed, error: rateError } = await admin.rpc("consume_chessmart_auth_limit", {
+        p_bucket_key: rateBucket,
+        p_max_hits: action === "register" ? 8 : 30,
+        p_window_seconds: action === "register" ? 3600 : 900,
+      });
+      if (rateError) throw new Error("Сервис авторизации временно недоступен.");
+      if (allowed !== true) return fail("Слишком много попыток. Попробуй позже.", 429);
+
+      const username = normalizeUsername(body.username);
+      const password = String(body.password ?? "");
+      if (password.length < 8 || password.length > 128) return fail("Пароль должен содержать от 8 до 128 символов.");
+      const client = await publicAuthClient();
+
+      if (action === "register") {
+        const { data: existing } = await admin.from("online_profiles").select("user_id").eq("username", username).maybeSingle();
+        if (existing) return fail("Этот ник уже занят. Выбери другой.");
+
+        const email = accountEmail(username);
+        const { data: created, error: createError } = await admin.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { chessmart_username: username },
+        });
+        if (createError || !created.user) {
+          const message = createError?.message ?? "";
+          if (/already|registered|exists/i.test(message)) return fail("Этот ник или адрес почты уже используется.");
+          return fail("Не удалось создать аккаунт. Проверь пароль и попробуй ещё раз.");
+        }
+        const { data: profile, error: profileError } = await admin.from("online_profiles").insert({
+          user_id: created.user.id,
+          username,
+        }).select("*").single();
+        if (profileError || !profile) {
+          await admin.auth.admin.deleteUser(created.user.id);
+          if (profileError?.code === "23505") return fail("Этот ник уже занят.");
+          throw new Error("Не удалось создать профиль игрока.");
+        }
+        const { data: signed, error: signError } = await client.auth.signInWithPassword({ email, password });
+        if (signError || !signed.session || !signed.user) {
+          await admin.auth.admin.deleteUser(created.user.id);
+          throw new Error("Аккаунт создан, но вход не удался. Попробуй войти с тем же ником.");
+        }
+        return json({ session: signed.session, profile });
+      }
+
+      const { data: profile } = await admin.from("online_profiles").select("*").eq("username", username).maybeSingle();
+      if (!profile) return fail("Неверный ник или пароль.", 401);
+      const { data: account, error: accountError } = await admin.auth.admin.getUserById(profile.user_id);
+      const email = account?.user?.email;
+      if (accountError || !email) return fail("Не удалось найти аккаунт. Обратись к администратору.", 401);
+      const { data: signed, error: signError } = await client.auth.signInWithPassword({ email, password });
+      if (signError || !signed.session || !signed.user) return fail("Неверный ник или пароль.", 401);
+      return json({ session: signed.session, profile });
+    }
+
+    const user = await authUser(req);
+    if (action === "profile") {
+      const { data: profile, error } = await admin.from("online_profiles").select("*").eq("user_id", user.id).maybeSingle();
+      if (error || !profile) return fail("Профиль игрока не найден.", 404);
+      const { data: game } = await admin.from("online_games").select("*").eq("status", "active")
+        .or("white_id.eq." + user.id + ",black_id.eq." + user.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (game) await admin.from("online_matchmaking_queue").delete().eq("user_id", user.id);
+      return json({ profile, game: game ?? undefined });
+    }
+    if (action === "lookup_player") {
+      const username = normalizeUsername(body.username);
+      const { data: target } = await admin.from("online_profiles")
+        .select("username,bullet_rating,blitz_rating,rapid_rating,bullet_games,blitz_games,rapid_games")
+        .eq("username", username).maybeSingle();
+      if (!target) return fail("Игрок с таким ником не найден.", 404);
+      return json({ player: target });
+    }
+    if (action === "find_match") {
+      const minutes = Math.max(1, Math.min(60, Math.floor(Number(body.minutes) || 5)));
+      const increment = Math.max(0, Math.min(60, Math.floor(Number(body.increment) || 0)));
+      const type = ratingType(minutes, increment);
+      const { data, error } = await admin.rpc("match_online_player", {
+        p_user_id: user.id,
+        p_rating_type: type,
+        p_minutes: minutes,
+        p_increment_seconds: increment,
+        p_rated: body.rated !== false,
+      });
+      if (error) throw new Error("Ошибка поиска соперника: " + error.message);
+      const game = Array.isArray(data) ? data[0] : data;
+      return json(game ? { game, queued: false } : { queued: true, ratingType: type });
+    }
+    if (action === "cancel_match") {
+      const { data: activeGame } = await admin.from("online_games").select("*").eq("status", "active")
+        .or("white_id.eq." + user.id + ",black_id.eq." + user.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (activeGame) {
+        await admin.from("online_matchmaking_queue").delete().eq("user_id", user.id);
+        return json({ game: activeGame, cancelled: false });
+      }
+      const { error } = await admin.from("online_matchmaking_queue").delete().eq("user_id", user.id);
+      if (error) throw new Error("Не удалось остановить поиск соперника.");
+      return json({ cancelled: true });
+    }
+    if (action === "challenge_player") {
+      const username = normalizeUsername(body.username);
+      const { data: inviter, error: inviterError } = await admin.from("online_profiles").select("*").eq("user_id", user.id).maybeSingle();
+      if (inviterError || !inviter) return fail("Сетевой профиль не найден.", 401);
+      if (username === inviter.username) return fail("Нельзя отправить вызов самому себе.");
+      const { data: target } = await admin.from("online_profiles").select("*").eq("username", username).maybeSingle();
+      if (!target) return fail("Игрок с таким ником не найден.", 404);
+      const { data: inviterGame } = await admin.from("online_games").select("id").eq("status", "active").or("white_id.eq." + user.id + ",black_id.eq." + user.id).limit(1).maybeSingle();
+      if (inviterGame) return fail("Сначала заверши текущую партию.");
+      const { data: targetGame } = await admin.from("online_games").select("id").eq("status", "active").or("white_id.eq." + target.user_id + ",black_id.eq." + target.user_id).limit(1).maybeSingle();
+      if (targetGame) return fail("Этот игрок уже играет партию.");
+      const { data: duplicate } = await admin.from("online_invites").select("id")
+        .eq("from_user", user.id).eq("to_user", target.user_id).eq("status", "pending").maybeSingle();
+      if (duplicate) return fail("Приглашение этому игроку уже отправлено.");
+      await admin.from("online_matchmaking_queue").delete().eq("user_id", user.id);
+      await admin.from("online_matchmaking_queue").delete().eq("user_id", target.user_id);
+      const minutes = Math.max(1, Math.min(60, Math.floor(Number(body.minutes) || 5)));
+      const increment = Math.max(0, Math.min(60, Math.floor(Number(body.increment) || 0)));
+      const type = ratingType(minutes, increment);
+      const code = makeCode();
+      const { data: game, error: gameError } = await admin.from("online_games").insert({
+        invite_code: code, status: "waiting", white_id: user.id, black_id: null,
+        white_name: inviter.username, black_name: null, fen: START_FEN, moves: [],
+        minutes, increment_seconds: increment, increment_ms: increment * 1000,
+        white_ms: minutes * 60_000, black_ms: minutes * 60_000, turn_started_at: null,
+        rated: body.rated !== false, rating_type: type,
+        white_rating: type === "bullet" ? inviter.bullet_rating : type === "blitz" ? inviter.blitz_rating : inviter.rapid_rating,
+        black_rating: null,
+      }).select("*").single();
+      if (gameError || !game) throw new Error("Не удалось создать приглашение.");
+      const { error: invitationError } = await admin.from("online_invites").insert({
+        game_id: game.id, from_user: user.id, to_user: target.user_id,
+      });
+      if (invitationError) {
+        await admin.from("online_games").delete().eq("id", game.id);
+        if (invitationError.code === "23505") return fail("Приглашение уже ожидает ответа.");
+        throw new Error("Не удалось отправить приглашение.");
+      }
+      return json({ sent: true, username: target.username, game });
+    }
+    if (action === "list_invitations") {
+      const { data, error } = await admin.from("online_invites")
+        .select("id,from_user,created_at,game:online_games(id,white_name,rating_type,minutes,increment_seconds)")
+        .eq("to_user", user.id).eq("status", "pending").order("created_at", { ascending: false }).limit(20);
+      if (error) throw new Error("Не удалось загрузить приглашения.");
+      return json({ invitations: data ?? [] });
+    }
+    if (action === "accept_invitation") {
+      const inviteId = String(body.inviteId ?? "");
+      const { data, error } = await admin.rpc("accept_online_invite", { p_invite_id: inviteId, p_user_id: user.id });
+      if (error) return fail(error.message.includes("expired") ? "Приглашение уже недействительно." : "Не удалось принять приглашение.");
+      const game = Array.isArray(data) ? data[0] : data;
+      return json({ game });
+    }
+    if (action === "decline_invitation") {
+      const inviteId = String(body.inviteId ?? "");
+      const { error } = await admin.from("online_invites")
+        .update({ status: "declined", responded_at: new Date().toISOString() })
+        .eq("id", inviteId).eq("to_user", user.id).eq("status", "pending");
+      if (error) throw new Error("Не удалось отклонить приглашение.");
+      return json({ declined: true });
+    }
+
     if (action === "create") {
       const minutes = Math.max(1, Math.min(60, Math.floor(Number(body.minutes) || 5)));
       const increment = Math.max(0, Math.min(60, Math.floor(Number(body.increment) || 0)));
-      const name = cleanName(body.username, "Игрок-" + user.id.slice(0, 4));
-      const profile = await ensureProfile(user.id, name);
+      const { data: profile, error: profileError } = await admin.from("online_profiles").select("*").eq("user_id", user.id).maybeSingle();
+      if (profileError || !profile) return fail("Сетевой профиль не найден. Выйди и войди в аккаунт снова.", 401);
+      const { data: activeGame } = await admin.from("online_games").select("id").eq("status", "active").or("white_id.eq." + user.id + ",black_id.eq." + user.id).limit(1).maybeSingle();
+      if (activeGame) return fail("Сначала заверши текущую партию.");
+      const { data: queued } = await admin.from("online_matchmaking_queue").select("user_id").eq("user_id", user.id).maybeSingle();
+      if (queued) return fail("Сначала отмени поиск соперника.");
       const type = ratingType(minutes, increment);
       let code = makeCode();
       for (let attempt = 0; attempt < 4; attempt++) {
@@ -128,11 +293,15 @@ Deno.serve(async (req: Request) => {
     if (action === "join") {
       const code = String(body.inviteCode ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
       if (code.length < 5) return fail("Введи корректный код приглашения.");
-      const name = cleanName(body.username, "Игрок-" + user.id.slice(0, 4));
-      const profile = await ensureProfile(user.id, name);
+      const { data: profile, error: profileError } = await admin.from("online_profiles").select("*").eq("user_id", user.id).maybeSingle();
+      if (profileError || !profile) return fail("Сетевой профиль не найден. Выйди и войди в аккаунт снова.", 401);
       const { data: waiting, error } = await admin.from("online_games").select("*").eq("invite_code", code).eq("status", "waiting").maybeSingle();
       if (error || !waiting) return fail("Комната не найдена или игра уже началась.", 404);
       if (waiting.white_id === user.id) return fail("Нельзя присоединиться к собственной комнате.");
+      const { data: activeGame } = await admin.from("online_games").select("id").eq("status", "active").or("white_id.eq." + user.id + ",black_id.eq." + user.id).limit(1).maybeSingle();
+      if (activeGame) return fail("Сначала заверши текущую партию.");
+      const { data: queued } = await admin.from("online_matchmaking_queue").select("user_id").eq("user_id", user.id).maybeSingle();
+      if (queued) return fail("Сначала отмени поиск соперника.");
       const now = new Date().toISOString();
       const { data: game, error: joinError } = await admin.from("online_games")
         .update({ black_id: user.id, black_name: profile.username, black_rating: profile[ratingField(waiting.rating_type)], status: "active", turn_started_at: now, updated_at: now })

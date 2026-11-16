@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${PGHOST:=127.0.0.1}"
+: "${PGPORT:=5432}"
+: "${PGUSER:=postgres}"
+: "${PGDATABASE:=chessmart_test}"
+: "${PGPASSWORD:=postgres}"
+export PGHOST PGPORT PGUSER PGDATABASE PGPASSWORD
+
+psql -v ON_ERROR_STOP=1 <<'SQL'
+create role anon nologin;
+create role authenticated nologin;
+create role service_role nologin bypassrls;
+create schema auth;
+create table auth.users (id uuid primary key);
+create function auth.uid() returns uuid
+language sql stable
+as $$ select null::uuid $$;
+grant usage on schema auth to anon, authenticated;
+grant execute on function auth.uid() to anon, authenticated;
+SQL
+
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611160001_online_chess.sql
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611160002_accounts_matchmaking.sql
+
+psql -v ON_ERROR_STOP=1 <<'SQL'
+insert into auth.users(id) values
+('00000000-0000-0000-0000-000000000001'),
+('00000000-0000-0000-0000-000000000002'),
+('00000000-0000-0000-0000-000000000003'),
+('00000000-0000-0000-0000-000000000004'),
+('00000000-0000-0000-0000-000000000005'),
+('00000000-0000-0000-0000-000000000006');
+
+insert into public.online_profiles(user_id, username) values
+('00000000-0000-0000-0000-000000000001', 'alpha'),
+('00000000-0000-0000-0000-000000000002', 'bravo'),
+('00000000-0000-0000-0000-000000000003', 'charlie'),
+('00000000-0000-0000-0000-000000000004', 'delta'),
+('00000000-0000-0000-0000-000000000005', 'echo'),
+('00000000-0000-0000-0000-000000000006', 'foxtrot');
+
+-- The first player waits; the second should be paired immediately at a similar Elo.
+do $test$
+declare
+  paired_count integer;
+  game_id uuid;
+  white_player uuid;
+  black_player uuid;
+  white_after integer;
+  black_after integer;
+begin
+  select count(*) into paired_count
+  from public.match_online_player('00000000-0000-0000-0000-000000000001', 'blitz', 5, 0, true);
+  if paired_count <> 0 then raise exception 'First player should enter the queue'; end if;
+
+  select count(*) into paired_count
+  from public.match_online_player('00000000-0000-0000-0000-000000000002', 'blitz', 5, 0, true);
+  if paired_count <> 1 then raise exception 'Second player should be paired'; end if;
+
+  select id, white_id, black_id into game_id, white_player, black_player
+  from public.online_games where status = 'active';
+  if game_id is null or white_player = black_player then raise exception 'Match game was not created correctly'; end if;
+  if (select count(*) from public.online_matchmaking_queue) <> 0 then
+    raise exception 'Matched users must be removed from the queue';
+  end if;
+
+  update public.online_games
+    set status = 'completed', result = 'white_win', reason = 'checkmate'
+    where id = game_id;
+
+  perform * from public.apply_online_game_rating(game_id);
+  select white_rating, black_rating into white_after, black_after
+    from public.online_games where id = game_id;
+  if white_after <> 1220 or black_after <> 1180 then
+    raise exception 'Unexpected Elo values after the first rated game: % / %', white_after, black_after;
+  end if;
+
+  -- A retry must not apply the rating twice.
+  perform * from public.apply_online_game_rating(game_id);
+  if (select bullet_games + blitz_games + rapid_games from public.online_profiles where user_id = white_player) <> 1 then
+    raise exception 'Elo was applied more than once';
+  end if;
+end;
+$test$;
+
+-- Rated and unrated queues must never be mixed.
+do $test$
+declare
+  paired_count integer;
+begin
+  select count(*) into paired_count
+    from public.match_online_player('00000000-0000-0000-0000-000000000003', 'blitz', 5, 0, false);
+  if paired_count <> 0 then raise exception 'Unrated user should wait'; end if;
+
+  select count(*) into paired_count
+    from public.match_online_player('00000000-0000-0000-0000-000000000004', 'blitz', 5, 0, true);
+  if paired_count <> 0 then raise exception 'Rated and unrated queues were mixed'; end if;
+
+  if (select count(*) from public.online_matchmaking_queue where rating_type = 'blitz') <> 2 then
+    raise exception 'Both rated and unrated players should still be queued separately';
+  end if;
+end;
+$test$;
+
+-- A private nickname invitation must create a valid room and activate it for the invited account.
+do $test$
+declare
+  game_id uuid;
+  invite_id uuid;
+  status_value text;
+  invited_player uuid;
+begin
+  insert into public.online_games(
+    invite_code, status, white_id, white_name, fen, moves,
+    minutes, increment_seconds, increment_ms, white_ms, black_ms,
+    rated, rating_type, white_rating
+  ) values (
+    'TESTINV1', 'waiting', '00000000-0000-0000-0000-000000000005', 'echo',
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', '[]',
+    5, 0, 0, 300000, 300000, false, 'blitz', 1200
+  ) returning id into game_id;
+
+  insert into public.online_invites(game_id, from_user, to_user)
+  values (game_id, '00000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000006')
+  returning id into invite_id;
+
+  select black_id, status into invited_player, status_value
+    from public.accept_online_invite(invite_id, '00000000-0000-0000-0000-000000000006');
+  if invited_player <> '00000000-0000-0000-0000-000000000006' or status_value <> 'active' then
+    raise exception 'Invitation acceptance failed';
+  end if;
+end;
+$test$;
+
+-- Auth throttling must allow the first two calls and reject the third.
+do $test$
+begin
+  if not public.consume_chessmart_auth_limit('ci-rate-limit-test', 2, 900) then
+    raise exception 'First auth request was incorrectly blocked';
+  end if;
+  if not public.consume_chessmart_auth_limit('ci-rate-limit-test', 2, 900) then
+    raise exception 'Second auth request was incorrectly blocked';
+  end if;
+  if public.consume_chessmart_auth_limit('ci-rate-limit-test', 2, 900) then
+    raise exception 'Third auth request was not blocked';
+  end if;
+end;
+$test$;
+
+select 'Online SQL migrations and matchmaking tests passed.' as result;
+SQL
