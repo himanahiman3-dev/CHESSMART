@@ -180,6 +180,7 @@ Deno.serve(async (req: Request) => {
         p_rating_type: type,
         p_minutes: minutes,
         p_increment_seconds: increment,
+        p_rated: body.rated !== false,
       });
       if (error) throw new Error("Ошибка поиска соперника: " + error.message);
       const game = Array.isArray(data) ? data[0] : data;
