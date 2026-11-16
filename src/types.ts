@@ -18,8 +18,8 @@ export type Score = { cp: number; mate?: undefined; terminal?: undefined } | { m
 export interface EngineLine {
   multipv: number;
   depth: number;
-  score: Score; // с точки зрения белых
-  pv: string[]; // UCI
+  score: Score;
+  pv: string[];
 }
 
 export interface PositionEval {
@@ -35,7 +35,7 @@ export interface OpeningInfo {
 }
 
 export interface MoveReview {
-  index: number; // 0-based индекс полухода
+  index: number;
   color: Color;
   san: string;
   uci: string;
@@ -46,10 +46,10 @@ export interface MoveReview {
   fenBefore: string;
   fenAfter: string;
   cls: Cls;
-  scoreBefore: Score; // лучшая линия до хода (белые)
-  scoreAfter: Score; // оценка после сыгранного хода (белые)
-  winBefore: number; // Win% для ходящего (лучшая линия)
-  winAfter: number; // Win% для ходящего после хода
+  scoreBefore: Score;
+  scoreAfter: Score;
+  winBefore: number;
+  winAfter: number;
   winLoss: number;
   accuracy: number;
   bestUci?: string;
@@ -59,17 +59,17 @@ export interface MoveReview {
   sacrifice: boolean;
   opening?: OpeningInfo;
   comment: string;
-  lines: EngineLine[]; // линии до хода
+  lines: EngineLine[];
 }
 
 export interface GameReview {
   headers: Record<string, string>;
   startFen: string;
   moves: MoveReview[];
-  fens: string[]; // N+1
-  scores: Score[]; // N+1, белые
-  positions: PositionEval[]; // N+1 результатов движка
-  winSeries: number[]; // Win% белых по позициям
+  fens: string[];
+  scores: Score[];
+  positions: PositionEval[];
+  winSeries: number[];
   accuracy: { w: number; b: number };
   counts: { w: Record<Cls, number>; b: Record<Cls, number> };
   rating: { w: number; b: number };
@@ -94,9 +94,9 @@ export const CLS_META: Record<Cls, { color: string; symbol: string; ru: string; 
   brilliant: { color: "#1baca6", symbol: "!!", ru: "Блестящий", en: "Brilliant" },
   great: { color: "#5c8bb0", symbol: "!", ru: "Отличный", en: "Great" },
   best: { color: "#96bc4b", symbol: "★", ru: "Лучший", en: "Best" },
-  excellent: { color: "#96bc4b", symbol: "👍", ru: "Отличный ход", en: "Excellent" },
+  excellent: { color: "#96bc4b", symbol: "✓", ru: "Отличный ход", en: "Excellent" },
   good: { color: "#95af8a", symbol: "✓", ru: "Хороший", en: "Good" },
-  book: { color: "#a88865", symbol: "📖", ru: "Книжный", en: "Book" },
+  book: { color: "#a88865", symbol: "BK", ru: "Книжный", en: "Book" },
   inaccuracy: { color: "#f7c045", symbol: "?!", ru: "Неточность", en: "Inaccuracy" },
   mistake: { color: "#e58f2a", symbol: "?", ru: "Ошибка", en: "Mistake" },
   miss: { color: "#ca3431", symbol: "×", ru: "Упущено", en: "Miss" },
