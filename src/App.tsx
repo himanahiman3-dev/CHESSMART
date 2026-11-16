@@ -57,9 +57,9 @@ function BrandMark() {
   return (
     <svg viewBox="0 0 44 44" width="38" height="38" aria-hidden="true">
       <rect x="1" y="1" width="42" height="42" rx="12" fill="#81b64c" />
-      <circle cx="22" cy="12" r="5.2" fill="#1b2415" />
-      <path d="M15.5 20.2c0-2.1 2.9-3.7 6.5-3.7s6.5 1.6 6.5 3.7c0 1.1-.9 2.2-2.1 3l3.1 9.2H14.5l3.1-9.2c-1.2-.8-2.1-1.9-2.1-3Z" fill="#1b2415" />
-      <path d="M12 34h20v2H12z" fill="#1b2415" />
+      <path d="M11 34h23v2H11zM14 31c.6-3.2 2.1-5.9 4.7-7.8-2.3-1.4-3.4-3.7-3.1-6.4.2-2.2 1.4-4.2 3.6-5.7l-1-4.1c3.2.5 5.3 2.1 6.3 4.8 3.4.1 5.6 2.3 6 5.3.4 3.5-1.1 6.4-3.4 8.6 1.4 1.8 2.3 3.6 2.8 5.3H14Z" fill="#1b2415" />
+      <circle cx="22.8" cy="14.7" r="1.15" fill="#81b64c" />
+      <path d="M18.8 24.2h10.5" stroke="#81b64c" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }
