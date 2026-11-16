@@ -21,10 +21,10 @@ interface PuzzleStats {
 type Mode = "rated" | "daily" | "themes";
 
 const DATASET = "Lichess/chess-puzzles";
-const CACHE_KEY = "chessmart:puzzle-bank:3000:v1";
+const CACHE_KEY = "chessmart:puzzle-bank:3500:v1";
 const STATS_KEY = "chessmart:puzzle-stats:v1";
 const PAGE_SIZE = 100;
-const TARGET = 3000;
+const TARGET = 3500;
 const EMPTY_STATS: PuzzleStats = { rating: 1200, solved: [], attempts: 0, correct: 0, streak: 0, lastDaily: "" };
 const THEME_LABELS: Record<string, string> = {
   mateIn1: "Мат в 1", mateIn2: "Мат в 2", mateIn3: "Мат в 3", mate: "Мат",
