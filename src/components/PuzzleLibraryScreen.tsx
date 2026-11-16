@@ -19,6 +19,19 @@ interface PuzzleStats {
   lastDaily: string;
 }
 type Mode = "rated" | "daily" | "themes";
+type Mission = "mixed" | "mate1" | "mate2" | "mate3" | "punish" | "fork" | "defend" | "hanging";
+type Difficulty = "easy" | "medium" | "all";
+
+const MISSIONS: Array<{ id: Mission; label: string; themes: string[]; prompt: string }> = [
+  { id: "mixed", label: "Смешанная тактика", themes: [], prompt: "Найди лучший тактический ход" },
+  { id: "mate1", label: "Мат в 1", themes: ["mateIn1"], prompt: "Поставь мат в один ход" },
+  { id: "mate2", label: "Мат в 2", themes: ["mateIn2"], prompt: "Найди форсированный мат в два хода" },
+  { id: "mate3", label: "Мат в 3", themes: ["mateIn3"], prompt: "Рассчитай матовую комбинацию в три хода" },
+  { id: "punish", label: "Накажи зевок", themes: ["crushing", "hangingPiece", "trappedPiece"], prompt: "Соперник ошибся. Найди удар и используй его ошибку" },
+  { id: "fork", label: "Вилка", themes: ["fork"], prompt: "Найди шахматную вилку" },
+  { id: "defend", label: "Защита", themes: ["defensiveMove"], prompt: "Найди лучший защитительный ход" },
+  { id: "hanging", label: "Выиграй фигуру", themes: ["hangingPiece", "skewer", "pin"], prompt: "Найди тактику, которая выигрывает материал" },
+];
 
 const DATASET = "Lichess/chess-puzzles";
 const CACHE_KEY = "chessmart:puzzle-bank:3500:v1";
@@ -126,6 +139,8 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<PuzzleStats>(readStats);
   const [mode, setMode] = useState<Mode>("rated");
+  const [mission, setMission] = useState<Mission>("mixed");
+  const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [theme, setTheme] = useState("fork");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState("");
@@ -161,17 +176,25 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
   const filtered = useMemo(() => {
     let items = bank;
     if (mode === "daily") items = bank.filter((p) => p.id === dailyId);
-    if (mode === "themes") items = bank.filter((p) => p.themes.includes(theme));
+    if (mission !== "mixed") {
+      const selectedMission = MISSIONS.find((item) => item.id === mission);
+      const tags = selectedMission?.themes ?? [];
+      items = items.filter((p) => tags.some((tag) => p.themes.includes(tag)));
+    }
+    if (difficulty === "easy") items = items.filter((p) => p.rating <= 1200);
+    if (difficulty === "medium") items = items.filter((p) => p.rating > 1200 && p.rating <= 1800);
+    if (mode === "themes") items = items.filter((p) => p.themes.includes(theme));
     if (query.trim()) {
       const q = query.trim().toLowerCase();
       items = items.filter((p) => p.id.toLowerCase().includes(q) || String(p.rating).includes(q) || p.themes.some((t) => t.toLowerCase().includes(q)));
     }
     return items;
-  }, [bank, mode, dailyId, theme, query]);
+  }, [bank, mode, dailyId, theme, mission, difficulty, query]);
   const current = useMemo(() => filtered.find((p) => p.id === selectedId) ?? filtered[0] ?? null, [filtered, selectedId]);
   const solved = stats.solved.includes(current?.id ?? "");
   const playerMove = current?.moves[solutionIndex] ?? "";
   const currentThemes = current?.themes ?? [];
+  const currentMission = MISSIONS.find((item) => item.id === mission) ?? MISSIONS[0];
 
   useEffect(() => {
     if (!current) { setPosition(""); return; }
@@ -256,7 +279,7 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#a3c86d]">Chessmart training</p>
             <h1 className="mt-1 text-2xl font-extrabold">Шахматные задачи</h1>
-            <p className="mt-1 text-sm text-[#a6a59f]">Тактика, рейтинг задач и ежедневная практика</p>
+            <p className="mt-1 text-sm text-[#a6a59f]">Матовые комбинации, наказание зевков и простая тактика</p>
           </div>
           <button onClick={onBack} className="rounded-lg border border-[#474640] bg-[#33322e] px-4 py-2 text-sm font-bold hover:bg-[#3d3c36]">Назад</button>
         </header>
@@ -278,16 +301,29 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
 
         <div className="mb-4 flex flex-wrap gap-2">
           {([
-            ["rated", "Рейтинг"],
+            ["rated", "Тренировка"],
             ["daily", "Задача дня"],
-            ["themes", "По темам"],
+            ["themes", "Все темы"],
           ] as const).map(([id, label]) => (
             <button key={id} onClick={() => { setMode(id); setQuery(""); }} className={"rounded-lg px-4 py-2 text-sm font-bold " + (mode === id ? "bg-[#81b64c] text-[#17210f]" : "border border-[#41403a] bg-[#30302b] text-[#d2d1cb] hover:bg-[#3b3a34]")}>{label}</button>
           ))}
           <div className="ml-auto flex items-center gap-2 rounded-lg border border-[#41403a] bg-[#30302b] px-3 py-2 text-xs text-[#aaa9a2]">
-            <span>База</span><b className="text-white">{isConfigured ? bank.length.toLocaleString("ru-RU") + " задач" : "загрузка"}</b>
+            <span>Проверено</span><b className="text-white">{isConfigured ? bank.length.toLocaleString("ru-RU") + " задач" : "загрузка"}</b>
           </div>
         </div>
+        <section className="mb-4 rounded-xl border border-[#41403a] bg-[#30302b] p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-extrabold uppercase tracking-wide text-[#aaa9a2]">Тип задания</div>
+            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)} className="rounded-md border border-[#4a4942] bg-[#242520] px-2.5 py-1.5 text-[10px] font-bold">
+              <option value="easy">Лёгкие · до 1200</option>
+              <option value="medium">Средние · 1200–1800</option>
+              <option value="all">Любая сложность</option>
+            </select>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {MISSIONS.map((item) => <button key={item.id} onClick={() => { setMission(item.id); setMode("rated"); setQuery(""); }} className={"rounded-md px-3 py-2 text-[10px] font-bold " + (mission === item.id ? "bg-[#81b64c] text-[#17210f]" : "bg-[#22231f] text-[#cbc9c1] hover:bg-[#41423b]")}>{item.label}</button>)}
+          </div>
+        </section>
 
         {mode === "themes" && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -323,12 +359,12 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
             <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-3 sm:p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div><div className="text-sm font-bold">Найди лучший ход</div><div className="mt-0.5 text-xs text-[#93928b]">Играй за {current.color === "w" ? "белых" : "чёрных"}</div></div>
+                <div><div className="text-sm font-bold">{mission === "mixed" ? "Найди лучший ход" : currentMission.prompt}</div><div className="mt-0.5 text-xs text-[#93928b]">Играй за {current.color === "w" ? "белых" : "чёрных"} · {current.rating <= 1200 ? "лёгкая позиция" : current.rating <= 1800 ? "средняя позиция" : "сложная позиция"}</div></div>
                 <div className="flex items-center gap-2 text-xs"><span className="rounded-md bg-[#22231f] px-2 py-1 text-[#c4c3bc]">{current.rating} puzzle rating</span><span className="rounded-md bg-[#22231f] px-2 py-1 text-[#c4c3bc]">{solved ? "Решена" : "Не решена"}</span></div>
               </div>
               <GameBoard fen={position || current.fen} orientation={current.color === "w" ? "white" : "black"} interactive={feedback !== "solved" && feedback !== "revealed" && !solved} allowedColor={current.color} onMove={handleMove} />
               <div className={"mt-3 rounded-lg border p-3 text-sm " + (feedback === "solved" || solved ? "border-[#557b3d] bg-[#293a25] text-[#d7edbd]" : feedback === "wrong" ? "border-[#81504a] bg-[#402b28] text-[#ffd2cd]" : "border-[#45443e] bg-[#272823] text-[#d6d5ce]")}>
-                {feedback === "solved" || solved ? "Верно. Отличный расчёт — задача засчитана." : feedback === "revealed" ? "Решение: " + current.moves.map((m) => m.slice(0, 2) + "–" + m.slice(2, 4)).join(", ") : feedback === "wrong" ? "Это не лучший ход. Попробуй ещё раз." : "Найди тактический удар или единственный сильный ход."}
+                {feedback === "solved" || solved ? "Верно. Отличный расчёт — задача засчитана." : feedback === "revealed" ? "Решение: " + current.moves.map((m) => m.slice(0, 2) + "–" + m.slice(2, 4)).join(", ") : feedback === "wrong" ? "Это не лучший ход. Попробуй ещё раз." : mission === "mate1" ? "Проверь все шахи и найди ход, который сразу завершает партию." : mission === "mate2" || mission === "mate3" ? "Рассчитай ответ соперника. После каждого его хода найди продолжение матовой атаки." : mission === "punish" ? "Соперник оставил слабость. Найди тактический способ наказать ошибку." : mission === "defend" ? "Позиция под угрозой. Найди ход, который удерживает её." : mission === "fork" ? "Ищи ход с двойным нападением на две цели." : mission === "hanging" ? "Найди выигрыш фигуры с помощью связки, шпажки или атаки." : "Найди тактический удар или единственный сильный ход."}
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button onClick={() => setHint(true)} disabled={hint || feedback !== "idle"} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2 text-xs font-bold disabled:opacity-40">Подсказка</button>
