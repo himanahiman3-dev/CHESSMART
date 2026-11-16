@@ -366,13 +366,22 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
   const ctrl = "flex h-10 min-w-12 items-center justify-center rounded-lg bg-[#3d3a37] px-3 text-lg font-bold hover:bg-[#4b4844] active:translate-y-px disabled:opacity-30";
 
   return (
-    <div className="min-h-screen bg-[#312e2b] text-white">
-      <header className="flex h-12 items-center justify-between bg-[#262421] px-3 sm:px-5">
-        <div className="flex items-center gap-2.5">
-          <Logo size={30} />
-          <span className="text-lg font-extrabold">Chess Review</span>
+    <div className="min-h-screen bg-[#262522] text-white">
+      <header className="sticky top-0 z-40 flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-[#46433c] bg-[#211f1d]/95 px-3 py-2 shadow-xl shadow-black/20 backdrop-blur-xl sm:px-5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Logo size={32} />
+          <div className="min-w-0">
+            <div className="text-sm font-black uppercase tracking-[0.13em]">Chess Review</div>
+            <div className="truncate text-[10px] font-semibold text-[#85827b]">{whiteName} vs {blackName}</div>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-xs">
+        {review.opening && (
+          <div className="hidden min-w-0 items-center gap-2 rounded-full border border-[#514a3c] bg-[#302b22] px-3 py-1.5 md:flex">
+            <span className="font-mono text-[10px] font-black text-[#d7b887]">{review.opening.eco}</span>
+            <span className="max-w-[250px] truncate text-[11px] font-bold text-[#ded4c0]">{review.opening.ru}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 text-xs sm:gap-2">
           {info && (
             <span className="hidden rounded-full bg-[#1f1d1b] px-3 py-1 text-[#a7a6a2] sm:inline">
               <span className="mr-1 text-[#81b64c]">●</span>SF 19 · {info.variant === "full" ? "Полная" : "Lite"} ·{" "}
@@ -402,6 +411,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
       <div className={`mx-auto flex ${focusMode ? "max-w-[1500px]" : "max-w-[1240px]"} flex-col gap-4 p-2 sm:p-4 lg:flex-row lg:items-start lg:justify-center`}>
         {/* ------------------------- доска ------------------------- */}
         <div className={`w-full lg:shrink-0 ${focusMode ? "lg:w-[min(calc(100vh-170px),calc(100vw-40px),900px)]" : "lg:w-[min(calc(100vh-190px),calc(100vw-500px),760px)]"}`}>
+          <section className="rounded-2xl border border-[#47443d] bg-[#302e2b] p-2 shadow-2xl shadow-black/25 sm:p-3">
           <PlayerBar {...top} />
           <div className="flex items-stretch gap-2">
             <EvalBar score={score} flipped={flipped} />
@@ -422,7 +432,8 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
             </div>
           </div>
           <PlayerBar {...bottom} />
-          <div className="mt-1 flex items-center justify-center gap-2">
+          </section>
+          <div className="mt-2 flex items-center justify-center gap-2">
             <button className={ctrl} onClick={() => seek(0)} disabled={!!retry} title="В начало (↑)">
               ⏮
             </button>
@@ -521,7 +532,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
         </div>
 
         {/* ------------------------- панель ------------------------- */}
-        {!focusMode && <aside className="flex w-full flex-col gap-3 lg:w-[400px] lg:shrink-0">
+        {!focusMode && <aside className="flex w-full flex-col gap-3 lg:w-[420px] lg:shrink-0">
           <CoachCard
             review={review}
             ply={ply}
@@ -540,7 +551,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
             exploring={!!explore}
           />
 
-          <div className="rounded-xl bg-[#262421] p-3">
+          <div className="rounded-2xl border border-[#47443d] bg-[#302e2b] p-3 shadow-xl shadow-black/20">
             <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-[#1f1d1b] p-1 text-sm font-bold">
               {(
                 [
