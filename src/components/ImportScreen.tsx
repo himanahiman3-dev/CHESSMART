@@ -78,6 +78,9 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
 
   const pastePgn = async () => {
     try {
+      if (!navigator.clipboard?.readText) {
+        throw new Error("Браузер не разрешил доступ к буферу обмена. Открой сайт по HTTPS или вставь PGN вручную.");
+      }
       const text = await navigator.clipboard.readText();
       if (!text.trim()) throw new Error("Буфер обмена пустой.");
       setPgn(text);
