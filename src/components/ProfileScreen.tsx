@@ -46,7 +46,7 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
       setName(restored.name);
       setBackupNotice("Профиль восстановлен из резервной копии");
     } catch (error) {
-      setBackupNotice(error instanceof Error ? error.message : "Не удалось прочитать резервную копию");
+      setBackupNotice(`Ошибка: ${error instanceof Error ? error.message : "не удалось прочитать резервную копию"}`);
     }
   };
   const winRate = profile.games ? (profile.wins / profile.games) * 100 : 0;
@@ -135,7 +135,7 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
                 }}
               />
             </div>
-            {backupNotice && <p role="status" aria-live="polite" className="mt-2 text-xs text-[#a3d160]">{backupNotice}</p>}
+            {backupNotice && <p role="status" aria-live="polite" className={`mt-2 text-xs ${backupNotice.startsWith("Ошибка:") ? "text-[#ffb4b2]" : "text-[#a3d160]"}`}>{backupNotice}</p>}
           </section>
 
           <div className="rounded-xl bg-[#1f1d1b] p-5 text-center">
