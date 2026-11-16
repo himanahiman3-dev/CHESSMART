@@ -9,6 +9,7 @@ import { PlayScreen } from "./components/PlayScreen";
 import { ProfileScreen } from "./components/ProfileScreen";
 import { MistakeTrainerScreen } from "./components/MistakeTrainerScreen";
 import { EndgameTrainingScreen } from "./components/EndgameTrainingScreen";
+import { OpeningExplorerScreen } from "./components/OpeningExplorerScreen";
 import { reviewGame, type AnalyzeProgress } from "./lib/analyze";
 import {
   loadPlayerProfile,
@@ -19,7 +20,7 @@ import {
 import type { GameReview } from "./types";
 
 type Stage = "import" | "analyzing" | "review";
-type MainMode = "review" | "play" | "profile" | "puzzles" | "endgame";
+type MainMode = "review" | "play" | "profile" | "puzzles" | "endgame" | "openings";
 
 function Main() {
   const { engine, status } = useEngine();
@@ -72,6 +73,7 @@ function Main() {
             ["profile", "Профиль"],
             ["puzzles", "Мои задачи"],
             ["endgame", "Эндшпиль"],
+            ["openings", "Дебюты"],
           ] as const).map(([id, label]) => (
             <button key={id} onClick={() => changeMode(id)} className={`rounded-md px-2.5 py-1.5 text-xs font-bold ${mode === id ? "bg-[#4b4844] text-white" : "text-[#a7a6a2] hover:text-white"}`}>{label}</button>
           ))}
@@ -87,6 +89,7 @@ function Main() {
   if (mode === "profile") return <>{nav}<ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} /></>;
   if (mode === "puzzles") return <>{nav}<MistakeTrainerScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} /></>;
   if (mode === "endgame") return <>{nav}<EndgameTrainingScreen engine={engine} onBack={() => changeMode("review")} /></>;
+  if (mode === "openings") return <>{nav}<OpeningExplorerScreen onBack={() => changeMode("review")} /></>;
 
   if (stage === "review" && review) {
     return <>{nav}<ReviewScreen review={review} onNew={() => { setReview(null); setMode("review"); setStage("import"); }} /></>;
