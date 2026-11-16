@@ -4,7 +4,7 @@ import type { Cls, EngineLine, GameReview } from "../types";
 import { CLS_META } from "../types";
 import { useEngine } from "../hooks/useEngine";
 import { getCachedPosition, putCachedPosition } from "../lib/db";
-import { playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/sound";
+import { loadSoundEnabled, playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/sound";
 import { winFor } from "../lib/winprob";
 import { GameBoard, type BoardArrow, type BoardMove } from "./GameBoard";
 import { EvalBar } from "./EvalBar";
@@ -49,7 +49,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
   const [retry, setRetry] = useState<RetryState | null>(null);
   const [retryFen, setRetryFen] = useState<string | null>(null);
   const [showBest, setShowBest] = useState(true);
-  const [sound, setSound] = useState(true);
+  const [sound, setSound] = useState(loadSoundEnabled);
   const [live, setLive] = useState<EngineLine[]>([]);
 
   useEffect(() => setSoundEnabled(sound), [sound]);
