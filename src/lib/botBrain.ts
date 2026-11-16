@@ -37,7 +37,6 @@ function pickWeighted<T>(items: T[], weights: number[], random: () => number): T
  * too accurate for very low ratings on short searches.
  */
 export function chooseBotMove(
-  fen: string,
   lines: EngineLine[],
   legalUci: string[],
   elo: number,
