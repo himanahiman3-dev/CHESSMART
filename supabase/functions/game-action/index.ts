@@ -18,10 +18,6 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 });
 const fail = (message: string, status = 400) => json({ error: message }, status);
 
-function cleanName(value: unknown, fallback: string): string {
-  const name = String(value ?? "").replace(/[^\p{L}\p{N}_ -]/gu, "").trim().slice(0, 24);
-  return name || fallback;
-}
 function ratingField(type: string): string {
   return type === "bullet" ? "bullet_rating" : type === "blitz" ? "blitz_rating" : "rapid_rating";
 }
@@ -57,25 +53,6 @@ async function authUser(req: Request) {
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) throw new Error("Сетевая сессия истекла. Перезагрузи страницу.");
   return data.user;
-}
-async function ensureProfile(userId: string, username: string) {
-  const { data: existing } = await admin.from("online_profiles").select("*").eq("user_id", userId).maybeSingle();
-  if (existing) {
-    if (existing.username !== username) {
-      const { error } = await admin.from("online_profiles").update({ username, updated_at: new Date().toISOString() }).eq("user_id", userId);
-      if (error) throw new Error("Это имя уже занято. Измени имя профиля в Chessmart.");
-      return { ...existing, username };
-    }
-    return existing;
-  }
-  let name = username;
-  let { data, error } = await admin.from("online_profiles").insert({ user_id: userId, username: name }).select("*").single();
-  if (error) {
-    name = (username.slice(0, 18) + "_" + userId.slice(0, 4)).slice(0, 24);
-    ({ data, error } = await admin.from("online_profiles").insert({ user_id: userId, username: name }).select("*").single());
-  }
-  if (error || !data) throw new Error("Не удалось создать сетевой профиль.");
-  return data;
 }
 async function participantGame(gameId: string, userId: string): Promise<GameRow> {
   const { data, error } = await admin.from("online_games").select("*").eq("id", gameId).maybeSingle();
@@ -215,16 +192,20 @@ Deno.serve(async (req: Request) => {
     }
     if (action === "challenge_player") {
       const username = normalizeUsername(body.username);
-      if (username === String((await admin.from("online_profiles").select("username").eq("user_id", user.id).single()).data?.username ?? "")) {
-        return fail("Нельзя отправить вызов самому себе.");
-      }
+      const { data: inviter, error: inviterError } = await admin.from("online_profiles").select("*").eq("user_id", user.id).maybeSingle();
+      if (inviterError || !inviter) return fail("Сетевой профиль не найден.", 401);
+      if (username === inviter.username) return fail("Нельзя отправить вызов самому себе.");
       const { data: target } = await admin.from("online_profiles").select("*").eq("username", username).maybeSingle();
       if (!target) return fail("Игрок с таким ником не найден.", 404);
+      const { data: inviterGame } = await admin.from("online_games").select("id").eq("status", "active").or("white_id.eq." + user.id + ",black_id.eq." + user.id).limit(1).maybeSingle();
+      if (inviterGame) return fail("Сначала заверши текущую партию.");
+      const { data: targetGame } = await admin.from("online_games").select("id").eq("status", "active").or("white_id.eq." + target.user_id + ",black_id.eq." + target.user_id).limit(1).maybeSingle();
+      if (targetGame) return fail("Этот игрок уже играет партию.");
       const { data: duplicate } = await admin.from("online_invites").select("id")
         .eq("from_user", user.id).eq("to_user", target.user_id).eq("status", "pending").maybeSingle();
       if (duplicate) return fail("Приглашение этому игроку уже отправлено.");
-      const { data: inviter, error: inviterError } = await admin.from("online_profiles").select("*").eq("user_id", user.id).single();
-      if (inviterError || !inviter) throw new Error("Профиль игрока не найден.");
+      await admin.from("online_matchmaking_queue").delete().eq("user_id", user.id);
+      await admin.from("online_matchmaking_queue").delete().eq("user_id", target.user_id);
       const minutes = Math.max(1, Math.min(60, Math.floor(Number(body.minutes) || 5)));
       const increment = Math.max(0, Math.min(60, Math.floor(Number(body.increment) || 0)));
       const type = ratingType(minutes, increment);
@@ -275,8 +256,12 @@ Deno.serve(async (req: Request) => {
     if (action === "create") {
       const minutes = Math.max(1, Math.min(60, Math.floor(Number(body.minutes) || 5)));
       const increment = Math.max(0, Math.min(60, Math.floor(Number(body.increment) || 0)));
-      const name = cleanName(body.username, "Игрок-" + user.id.slice(0, 4));
-      const profile = await ensureProfile(user.id, name);
+      const { data: profile, error: profileError } = await admin.from("online_profiles").select("*").eq("user_id", user.id).maybeSingle();
+      if (profileError || !profile) return fail("Сетевой профиль не найден. Выйди и войди в аккаунт снова.", 401);
+      const { data: activeGame } = await admin.from("online_games").select("id").eq("status", "active").or("white_id.eq." + user.id + ",black_id.eq." + user.id).limit(1).maybeSingle();
+      if (activeGame) return fail("Сначала заверши текущую партию.");
+      const { data: queued } = await admin.from("online_matchmaking_queue").select("user_id").eq("user_id", user.id).maybeSingle();
+      if (queued) return fail("Сначала отмени поиск соперника.");
       const type = ratingType(minutes, increment);
       let code = makeCode();
       for (let attempt = 0; attempt < 4; attempt++) {
@@ -298,11 +283,15 @@ Deno.serve(async (req: Request) => {
     if (action === "join") {
       const code = String(body.inviteCode ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
       if (code.length < 5) return fail("Введи корректный код приглашения.");
-      const name = cleanName(body.username, "Игрок-" + user.id.slice(0, 4));
-      const profile = await ensureProfile(user.id, name);
+      const { data: profile, error: profileError } = await admin.from("online_profiles").select("*").eq("user_id", user.id).maybeSingle();
+      if (profileError || !profile) return fail("Сетевой профиль не найден. Выйди и войди в аккаунт снова.", 401);
       const { data: waiting, error } = await admin.from("online_games").select("*").eq("invite_code", code).eq("status", "waiting").maybeSingle();
       if (error || !waiting) return fail("Комната не найдена или игра уже началась.", 404);
       if (waiting.white_id === user.id) return fail("Нельзя присоединиться к собственной комнате.");
+      const { data: activeGame } = await admin.from("online_games").select("id").eq("status", "active").or("white_id.eq." + user.id + ",black_id.eq." + user.id).limit(1).maybeSingle();
+      if (activeGame) return fail("Сначала заверши текущую партию.");
+      const { data: queued } = await admin.from("online_matchmaking_queue").select("user_id").eq("user_id", user.id).maybeSingle();
+      if (queued) return fail("Сначала отмени поиск соперника.");
       const now = new Date().toISOString();
       const { data: game, error: joinError } = await admin.from("online_games")
         .update({ black_id: user.id, black_name: profile.username, black_rating: profile[ratingField(waiting.rating_type)], status: "active", turn_started_at: now, updated_at: now })
