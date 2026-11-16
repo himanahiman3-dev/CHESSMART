@@ -343,7 +343,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
               {info.threaded ? `${info.threads} потоков` : "1 поток"}
             </span>
           )}
-          <button onClick={() => setSound((s) => !s)} className="rounded-lg bg-[#3d3a37] px-2.5 py-1.5 hover:bg-[#4b4844]" title="Звук">
+          <button onClick={() => setSound((s) => !s)} className="rounded-lg bg-[#3d3a37] px-2.5 py-1.5 hover:bg-[#4b4844]" title="Звук" aria-label={sound ? "Выключить звук" : "Включить звук"}>
             {sound ? "🔊" : "🔇"}
           </button>
           <button
