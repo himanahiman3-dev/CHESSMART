@@ -133,7 +133,6 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [recoveryEmail, setRecoveryEmail] = useState("");
   const [game, setGame] = useState<OnlineGame | null>(null);
   const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.search).get("challenge") ?? "");
   const [inviteUsername, setInviteUsername] = useState("");
@@ -195,7 +194,6 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
       const data = await callPublicAction(url, key, action, {
         username: username.trim(),
         password,
-        email: authMode === "register" ? recoveryEmail.trim() : undefined,
       });
       if (!data.session || !data.profile) throw new Error("Сервер не вернул профиль или сессию.");
       const nextSession = {
@@ -466,13 +464,7 @@ export function OnlinePlayScreen({ profile, onBack }: { profile: PlayerProfile; 
             <p className="mt-1 text-[10px] text-[#85847d]">3–18 символов: латиница, цифры и подчёркивание. По нику тебя смогут найти другие игроки.</p>
             <label className="mt-4 block text-xs font-bold text-[#cbc9c1]" htmlFor="account-password">Пароль</label>
             <input id="account-password" type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void authenticate(); }} placeholder="Минимум 8 символов" className="mt-2 w-full rounded-lg border border-[#4a4942] bg-[#22231f] px-3 py-3 text-sm outline-none focus:border-[#81b64c]" />
-            {authMode === "register" && (
-              <>
-                <label className="mt-4 block text-xs font-bold text-[#cbc9c1]" htmlFor="account-email">Почта для восстановления <span className="font-normal text-[#85847d]">(необязательно)</span></label>
-                <input id="account-email" type="email" autoComplete="email" value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} placeholder="name@example.com" className="mt-2 w-full rounded-lg border border-[#4a4942] bg-[#22231f] px-3 py-3 text-sm outline-none focus:border-[#81b64c]" />
-                <p className="mt-1 text-[10px] text-[#85847d]">Без почты пароль нельзя будет восстановить, если забудешь его.</p>
-              </>
-            )}
+            {authMode === "register" && <p className="mt-3 text-[10px] leading-relaxed text-[#85847d]">Аккаунт создаётся по нику и паролю без email. Пока восстановление забытого пароля не подключено — обязательно сохрани пароль.</p>}
             {error && <div role="alert" className="mt-4 rounded-lg border border-[#814c45] bg-[#432a27] p-3 text-xs text-[#ffd2cd]">{error}</div>}
             {notice && <div className="mt-4 rounded-lg border border-[#557b3d] bg-[#293a25] p-3 text-xs text-[#d7edbd]">{notice}</div>}
             <button onClick={() => void authenticate()} disabled={busy || username.length < 3 || password.length < 8} className="mt-5 w-full rounded-lg bg-[#81b64c] py-3 text-sm font-extrabold text-[#17210f] disabled:opacity-40">{busy ? "Подключаемся…" : authMode === "register" ? "Создать аккаунт" : "Войти в CHESSMART"}</button>
