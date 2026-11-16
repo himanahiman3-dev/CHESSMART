@@ -1,32 +1,57 @@
-# Chessmart Online backend
+# CHESSMART accounts and online backend
 
-This folder provides the server side for real friend games. The frontend intentionally does not contain a Supabase service-role key.
+The website remains a **Render Static Site**. Supabase hosts the database, account authentication and server-side game functions; no always-on Render web service is required.
 
-## Supabase setup
+## 1. Create the Supabase project
 
-1. Create a Supabase project and enable **Authentication → Providers → Anonymous Sign-ins**.
-2. Run supabase/migrations/202611160001_online_chess.sql in the SQL editor.
-3. Deploy the Edge Function with: supabase functions deploy game-action
-4. Set the function secret: supabase secrets set SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY. Supabase already provides SUPABASE_URL and SUPABASE_ANON_KEY to Edge Functions.
-5. Set these public build variables in the website host and rebuild:
-   - VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-   - VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+1. Create a project in Supabase.
+2. In Authentication → Providers, make sure the **Email** provider is enabled. The app creates and confirms users through the server Admin API.
+3. Copy the Project URL and the public anon/publishable key from Project Settings → API.
 
-Never put SUPABASE_SERVICE_ROLE_KEY in a Vite variable or browser bundle.
+## 2. Apply both database migrations
 
-## What the server implements
+Run these files in the Supabase SQL Editor, in this order:
 
-- Anonymous player sessions managed by Supabase Auth.
-- Private invite rooms with a seven-character challenge code.
-- A second player can join from a copied challenge link.
-- Server-side legality checks for every UCI move using chess.js.
-- Server timestamps and increment clocks; the browser cannot submit a new FEN.
-- Checkmate, stalemate, insufficient material, threefold repetition, resignation and timeout results.
-- Separate Bullet, Blitz and Rapid ratings. A PostgreSQL function locks the completed game and both player profiles, updates both ratings in one transaction, and records that the rating has been applied exactly once. The K-factor is 40 for the first 30 games and 32 after that.
-- Optimistic position checks prevent two requests from applying moves to the same old board state.
+1. supabase/migrations/202611160001_online_chess.sql
+2. supabase/migrations/202611160002_accounts_matchmaking.sql
 
-## Scope and fair play
+The first migration creates online profiles, games and protected Elo updates. The second adds nickname-account matchmaking, the queue and direct invitations.
 
-This is the friend-challenge foundation, not a full public matchmaking network yet. It does not provide friend search, ranked queues, tournaments, chat, moderation or strong anti-cheat detection. Do not use external engines during rated games. A server-validated legal move is not proof that a player did not receive outside assistance.
+## 3. Deploy the Edge Function
 
-Puzzle ratings and bot ratings stored locally are separate from these online ratings.
+From the repository root, with the Supabase CLI linked to this project:
+
+    supabase functions deploy game-action
+    supabase secrets set SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
+
+Supabase provides SUPABASE_URL and SUPABASE_ANON_KEY to the Edge Function. The Service Role key stays server-side and must never be put in a VITE_ variable.
+
+## 4. Configure Render Static Site
+
+In Render Dashboard → your Static Site → Environment, add:
+
+- VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+- VITE_SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
+
+Save and rebuild/redeploy the static site. Vite embeds public VITE_ variables at build time, so a redeploy is required after changing them.
+
+## Accounts
+
+Players register with a unique nickname (3–18 lowercase Latin letters, digits or _) and a password of at least 8 characters. A recovery email is optional. If no email is supplied, an internal non-deliverable address is used for authentication, so a forgotten password cannot be recovered. Store the password safely.
+
+Online ratings are stored server-side and kept separately for Bullet, Blitz and Rapid. The local Stockfish rating and local puzzle rating are not used for matchmaking.
+
+## Online play features
+
+- Private game rooms and invitations by nickname.
+- An incoming-invitations inbox where a challenge can be accepted or declined.
+- "Find opponent" matchmaking by time-control category and current online Elo. The allowed rating gap expands while the player waits.
+- Server-side validation of every UCI move, clocks with increments, resignation, timeout and draw rules.
+- Elo changes are applied atomically by PostgreSQL once per completed rated game.
+- The UI polls the Edge Function for game state and invitations; the board and clocks update while the page is open.
+
+## Free-plan notes and limits
+
+Supabase's Free plan includes Postgres, Auth and Edge Functions, but free projects can be paused after about a week of low activity. A paused project must be restored from the Supabase dashboard before accounts and online games work again. Render's Static Site can continue serving the frontend independently.
+
+This is a friend-challenge and queue-based matchmaking foundation. It does not yet include public leaderboards, a full friends list, chat, tournaments, moderation or strong anti-cheat detection. Do not use outside engine assistance in rated games.
