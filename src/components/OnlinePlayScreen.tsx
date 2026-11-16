@@ -135,6 +135,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.search).get("challenge") ?? "");
   const [inviteUsername, setInviteUsername] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [inviteTarget, setInviteTarget] = useState("");
   const [timeControl, setTimeControl] = useState("5+0");
   const [rated, setRated] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -362,7 +363,10 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
       const [minutes, increment] = timeControl.split("+").map(Number);
       const data = await callAction(url, key, session, "challenge_player", { username: inviteUsername.trim(), minutes, increment, rated });
       if (!data.sent) throw new Error(data.error || "Не удалось отправить вызов.");
-      if (data.game) rememberGame(data.game);
+      if (data.game) {
+        setInviteTarget(inviteUsername.trim().toLowerCase());
+        rememberGame(data.game);
+      }
       setNotice("Приглашение отправлено игроку @" + inviteUsername.trim().toLowerCase() + ". Ожидаем ответа.");
       setInviteUsername("");
     } catch (reason) {
@@ -421,6 +425,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const clearGame = () => {
     localStorage.removeItem(GAME_KEY);
     setGame(null);
+    setInviteTarget("");
     setInviteCode("");
     const next = new URL(window.location.href);
     next.searchParams.delete("challenge");
@@ -581,7 +586,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
               </div>
             </section>
             <aside className="space-y-3">
-              {game.status === "waiting" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-sm font-extrabold text-[#d7edbd]">Комната создана</div><div className="mt-2 font-mono text-2xl font-black tracking-[0.2em]">{game.invite_code}</div><p className="mt-2 text-xs text-[#b7cba0]">Отправь код или ссылку другу.</p></section>}
+              {game.status === "waiting" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-sm font-extrabold text-[#d7edbd]">Комната создана</div><div className="mt-2 font-mono text-2xl font-black tracking-[0.2em]">{game.invite_code}</div><p className="mt-2 text-xs text-[#b7cba0]">{inviteTarget ? "Вызов отправлен игроку @" + inviteTarget + ". Ожидаем, пока он примет приглашение." : "Отправь код или ссылку другу."}</p></section>}
               {game.status === "active" && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="text-sm font-bold">Статус партии</div><p className="mt-2 text-sm text-[#c9c8c1]">{isMyTurn ? "Ваш ход" : "Ход соперника"}{movePending ? " · отправляем ход…" : ""}</p><p className="mt-2 text-[10px] text-[#85847d]">Синхронизация: {Math.max(0, Math.floor((now - lastSync) / 1000))} сек. назад</p><p className="mt-2 text-xs text-[#a3c86d]">Рейтинг {typeLabel(ratingType)}: {myRating ?? "—"}</p></section>}
               {game.status === "completed" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-lg font-extrabold">{resultText(game, myColor)}</div><p className="mt-2 text-sm text-[#d7edbd]">{reasonText(game.reason)}</p><p className="mt-2 text-xs text-[#b7cba0]">Рейтинг после партии: {myRating ?? "—"}</p></section>}
               <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4">
