@@ -122,10 +122,12 @@ const bandOf = (w: number) => (w >= BAND_WINNING ? 2 : w >= BAND_LOSING ? 1 : 0)
 
 /** Углублённая перепроверка ходов-жертв (см. refineSacrifices). */
 const REFINE_DEPTH_BONUS = 6;
-const REFINE_MOVETIME_MS = 3000;
+const REFINE_MOVETIME_MS = 900;
 const REFINE_MAX_MOVES = 8;
 /** Общий потолок времени на перепроверку, мс. */
-const REFINE_TOTAL_BUDGET_MS = 30000;
+const REFINE_TOTAL_BUDGET_MS = 1400;
+/** Shared hard deadline for all optional tactical passes after the main review. */
+const TACTICAL_EXTRA_BUDGET_MS = 2400;
 
 function playerElo(headers: Record<string, string>, c: Color): number | undefined {
   const v = parseInt(headers[c === "w" ? "WhiteElo" : "BlackElo"] ?? "", 10);
@@ -291,8 +293,9 @@ export async function reviewGame(
   // the final, higher-confidence result from the returned Promise.
   onPartialReview?.(buildReview(game, positions, depth));
 
-  await refineSacrifices(game, positions, depth, engine, onProgress, signal);
-  const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, depth, engine, signal);
+  const tacticalDeadline = now() + TACTICAL_EXTRA_BUDGET_MS;
+  await refineSacrifices(game, positions, depth, engine, onProgress, signal, tacticalDeadline);
+  const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, depth, engine, signal, tacticalDeadline);
   return buildReview(game, positions, depth, deferredSacrifices);
 }
 
@@ -300,7 +303,7 @@ export async function reviewGame(
  * Быстрый анализ (0.6 с на ход) на малой глубине часто «не видит» компенсации за жертву, и жертвенный ход
  * выглядит как потеря нескольких процентов. Поэтому ходы-жертвы перепроверяем глубже:
  * перезаписываем оценки позиций «до» и «после» хода, если новый результат глубже прежнего.
- * Общее время ограничено REFINE_TOTAL_BUDGET_MS.
+ * Перепроверка ограничена общей тактической квотой и не может бесконечно продлевать обзор.
  */
 async function refineSacrifices(
   game: ParsedGame,
@@ -308,7 +311,8 @@ async function refineSacrifices(
   depth: number,
   engine: StockfishEngine,
   onProgress: (p: AnalyzeProgress) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  deadlineAt = now() + REFINE_TOTAL_BUDGET_MS
 ): Promise<void> {
   const N = game.moves.length;
   const book = analyzeBook(game.moves.map((m) => m.san));
@@ -327,11 +331,11 @@ async function refineSacrifices(
   }
   candidates.sort((a, b) => b.amount - a.amount);
   const targetDepth = depth + REFINE_DEPTH_BONUS;
-  const startedAt = now();
   for (const { i } of candidates.slice(0, REFINE_MAX_MOVES)) {
     for (const idx of [i, i + 1]) {
       if (signal?.aborted) throw new Error("cancelled");
-      if (now() - startedAt > REFINE_TOTAL_BUDGET_MS) return;
+      const remainingMs = Math.floor(deadlineAt - now());
+      if (remainingMs <= 0) return;
       onProgress({
         done: game.moves.length,
         total: game.moves.length + 1,
@@ -342,7 +346,7 @@ async function refineSacrifices(
       });
       try {
         const { evalResult } = await evaluatePosition(
-          engine, game.fens[idx], targetDepth, 2, signal, undefined, REFINE_MOVETIME_MS,
+          engine, game.fens[idx], targetDepth, 2, signal, undefined, Math.min(REFINE_MOVETIME_MS, remainingMs),
           { startFen: game.startFen, moves: game.moves.slice(0, idx).map((move) => move.uci) }
         );
         if (evalResult.depth > positions[idx].depth) positions[idx] = evalResult;
@@ -367,12 +371,12 @@ async function findDeferredBrilliantContinuations(
   positions: PositionEval[],
   depth: number,
   engine: StockfishEngine,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  deadlineAt = now() + 1000
 ): Promise<Map<number, string>> {
   const result = new Map<number, string>();
   const book = analyzeBook(game.moves.map((move) => move.san));
-  const startedAt = now();
-  const budgetMs = 10000;
+  const remainingBudget = () => Math.max(0, Math.floor(deadlineAt - now()));
   const maxContinuations = 16;
   const captureEvaluations = new Map<string, number>();
 
@@ -392,7 +396,7 @@ async function findDeferredBrilliantContinuations(
     let worstForSacrificer = 100;
     for (const capture of captures) {
       if (signal?.aborted) throw new Error("cancelled");
-      if (now() - startedAt > budgetMs) return false;
+      if (remainingBudget() <= 0) return false;
       const afterCapture = new Chess(fen);
       const played = afterCapture.move({ from: capture.from, to: capture.to, promotion: capture.promotion });
       if (!played) return false;
@@ -408,7 +412,7 @@ async function findDeferredBrilliantContinuations(
           1,
           signal,
           undefined,
-          900,
+          Math.min(700, remainingBudget()),
           { startFen: game.startFen, moves: [...historyMoves, captureUci] }
         );
         chance = winForRated(evaluated.evalResult.lines[0].score, sacrificeColor, elo);
@@ -423,7 +427,7 @@ async function findDeferredBrilliantContinuations(
 
   for (let i = 0; i < game.moves.length; i++) {
     if (signal?.aborted) throw new Error("cancelled");
-    if (now() - startedAt > budgetMs) break;
+    if (remainingBudget() <= 0) break;
     const sacrificeMove = game.moves[i];
     if (book.isBook[i] || sacrificeMove.piece === "p" || sacrificeMove.piece === "k" || i + 2 >= game.moves.length) continue;
 
@@ -472,7 +476,7 @@ async function findDeferredBrilliantContinuations(
     let opponentIndex = i + 1;
     let continuationIndex = i + 2;
     let steps = 0;
-    while (continuationIndex < game.moves.length && steps < maxContinuations && now() - startedAt <= budgetMs) {
+    while (continuationIndex < game.moves.length && steps < maxContinuations && remainingBudget() > 0) {
       const opponentMove = game.moves[opponentIndex];
       const continuation = game.moves[continuationIndex];
       if (!opponentMove || !continuation) break;
