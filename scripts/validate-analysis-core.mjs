@@ -4,7 +4,7 @@ import { fenKey } from "../src/lib/format.ts";
 import { positionKey } from "../src/lib/db.ts";
 import { buildPositionCommand } from "../src/lib/engine.ts";
 import { qBalance } from "../src/lib/see.ts";
-import { gameBudgetMs, slotForPosition } from "../src/lib/analyze.ts";
+import { gameBudgetMs, slotForPosition } from "../src/lib/analysisBudget.ts";
 
 assert.equal(gameBudgetMs(10), 6000, "A ten-ply game gets the configured base budget");
 assert.equal(gameBudgetMs(1), 600, "A one-ply game still budgets both evaluated positions");
