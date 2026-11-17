@@ -13,7 +13,7 @@ interface Props {
 
 function csvCell(value: string | number): string {
   const text = String(value ?? "");
-  return /[",\n\r;]/.test(text) ? \`"\${text.replace(/"/g, '""')}"\` : text;
+  return /[",\n\r;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function downloadProfileReport(profile: PlayerProfile): void {
@@ -25,7 +25,7 @@ function downloadProfileReport(profile: PlayerProfile): void {
       record.opening?.name ?? "", record.opening?.eco ?? "", record.brilliantMoves.length, record.missedWins.length,
     ]),
     ...profile.history.map((entry) => [
-      "Игра против бота", new Date(entry.at).toISOString(), profile.name, \`Stockfish \${entry.botElo} Elo\`,
+      "Игра против бота", new Date(entry.at).toISOString(), profile.name, `Stockfish ${entry.botElo} Elo`,
       entry.result, "", "", "", "", "", "", "", "",
     ]),
   ];
@@ -34,7 +34,7 @@ function downloadProfileReport(profile: PlayerProfile): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = \`chessmart-statistics-\${new Date().toISOString().slice(0, 10)}.csv\`;
+  link.download = `chessmart-statistics-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();
