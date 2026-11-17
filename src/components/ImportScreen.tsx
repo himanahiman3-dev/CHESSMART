@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useEngine } from "../hooks/useEngine";
 import { SAMPLE_GAMES, fetchGameFromLink } from "../lib/importers";
 import { parseGame } from "../lib/analyze";
@@ -170,7 +170,7 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
     setError(null);
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragging(false);
     void onFile(event.dataTransfer.files?.[0]);
@@ -182,7 +182,7 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
   const black = game?.headers.Black || "Чёрные";
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#20231f] text-[#f0f2eb]">
+    <div className="relative min-h-screen overflow-hidden bg-[#20231f] text-[#f0f2eb]">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         <div className="absolute -top-56 left-[16%] h-[520px] w-[520px] rounded-full bg-[#78a84b]/[0.09] blur-[120px]" />
         <div className="absolute right-[-12%] top-[30rem] h-[420px] w-[420px] rounded-full bg-[#a2c96c]/[0.035] blur-[110px]" />
@@ -523,6 +523,6 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
           </div>
         </footer>
       </div>
-    </main>
+    </div>
   );
 }
