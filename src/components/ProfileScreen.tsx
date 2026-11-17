@@ -102,7 +102,7 @@ function PuzzleRatingChart({ entries, currentRating }: { entries: PuzzleRatingEn
   );
 }
 
-export function ProfileScreen({ profile, onChange, onBack }: Props) {
+export function ProfileScreen({ profile, onChange, onBack, onOpenAccount }: Props) {
   const [name, setName] = useState(profile.name);
   const [backupNotice, setBackupNotice] = useState<string | null>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
