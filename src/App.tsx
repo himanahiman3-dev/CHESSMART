@@ -138,22 +138,22 @@ function Main() {
   const grouped = ["Играть", "Тренировка", "Изучать"];
 
   return (
-    <div className="min-h-screen bg-[#242522] text-[#f0f0ed]">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[236px] flex-col border-r border-[#383933] bg-[#20211e] lg:flex">
-        <div className="flex h-[76px] items-center gap-3 border-b border-[#383933] px-5">
+    <div className="min-h-screen bg-[#1d211c] text-[#f0f2eb]">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-white/[0.06] bg-[#191d18] shadow-[12px_0_40px_rgba(0,0,0,.12)] lg:flex">
+        <div className="flex h-[82px] items-center gap-3.5 border-b border-white/[0.06] px-5">
           <BrandMark />
-          <div><div className="text-[17px] font-black tracking-tight text-white">CHESSMART</div><div className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#8b8b83]">Chess platform</div></div>
+          <div><div className="text-[16px] font-black tracking-[0.04em] text-white">CHESSMART</div><div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.2em] text-[#87917e]">Chess analysis studio</div></div>
         </div>
-        <nav aria-label="Основная навигация" className="flex-1 overflow-y-auto px-3 py-5">
+        <nav aria-label="Основная навигация" className="chess-scrollbar flex-1 overflow-y-auto px-3 py-6">
           {grouped.map((group) => (
-            <div key={group} className="mb-5">
-              <div className="mb-2 px-3 text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#77786f]">{group}</div>
-              <div className="space-y-1">
+            <div key={group} className="mb-7">
+              <div className="mb-2.5 px-3 text-[9px] font-extrabold uppercase tracking-[0.2em] text-[#788271]">{group}</div>
+              <div className="space-y-1.5">
                 {NAV_ITEMS.filter((item) => item.group === group).map((item) => {
                   const active = mode === item.id;
                   return (
                     <button key={item.id} onClick={() => changeMode(item.id)} aria-current={active ? "page" : undefined}
-                      className={"flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] font-bold transition " + (active ? "bg-[#34442c] text-[#e3f0d5] shadow-[inset_3px_0_0_#81b64c]" : "text-[#aaa99f] hover:bg-[#2b2c27] hover:text-white")}>
+                      className={"group flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[11px] font-bold transition-all " + (active ? "bg-gradient-to-r from-[#384a30] to-[#2c3827] text-[#e3f0d5] shadow-[inset_3px_0_0_#a5ce78,0_8px_22px_rgba(0,0,0,.12)] ring-1 ring-[#8eaf68]/15" : "text-[#a3ac9a] hover:bg-white/[0.045] hover:text-white")}>
                       <NavIcon name={item.icon} active={active} />
                       <span>{item.label}</span>
                     </button>
@@ -163,37 +163,37 @@ function Main() {
             </div>
           ))}
         </nav>
-        <div className="border-t border-[#383933] p-4">
-          <div className="flex items-center gap-3 rounded-lg bg-[#292a25] p-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#4d6040] text-sm font-black text-white">{profile.name.slice(0, 1).toUpperCase()}</div>
+        <div className="border-t border-white/[0.06] p-4">
+          <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[#2b3327] to-[#22271f] p-3.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#8ca96b]/25 bg-[#526d3e] text-sm font-black text-white shadow-inner">{profile.name.slice(0, 1).toUpperCase()}</div>
             <div className="min-w-0 flex-1"><div className="truncate text-xs font-bold text-white">{profile.name}</div><div className="text-[10px] text-[#96968d]">Против бота · {profile.rating} Elo</div></div>
           </div>
-          <div className="mt-3 text-center text-[9px] font-semibold uppercase tracking-[0.15em] text-[#66675f]">Independent chess toolkit</div>
+          <div className="mt-4 flex items-center justify-center gap-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#687362]"><span className="h-1 w-1 rounded-full bg-[#90b96a]" />Independent chess toolkit</div>
         </div>
       </aside>
 
-      <div className="min-h-screen lg:pl-[236px]">
-        <header className="sticky top-0 z-30 border-b border-[#383933] bg-[#242522]/95 px-4 py-3 backdrop-blur-xl sm:px-6">
-          <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4">
+      <div className="min-h-screen lg:pl-[248px]">
+        <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[#1d211c]/90 px-4 py-3.5 backdrop-blur-2xl sm:px-7">
+          <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="lg:hidden"><BrandMark /></div>
-              <div><div className="text-sm font-extrabold text-white">{activeItem.label}</div><div className="mt-0.5 text-[10px] text-[#85867e]">Chessmart · {activeItem.group}</div></div>
+              <div><div className="text-sm font-extrabold tracking-tight text-white">{activeItem.label}</div><div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#849078]">Chessmart <span className="mx-1 text-[#59634f]">/</span> {activeItem.group}</div></div>
             </div>
             <div className="hidden items-center gap-3 sm:flex">
-              <div className="text-right"><div className="text-[10px] text-[#85867e]">Локальный рейтинг против Stockfish</div><div className="text-sm font-bold tabular-nums text-[#d9edc4]">{profile.rating} Elo</div></div>
-              <div className="h-8 w-px bg-[#41423b]" />
-              <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#596b49] bg-[#34442c] text-sm font-black text-[#e3f0d5]">{profile.name.slice(0, 1).toUpperCase()}</div>
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.035] px-3.5 py-2 text-right"><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#7f8c73]">Локальный рейтинг</div><div className="mt-0.5 text-sm font-black tabular-nums text-[#d9edc4]">{profile.rating} <span className="text-[9px] font-bold text-[#89977c]">ELO</span></div></div>
+              <div className="h-8 w-px bg-white/[0.08]" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#596b49] bg-[#34442c] text-sm font-black text-[#e3f0d5] shadow-[0_4px_14px_rgba(0,0,0,.18)]">{profile.name.slice(0, 1).toUpperCase()}</div>
             </div>
           </div>
         </header>
 
-        <nav aria-label="Навигация" className="flex gap-1 overflow-x-auto border-b border-[#383933] bg-[#20211e] px-3 py-2 lg:hidden">
+        <nav aria-label="Навигация" className="chess-scrollbar flex gap-1.5 overflow-x-auto border-b border-white/[0.06] bg-[#191d18] px-3 py-2.5 lg:hidden">
           {NAV_ITEMS.map((item) => {
             const active = mode === item.id;
-            return <button key={item.id} onClick={() => changeMode(item.id)} aria-current={active ? "page" : undefined} className={"flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-[11px] font-bold " + (active ? "bg-[#34442c] text-[#e3f0d5]" : "text-[#aaa99f] hover:bg-[#2b2c27]") }><NavIcon name={item.icon} active={active} /><span>{item.label}</span></button>;
+            return <button key={item.id} onClick={() => changeMode(item.id)} aria-current={active ? "page" : undefined} className={"flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2.5 text-[10px] font-bold transition " + (active ? "bg-[#394a30] text-[#e3f0d5] ring-1 ring-[#9cbd77]/20" : "text-[#a3ac9a] hover:bg-white/[0.045] hover:text-white") }><NavIcon name={item.icon} active={active} /><span>{item.label}</span></button>;
           })}
         </nav>
-        <main className="min-h-[calc(100vh-64px)]">{page}</main>
+        <main className="min-h-[calc(100vh-64px)] bg-[#1d211c]">{page}</main>
       </div>
     </div>
   );
