@@ -54,6 +54,12 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   const startedRef = useRef(false);
   const isolated = canUseThreads();
 
+  // The engine owns its Worker and Blob URLs; release both when the provider unmounts
+  // or replaces the engine instance.
+  useEffect(() => () => {
+    engine?.terminate();
+  }, [engine]);
+
   const setVariant = useCallback((v: EngineVariant) => {
     setVariantState(v);
     try {
