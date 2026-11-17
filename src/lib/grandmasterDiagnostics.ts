@@ -120,7 +120,6 @@ function countCenter(map: AttackMap, squares: Set<string>): number {
 }
 function countKingShield(king: PieceOnBoard | undefined, pieces: PieceOnBoard[]): number {
   if (!king) return 0;
-  const direction = king.color === "w" ? -1 : 1;
   return pieces.filter((p) => p.color === king.color && p.type === "p" &&
     Math.abs(p.file - king.file) <= 1 && (king.color === "w" ? p.rank > king.rank : p.rank < king.rank) &&
     Math.abs(p.rank - king.rank) <= 2).length;
