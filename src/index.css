@@ -618,3 +618,100 @@ button:not(:disabled):hover {
   .analyzing-grid { grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr) !important; }
   .analyzing-screen header > div:nth-child(2) > div:last-child { display: none; }
 }
+
+
+/* ───────────────── Chess Review: complete studio skin ─────────────────
+   Keep the board squares and move-class colors untouched; restyle only
+   the surrounding review workspace and its controls. */
+.review-screen {
+  min-height: 100vh;
+  color: #e7eee2;
+  background:
+    radial-gradient(ellipse at 18% 0%, rgba(112, 151, 82, .10), transparent 38%),
+    linear-gradient(145deg, #172119 0%, #1b261d 52%, #151e17 100%);
+}
+.review-screen .review-header {
+  border-color: rgba(151, 179, 126, .20) !important;
+  background: rgba(22, 31, 23, .94) !important;
+  box-shadow: 0 12px 34px rgba(0,0,0,.22) !important;
+}
+.review-screen .review-header button[title],
+.review-screen .review-board-controls button {
+  color: #e0ead8 !important;
+  border: 1px solid rgba(151, 179, 126, .18) !important;
+  background: linear-gradient(145deg, #2b392b, #202d22) !important;
+}
+.review-screen .review-header button[title]:hover,
+.review-screen .review-board-controls button:hover:not(:disabled) {
+  background: linear-gradient(145deg, #394b35, #293a2b) !important;
+  border-color: rgba(163, 209, 111, .48) !important;
+}
+.review-screen .review-header button.bg-\\[\\#81b64c\\] {
+  color: #17210f !important;
+  border-color: transparent !important;
+  background: #8dbd5c !important;
+}
+.review-screen .review-board-card,
+.review-screen .review-panel-card {
+  border-color: rgba(151, 179, 126, .22) !important;
+  background: linear-gradient(145deg, rgba(39, 53, 40, .98), rgba(27, 40, 29, .98)) !important;
+  box-shadow: 0 18px 46px rgba(0,0,0,.22) !important;
+}
+.review-screen .review-extra-controls {
+  border-color: rgba(151, 179, 126, .20) !important;
+  background: rgba(23, 34, 25, .86) !important;
+}
+.review-screen .review-panel-card > div:first-child {
+  border: 1px solid rgba(151, 179, 126, .14);
+  background: rgba(20, 30, 22, .88) !important;
+}
+.review-screen .review-panel-card > div:first-child button {
+  border-radius: 8px;
+}
+.review-screen .review-panel-card > div:first-child button[class*="bg-[#3d3a37]"] {
+  color: #e9f3df !important;
+  background: linear-gradient(145deg, #3b5035, #2c402d) !important;
+  box-shadow: inset 0 0 0 1px rgba(163, 209, 111, .20);
+}
+.review-screen .review-panel-card > div:first-child button:not([class*="bg-[#3d3a37]"]) {
+  color: #aebca6 !important;
+}
+.review-screen .review-extra-controls select {
+  color: #e5efdf !important;
+  border-color: rgba(151, 179, 126, .28) !important;
+  background: #1b281d !important;
+}
+.review-screen .review-player-bar {
+  color: #e1eadb;
+}
+.review-screen .review-board-controls button:disabled {
+  opacity: .28 !important;
+}
+@media (max-width: 640px) {
+  .review-screen .review-header {
+    position: sticky;
+    top: 0;
+    padding: .4rem .6rem !important;
+  }
+  .review-screen .review-header > div:last-child {
+    gap: .3rem !important;
+  }
+  .review-screen .review-header > div:last-child button {
+    min-height: 34px;
+    padding: .35rem .55rem !important;
+    font-size: 10px;
+  }
+  .review-screen .review-board-controls button {
+    flex: 1 1 0;
+    max-width: 62px;
+    font-size: 15px !important;
+  }
+  .review-screen .review-extra-controls button,
+  .review-screen .review-extra-controls select {
+    min-height: 36px;
+    font-size: 10px !important;
+  }
+  .review-screen .review-panel-card {
+    border-radius: 14px !important;
+  }
+}
