@@ -552,6 +552,7 @@ export function buildAcademyDashboard(
     if (entry.solved) solvedIds.add("bank:" + entry.mode + ":" + entry.puzzleId);
   }
   const solvedPuzzleCount = solvedIds.size;
+  const unsolvedPuzzleCount = safeArray(profile.puzzles).filter((puzzle) => !isFiniteNumber(puzzle.solvedAt)).length;
   const averageAccuracy = safeArray(profile.reviews).length
     ? safeArray(profile.reviews).reduce((sum, review) => sum + (isFiniteNumber(review.accuracy?.average) ? Math.max(0, Math.min(100, review.accuracy.average)) : 0), 0) / safeArray(profile.reviews).length
     : null;
@@ -572,7 +573,7 @@ export function buildAcademyDashboard(
   return {
     todayKey: academyDayKey(currentDate.getTime()),
     solvedPuzzleCount,
-    unsolvedPuzzleCount: safeArray(profile.puzzles).length - solvedPuzzleCount,
+    unsolvedPuzzleCount,
     reviewedGameCount: reviewCount,
     trainingSessionCount: sessionCount,
     averageAccuracy,
