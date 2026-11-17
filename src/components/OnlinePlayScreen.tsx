@@ -133,10 +133,6 @@ async function encodeAvatar(file: File): Promise<string> {
   return btoa(binary);
 }
 
-function clockText(ms: number): string {
-  const seconds = Math.max(0, Math.ceil(ms / 1000));
-  return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
-}
 function typeLabel(type: string): string {
   return type === "bullet" ? "Bullet" : type === "blitz" ? "Blitz" : "Rapid";
 }
