@@ -14,6 +14,7 @@ import type { StockfishEngine } from "./engine";
 import { getCachedPosition, putCachedPosition } from "./db";
 import { analyzeBook, openingForCode } from "./openings";
 import { detectSacrifice } from "./see";
+import { qualifiesAsBrilliant } from "./brilliant";
 import { buildComment } from "./coach";
 import { cpFor, estimateGameRating, gameAccuracy, moveAccuracy, winFor, winForRated, winPercent } from "./winprob";
 
@@ -120,21 +121,7 @@ const CACHE_ACCEPT_DEPTH = 16;
  * Конкретные числа ниже, помеченные «приближение», Chess.com не публикует.
  */
 
-/** Brilliant — «лучший или почти лучший ход»: максимум потерянных ожидаемых очков, п.п. (приближение). */
-const BRILLIANT_MAX_LOSS = 3;
-/** После жертвы позиция не должна быть плохой: ожидаемые очки не ниже, % (приближение). */
-const BRILLIANT_MIN_AFTER = 40;
-/**
- * «Не были полностью выигрывающим, даже не найдя этот ход»: ожидаемые очки лучшей АЛЬТЕРНАТИВЫ
- * не выше этого значения, % (приближение). Так как ожидаемые очки уже зависят от рейтинга,
- * порог почти одинаков; у новичков чуть мягче.
- */
-function brilliantAltLimit(elo?: number): number {
-  if (elo === undefined) return 85;
-  if (elo < 1000) return 88;
-  if (elo < 1800) return 85;
-  return 82;
-}
+/** Числовые приближения критериев Brilliant вынесены в ./brilliant. */
 
 /** Best: лучший ход движка либо ход, теряющий пренебрежимо мало (п.п. ожидаемых очков). */
 const BEST_EPS = 0.1;
@@ -462,14 +449,16 @@ async function findDeferredBrilliantContinuations(
     const cpAfter = cpFor(scoreAfter, sacrificeMove.color);
     const lostMate = best.score.mate !== undefined && cpBefore > 0 && !(scoreAfter.mate !== undefined && cpAfter > 0);
     const allowedMate = scoreAfter.mate !== undefined && cpAfter < 0 && !(best.score.mate !== undefined && cpBefore < 0);
-    const initialIsBrilliant =
-      legal > 1 &&
-      altWin !== null &&
-      !lostMate &&
-      !allowedMate &&
-      winLoss <= BRILLIANT_MAX_LOSS &&
-      altWin <= brilliantAltLimit(elo) &&
-      winAfter >= BRILLIANT_MIN_AFTER;
+    const initialIsBrilliant = qualifiesAsBrilliant({
+      sacrifice: sacrifice.sacrifice,
+      legalMoves: legal,
+      alternativeWin: altWin,
+      lostMate,
+      allowedMate,
+      winLoss,
+      winAfter,
+      elo,
+    });
     if (!initialIsBrilliant) continue;
 
     const targetSquare = sacrificeMove.to;
@@ -507,7 +496,17 @@ async function findDeferredBrilliantContinuations(
         const continuationWinBefore = winForRated(continuationBefore.score, sacrificeMove.color, elo);
         const continuationWinAfter = winForRated(continuationAfter.score, sacrificeMove.color, elo);
         const continuationLoss = Math.max(0, continuationWinBefore - continuationWinAfter);
-        if (continuationLoss <= BRILLIANT_MAX_LOSS && continuationWinAfter >= BRILLIANT_MIN_AFTER) {
+        if (qualifiesAsBrilliant({
+          sacrifice: true,
+          legalMoves: legalMoveCount(continuation.fenBefore),
+          alternativeWin: null,
+          lostMate: false,
+          allowedMate: false,
+          winLoss: continuationLoss,
+          winAfter: continuationWinAfter,
+          elo,
+          continuation: true,
+        })) {
           result.set(continuationIndex, targetPiece);
         }
       }
@@ -600,16 +599,17 @@ export function buildReview(
     // после него позиция не плохая, и без него вы не были бы полностью выигрывающим.
     // «Лучшая альтернатива»: если сыгран лучший ход — вторая линия; если почти лучший — лучшая линия.
     const altWin = playedIsBest ? (second ? winForRated(second.score, color, elo) : null) : winBefore;
-    const isBrilliant =
-      (sac.sacrifice &&
-        legal > 1 &&
-        altWin !== null &&
-        !lostMate &&
-        !allowedMate &&
-        winLoss <= BRILLIANT_MAX_LOSS &&
-        altWin <= brilliantAltLimit(elo) &&
-        winAfter >= BRILLIANT_MIN_AFTER) ||
-      (isDeferredBrilliant && !lostMate && !allowedMate && winLoss <= BRILLIANT_MAX_LOSS && winAfter >= BRILLIANT_MIN_AFTER);
+    const isBrilliant = qualifiesAsBrilliant({
+      sacrifice: sac.sacrifice || isDeferredBrilliant,
+      legalMoves: legal,
+      alternativeWin: altWin,
+      lostMate,
+      allowedMate,
+      winLoss,
+      winAfter,
+      elo,
+      continuation: isDeferredBrilliant,
+    });
 
     if (isBook) {
       cls = "book";
