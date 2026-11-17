@@ -451,6 +451,14 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     sendMove(resolved, true);
   }, [premove, game?.id, game?.fen, game?.status, myColor, turn, movePending]);
   useEffect(() => {
+    if (premove && game?.status === "completed") {
+      premoveGameIdRef.current = null;
+      setPremove(null);
+      setNotice("Premove отменён: партия уже завершена.");
+    }
+  }, [premove, game?.id, game?.status]);
+
+  useEffect(() => {
     if (!session || !game || game.status !== "active" || timeoutRequestedRef.current) return;
     const expired = (turn === "w" && whiteClock <= 0) || (turn === "b" && blackClock <= 0);
     if (!expired || now - timeoutLastAttemptRef.current < 2500) return;
