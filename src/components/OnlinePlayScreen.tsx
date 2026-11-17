@@ -332,6 +332,11 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     const next = updateGameplayPreferences(preferences, { [key]: value });
     setPreferences(next);
     setSoundEnabled(next.soundEnabled);
+    if (key === "premovesEnabled" && value === false) {
+      premoveGameIdRef.current = null;
+      setPremove(null);
+      setNotice("Очередь premove очищена.");
+    }
   };
 
   useEffect(() => {
