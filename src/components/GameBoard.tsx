@@ -218,28 +218,28 @@ export function GameBoard({
   ], [arrows, premove]);
 
   useEffect(() => {
-    if (!premove || !onClearPremove) return;
+    if ((!premove && !promotionDraft) || (!onClearPremove && !promotionDraft)) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        setPromotionDraft(null);
-        onClearPremove();
+        if (promotionDraft) setPromotionDraft(null);
+        if (premove) onClearPremove?.();
         setSelected(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [premove, onClearPremove]);
+  }, [premove, promotionDraft, onClearPremove]);
 
   return (
     <div
       className="relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40"
       style={{ containerType: "inline-size" }}
       onContextMenu={(event) => {
-        if (!premove || !onClearPremove) return;
+        if (!premove && !promotionDraft) return;
         event.preventDefault();
         setPromotionDraft(null);
-        onClearPremove();
+        if (premove) onClearPremove?.();
         setSelected(null);
       }}
     >
