@@ -1,8 +1,5 @@
 import type { PlayerProfile } from "./playerProfile";
 import type { GamePhase } from "./learningStats";
-import { positionCacheSize } from "./db";
-import { clearEngineCache } from "./engineFiles";
-import { setSoundEnabled } from "./sound";
 
 export type SuitePreferenceKey = "compactMode" | "reducedMotion" | "soundsEnabled";
 export type QuestPeriod = "daily" | "weekly";
@@ -230,7 +227,7 @@ export function applySuitePreferences(settings: SuiteSettings): void {
     document.documentElement.classList.toggle("chessmart-compact", settings.compactMode);
     document.documentElement.classList.toggle("chessmart-reduce-motion", settings.reducedMotion);
   }
-  setSoundEnabled(settings.soundsEnabled);
+  void import("./sound.ts").then(({ setSoundEnabled }) => setSoundEnabled(settings.soundsEnabled));
 }
 
 export function getSuitePreferenceSummary(settings: SuiteSettings): string[] {
@@ -501,14 +498,13 @@ export function getReviewAccuracyDelta(before: number, after: number): number {
   return after - before;
 }
 
-export function getMoveClassCounts(profile: PlayerProfile): Record<string, number> {
-  const counts: Record<string, number> = { brilliant: 0, great: 0, best: 0, excellent: 0, good: 0, book: 0, inaccuracy: 0, mistake: 0, miss: 0, blunder: 0 };
-  for (const review of safeArray(profile.reviews)) {
-    counts.brilliant += review.brilliantMoves.length;
-    counts.miss += review.missedWins.length;
-  }
-  return counts;
+export function getSpecialMoveCounts(profile: PlayerProfile): { brilliant: number; missedWins: number } {
+  return safeArray(profile.reviews).reduce((counts, review) => ({
+    brilliant: counts.brilliant + review.brilliantMoves.length,
+    missedWins: counts.missedWins + review.missedWins.length,
+  }), { brilliant: 0, missedWins: 0 });
 }
+
 
 export function getRatingVolatility(profile: PlayerProfile, count = 10): number {
   const entries = safeArray(profile.history).slice(-Math.max(2, count));
@@ -549,7 +545,7 @@ export async function getStorageDiagnostics(): Promise<StorageDiagnostics> {
   let quotaBytes: number | null = null;
   const indexedDbAvailable = typeof indexedDB !== "undefined";
   const cacheApiAvailable = typeof caches !== "undefined";
-  try { positionEntries = await positionCacheSize(); } catch { /* Storage may be blocked. */ }
+  try { const db = await import("./db.ts"); positionEntries = await db.positionCacheSize(); } catch { /* Storage may be blocked. */ }
   try {
     if (cacheApiAvailable) {
       const cache = await caches.open("stockfish19-engine-v1");
@@ -571,12 +567,13 @@ export function getStorageHealthLabel(health: StorageDiagnostics["health"]): str
 }
 
 export async function clearAnalysisStorage(): Promise<void> {
-  const { clearPositionCache } = await import("./db");
+  const { clearPositionCache } = await import("./db.ts");
   await clearPositionCache();
 }
 
 export async function clearDownloadedEngineStorage(): Promise<void> {
-  await clearEngineCache();
+  const engineFiles = await import("./engineFiles.ts");
+  await engineFiles.clearEngineCache();
 }
 
 async function measureEndpoint(id: EndpointHealth["id"], label: string, url: string, init?: RequestInit): Promise<EndpointHealth> {
