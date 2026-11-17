@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "validate:openings": "node scripts/validate-opening-book.mjs",
-    "validate:brilliant-sacrifices": "node --experimental-strip-types scripts/validate-brilliant-sacrifices.mjs"
+    "validate:brilliant-sacrifices": "node --experimental-strip-types scripts/validate-brilliant-sacrifices.mjs",
+    "validate:analysis-core": "node --experimental-strip-types scripts/validate-analysis-core.mjs"
   },
   "dependencies": {
     "chess.js": "^1.4.0",
