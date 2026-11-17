@@ -79,6 +79,7 @@ function Main() {
   const [error, setError] = useState<string | null>(null);
   const [isRefining, setIsRefining] = useState(false);
   const [profile, setProfile] = useState<PlayerProfile>(() => loadPlayerProfile());
+  const [mobileMore, setMobileMore] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => savePlayerProfile(profile), [profile]);
@@ -232,13 +233,31 @@ function Main() {
           </div>
         </header>
 
-        <nav aria-label="Навигация" className="chess-scrollbar flex gap-1.5 overflow-x-auto border-b border-white/[0.06] bg-[#191d18] px-3 py-2.5 lg:hidden">
-          {NAV_ITEMS.map((item) => {
-            const active = mode === item.id;
-            return <button key={item.id} onClick={() => changeMode(item.id)} aria-current={active ? "page" : undefined} className={"flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2.5 text-[10px] font-bold transition " + (active ? "bg-[#394a30] text-[#e3f0d5] ring-1 ring-[#9cbd77]/20" : "text-[#a3ac9a] hover:bg-white/[0.045] hover:text-white") }><NavIcon name={item.icon} active={active} /><span>{item.label}</span></button>;
-          })}
+        <nav aria-label="Навигация" className="hidden lg:hidden">
+          {NAV_ITEMS.map((item) => <button key={item.id} onClick={() => changeMode(item.id)}>{item.label}</button>)}
         </nav>
-        <main className="min-h-[calc(100vh-64px)] bg-[#1d211c]">{page}</main>
+        <main className="min-h-[calc(100vh-64px)] bg-[#1d211c] mobile-app-main">{page}</main>
+        <nav aria-label="Мобильная навигация" className="mobile-bottom-nav lg:hidden">
+          {(["review", "play", "online", "profile"] as MainMode[]).map((id) => {
+            const item = NAV_ITEMS.find((entry) => entry.id === id)!;
+            const active = mode === id;
+            return <button key={id} onClick={() => changeMode(id)} aria-current={active ? "page" : undefined} className={active ? "mobile-nav-item active" : "mobile-nav-item"}>
+              <NavIcon name={item.icon} active={active} /><span>{id === "review" ? "Анализ" : id === "profile" ? "Профиль" : id === "online" ? "Онлайн" : "Играть"}</span>
+            </button>;
+          })}
+          <div className="mobile-more-wrap">
+            <button type="button" onClick={() => setMobileMore((open) => !open)} aria-expanded={mobileMore} className={mobileMore ? "mobile-nav-item active" : "mobile-nav-item"}>
+              <span className="mobile-more-dots">•••</span><span>Ещё</span>
+            </button>
+            {mobileMore && <div className="mobile-more-menu">
+              {NAV_ITEMS.filter((item) => !(["review", "play", "online", "profile"] as MainMode[]).includes(item.id)).map((item) => (
+                <button key={item.id} onClick={() => { changeMode(item.id); setMobileMore(false); }} className="mobile-more-option">
+                  <NavIcon name={item.icon} /><span>{item.label}</span>
+                </button>
+              ))}
+            </div>}
+          </div>
+        </nav>
       </div>
     </div>
   );
