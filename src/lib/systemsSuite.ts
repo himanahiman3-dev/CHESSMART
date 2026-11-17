@@ -280,9 +280,9 @@ export function getPeakRating(profile: PlayerProfile): number {
 }
 
 export function getRatingChange(profile: PlayerProfile): number {
-  const history = safeArray(profile.history);
-  if (!history.length) return 0;
-  return profile.rating - (history[0].ratingAfter - history[0].change);
+  const first = safeArray(profile.history).find((entry) => finite(entry.ratingAfter) && finite(entry.change));
+  if (!first) return 0;
+  return profile.rating - (first.ratingAfter - first.change);
 }
 
 export function getPuzzleSolveRate(profile: PlayerProfile): number | null {
@@ -593,7 +593,7 @@ async function measureEndpoint(id: EndpointHealth["id"], label: string, url: str
   }
 }
 
-export async function checkOnlineServices(supabaseUrl: string, anonKey: string): Promise<NetworkDiagnostics> {
+export async function checkOnlineServices(supabaseUrl: string): Promise<NetworkDiagnostics> {
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
   if (!online) return { checkedAt: Date.now(), online: false, endpoints: [] };
   const siteUrl = typeof window !== "undefined" ? window.location.origin + "/" : "/";
@@ -603,7 +603,6 @@ export async function checkOnlineServices(supabaseUrl: string, anonKey: string):
   if (base && anonKey.trim()) {
     endpoints.push(await measureEndpoint("online-api", "Сервер онлайн-игры", base + "/functions/v1/game-action", {
       method: "OPTIONS",
-      headers: { apikey: anonKey, "Access-Control-Request-Method": "POST" },
     }));
   }
   return { checkedAt: Date.now(), online: endpoints.some((item) => item.ok), endpoints };
