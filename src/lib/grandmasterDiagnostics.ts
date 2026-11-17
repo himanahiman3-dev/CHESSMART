@@ -593,7 +593,6 @@ for (const group of CATEGORIES) {
   }
 }
 const ALIASES: Record<string,string> = {
-  whiteMajorCount: "whiteRooks", blackMajorCount: "blackRooks",
   whiteLightSquarePieces: "whiteLightBishops", whiteDarkSquarePieces: "whiteDarkBishops",
   blackLightSquarePieces: "blackLightBishops", blackDarkSquarePieces: "blackDarkBishops",
   whiteAttackedPawns: "whiteAttackedPieces", blackAttackedPawns: "blackAttackedPieces",
