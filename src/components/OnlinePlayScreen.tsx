@@ -115,7 +115,7 @@ async function encodeAvatar(file: File): Promise<string> {
   context.drawImage(bitmap, sx, sy, side, side, 0, 0, 512, 512);
   bitmap.close();
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Не удалось обработать изображение.")), "image/webp", 0.82);
+    canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Не удалось обработать изображение.")), "image/jpeg", 0.86);
   });
   if (blob.size > 1_048_576) throw new Error("Не удалось сжать аватар до 1 МБ.");
   const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -195,7 +195,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
 
   const saveAvatar = async (file: File, activeSession: OnlineSession) => {
     const avatarData = await encodeAvatar(file);
-    const data = await callAction(url, key, activeSession, "update_avatar", { avatarData, contentType: "image/webp" });
+    const data = await callAction(url, key, activeSession, "update_avatar", { avatarData, contentType: "image/jpeg" });
     if (!data.profile) throw new Error("Сервер не вернул обновлённый профиль.");
     setOnlineProfile(data.profile);
     publishAccountProfile(data.profile);
