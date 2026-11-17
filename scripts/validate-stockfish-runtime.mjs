@@ -3,10 +3,8 @@ import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import readline from "node:readline";
 
-const root = fileURLToPath(new URL("..", import.meta.url));
 const engineDir = resolve(process.argv[2] ?? "");
 assert.ok(process.argv[2], "Pass the directory containing the release JS/WASM pairs");
 
