@@ -315,6 +315,20 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
     if (!current) return;
     setHint(true);
     setFeedback("revealed");
+    const at = Date.now();
+    const ratingEntry: PuzzleRatingEntry = {
+      at,
+      puzzleId: current.id,
+      mode,
+      solved: false,
+      change: 0,
+      ratingAfter: stats.rating,
+    };
+    onChange({
+      ...profile,
+      puzzleRating: stats.rating,
+      puzzleRatingHistory: [...profile.puzzleRatingHistory, ratingEntry].slice(-180),
+    });
     setStats((previous) => ({ ...previous, attempts: previous.attempts + 1 }));
   };
   const isConfigured = bank.length > 0;
