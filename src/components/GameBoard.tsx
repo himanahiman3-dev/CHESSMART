@@ -102,7 +102,7 @@ export function GameBoard({
   autoQueen = true,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
-  const [promotionDraft, setPromotionDraft] = useState<{ from: string; to: string } | null>(null);
+  const [promotionDraft, setPromotionDraft] = useState<{ from: string; to: string; kind: "move" | "premove" } | null>(null);
 
   useEffect(() => setSelected(null), [fen, interactive]);
 
@@ -131,7 +131,7 @@ export function GameBoard({
     const candidates = getPremoveMoves(fen, allowedColor, from).filter((move) => move.to === to);
     if (!candidates.length) return false;
     if (candidates.some((move) => move.promotion) && !autoQueen) {
-      setPromotionDraft({ from, to });
+      setPromotionDraft({ from, to, kind: "premove" });
       return true;
     }
     const candidate = createPremove(fen, allowedColor, from, to, "q");
@@ -147,6 +147,10 @@ export function GameBoard({
         const piece = chess.get(from as Square);
         if (!piece || !canMoveColor(piece.color)) return false;
         const isPromo = piece.type === "p" && (to[1] === "8" || to[1] === "1");
+        if (isPromo && !autoQueen) {
+          setPromotionDraft({ from, to, kind: "move" });
+          return true;
+        }
         const mv = chess.move({ from: from as Square, to: to as Square, promotion: isPromo ? "q" : undefined });
         const after = chess.fen();
         chess.undo();
@@ -321,8 +325,28 @@ export function GameBoard({
                   type="button"
                   aria-label={piece === "q" ? "Ферзь" : piece === "r" ? "Ладья" : piece === "b" ? "Слон" : "Конь"}
                   onClick={() => {
-                    const chosen = createPremove(fen, allowedColor, promotionDraft.from, promotionDraft.to, piece);
-                    if (chosen) onPremove?.(chosen);
+                    if (promotionDraft.kind === "premove" && allowedColor) {
+                      const chosen = createPremove(fen, allowedColor, promotionDraft.from, promotionDraft.to, piece);
+                      if (chosen) onPremove?.(chosen);
+                    } else if (promotionDraft.kind === "move" && chess && onMove) {
+                      try {
+                        const next = new Chess(fen);
+                        const moved = next.move({
+                          from: promotionDraft.from as Square,
+                          to: promotionDraft.to as Square,
+                          promotion: piece,
+                        });
+                        if (moved) {
+                          onMove({
+                            from: moved.from, to: moved.to, san: moved.san,
+                            uci: moved.from + moved.to + (moved.promotion ?? ""),
+                            fenAfter: next.fen(),
+                          });
+                        }
+                      } catch {
+                        // Invalid promotion choice is ignored; the live FEN remains unchanged.
+                      }
+                    }
                     setPromotionDraft(null);
                     setSelected(null);
                   }}
