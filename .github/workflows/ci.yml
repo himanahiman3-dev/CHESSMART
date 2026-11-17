@@ -18,7 +18,7 @@ jobs:
   verify:
     name: Typecheck and production build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -78,5 +78,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
           bash scripts/validate-online-sql.sh
+      - name: Smoke-test official Stockfish 19 WASM runtimes
+        run: |
+          set -euo pipefail
+          STOCKFISH_DIR="$(mktemp -d)"
+          trap 'rm -rf "$STOCKFISH_DIR"' EXIT
+          cp public/engine/stockfish-19-lite.js "$STOCKFISH_DIR/stockfish-19-lite.js"
+          cp public/engine/stockfish-19-lite-single.js "$STOCKFISH_DIR/stockfish-19-lite-single.js"
+          RELEASE="https://github.com/nmrugg/stockfish.js/releases/download/v19.0.1"
+          curl --fail --location --retry 3 "$RELEASE/stockfish-19-lite.wasm" --output "$STOCKFISH_DIR/stockfish-19-lite.wasm"
+          curl --fail --location --retry 3 "$RELEASE/stockfish-19-lite-single.wasm" --output "$STOCKFISH_DIR/stockfish-19-lite-single.wasm"
+          curl --fail --location --retry 3 "$RELEASE/stockfish-19-single.js" --output "$STOCKFISH_DIR/stockfish-19-single.js"
+          curl --fail --location --retry 3 "$RELEASE/stockfish-19-single.wasm" --output "$STOCKFISH_DIR/stockfish-19-single.wasm"
+          node scripts/validate-stockfish-runtime.mjs "$STOCKFISH_DIR"
       - name: Production build
         run: npm run build
