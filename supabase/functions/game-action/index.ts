@@ -464,7 +464,10 @@ Deno.serve(async (req: Request) => {
       const playerId = color === "w" ? game.white_id : game.black_id;
       if (playerId !== user.id) return fail("Сейчас ход соперника.", 409);
       const nowMs = Date.now();
-      const elapsed = game.turn_started_at ? Math.max(0, nowMs - new Date(game.turn_started_at).getTime()) : 0;
+      const isPremove = body.premove === true;
+      // A premove costs 100 ms, matching the standard online-chess penalty.
+      const elapsed = (game.turn_started_at ? Math.max(0, nowMs - new Date(game.turn_started_at).getTime()) : 0)
+        + (isPremove ? 100 : 0);
       const whiteBefore = color === "w" ? Number(game.white_ms) - elapsed : Number(game.white_ms);
       const blackBefore = color === "b" ? Number(game.black_ms) - elapsed : Number(game.black_ms);
       if (whiteBefore <= 0 || blackBefore <= 0) {
@@ -481,7 +484,7 @@ Deno.serve(async (req: Request) => {
       if (!played) return fail("Нелегальный ход.");
       const nextWhite = color === "w" ? whiteBefore + Number(game.increment_ms) : whiteBefore;
       const nextBlack = color === "b" ? blackBefore + Number(game.increment_ms) : blackBefore;
-      const move = { uci, san: played.san, color, at: new Date(nowMs).toISOString() };
+      const move = { uci, san: played.san, color, at: new Date(nowMs).toISOString(), ...(isPremove ? { premove: true } : {}) };
       const moves = [...(Array.isArray(game.moves) ? game.moves : []), move];
       const outcome = gameResult(chess);
       if (outcome) {

@@ -53,6 +53,8 @@ jobs:
         run: npm run validate:analysis-core
       - name: Validate cloud profile sync core
         run: npm run validate:profile-sync
+      - name: Validate premoves and gameplay features
+        run: npm run validate:gameplay
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:

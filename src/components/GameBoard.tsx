@@ -4,6 +4,8 @@ import { Chessboard, defaultArrowOptions } from "react-chessboard";
 import type { Cls } from "../types";
 import { ClsBadge } from "./ClsBadge";
 import { CLS_META } from "../types";
+import { createPremove, getPremoveMoves, type Premove } from "../lib/premoves";
+import type { GameBoardTheme } from "../lib/gameplayPreferences";
 
 export interface BoardArrow {
   from: string;
@@ -34,9 +36,18 @@ interface Props {
   animKey?: number;
   /** Визуальная тема клеток доски. */
   theme?: BoardTheme;
+  /** Разрешает поставить один ход на следующую очередь, пока ходит соперник. */
+  premoveEnabled?: boolean;
+  premove?: Premove | null;
+  onPremove?: (move: Premove) => void;
+  onClearPremove?: () => void;
+  showLegalMoves?: boolean;
+  highlightLastMove?: boolean;
+  animations?: boolean;
+  autoQueen?: boolean;
 }
 
-export type BoardTheme = "classic" | "blue" | "walnut" | "violet";
+export type BoardTheme = GameBoardTheme;
 
 const BOARD_PALETTES: Record<BoardTheme, { light: string; dark: string; accent: string }> = {
   classic: { light: "#ebecd0", dark: "#779556", accent: "#a3d160" },
@@ -81,8 +92,17 @@ export function GameBoard({
   extraSquareStyles,
   animKey = 0,
   theme = "classic",
+  premoveEnabled = false,
+  premove = null,
+  onPremove,
+  onClearPremove,
+  showLegalMoves = true,
+  highlightLastMove = true,
+  animations = true,
+  autoQueen = true,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [promotionDraft, setPromotionDraft] = useState<{ from: string; to: string; kind: "move" | "premove" } | null>(null);
 
   useEffect(() => setSelected(null), [fen, interactive]);
 
@@ -96,6 +116,29 @@ export function GameBoard({
 
   const turn = chess?.turn();
   const canMoveColor = useCallback((c: string) => interactive && !!turn && c === turn && (!allowedColor || allowedColor === c), [interactive, turn, allowedColor]);
+  const canPremoveColor = useCallback(
+    (c: string) => premoveEnabled && !!turn && !!allowedColor && c === allowedColor && turn !== allowedColor,
+    [premoveEnabled, turn, allowedColor]
+  );
+  const selectedPremoveMoves = useMemo(
+    () => selected && allowedColor && canPremoveColor(allowedColor)
+      ? getPremoveMoves(fen, allowedColor, selected)
+      : [],
+    [fen, selected, allowedColor, canPremoveColor]
+  );
+  const selectOrQueuePremove = useCallback((from: string, to: string): boolean => {
+    if (!allowedColor || !onPremove) return false;
+    const candidates = getPremoveMoves(fen, allowedColor, from).filter((move) => move.to === to);
+    if (!candidates.length) return false;
+    if (candidates.some((move) => move.promotion) && !autoQueen) {
+      setPromotionDraft({ from, to, kind: "premove" });
+      return true;
+    }
+    const candidate = createPremove(fen, allowedColor, from, to, "q");
+    if (!candidate) return false;
+    onPremove(candidate);
+    return true;
+  }, [fen, allowedColor, onPremove, autoQueen]);
 
   const tryMove = useCallback(
     (from: string, to: string): boolean => {
@@ -104,6 +147,10 @@ export function GameBoard({
         const piece = chess.get(from as Square);
         if (!piece || !canMoveColor(piece.color)) return false;
         const isPromo = piece.type === "p" && (to[1] === "8" || to[1] === "1");
+        if (isPromo && !autoQueen) {
+          setPromotionDraft({ from, to, kind: "move" });
+          return false;
+        }
         const mv = chess.move({ from: from as Square, to: to as Square, promotion: isPromo ? "q" : undefined });
         const after = chess.fen();
         chess.undo();
@@ -118,7 +165,7 @@ export function GameBoard({
   const squareStyles = useMemo(() => {
     const s: Record<string, CSSProperties> = {};
     const animated = badge && ANIMATED.includes(badge.cls) ? badge : null;
-    if (lastMove) {
+    if (lastMove && highlightLastMove) {
       // Спокойные контрастные оттенки: откуда ушла фигура — холодный,
       // куда пришла — мягкий зелёный. Без кислотного жёлтого.
       s[lastMove.from] = {
@@ -139,27 +186,67 @@ export function GameBoard({
       s[animated.square] = { ...(s[animated.square] ?? {}), ...vars };
     }
     if (selected && chess) {
-      s[selected] = { ...(s[selected] ?? {}), background: "rgba(20, 130, 200, 0.5)" };
-      for (const m of chess.moves({ square: selected as Square, verbose: true })) {
-        s[m.to] = {
-          ...(s[m.to] ?? {}),
-          background: m.captured
-            ? "radial-gradient(transparent 0%, transparent 79%, rgba(20,85,30,0.5) 80%)"
-            : "radial-gradient(rgba(20,85,30,0.5) 19%, transparent 20%)",
+      const selectedIsPremove = selectedPremoveMoves.length > 0;
+      s[selected] = {
+        ...(s[selected] ?? {}),
+        background: selectedIsPremove ? "rgba(220, 62, 62, 0.42)" : "rgba(20, 130, 200, 0.5)",
+        boxShadow: selectedIsPremove ? "inset 0 0 0 3px rgba(220,62,62,.9)" : undefined,
+      };
+      const destinations = selectedIsPremove
+        ? selectedPremoveMoves.map((move) => ({ to: move.to, captured: !!chess.get(move.to as Square) }))
+        : showLegalMoves && canMoveColor(chess.get(selected as Square)?.color ?? "")
+          ? chess.moves({ square: selected as Square, verbose: true })
+          : [];
+      for (const move of destinations) {
+        s[move.to] = {
+          ...(s[move.to] ?? {}),
+          background: selectedIsPremove
+            ? "radial-gradient(rgba(220,62,62,.72) 17%, transparent 19%)"
+            : move.captured
+              ? "radial-gradient(transparent 0%, transparent 79%, rgba(20,85,30,0.5) 80%)"
+              : "radial-gradient(rgba(20,85,30,0.5) 19%, transparent 20%)",
         };
       }
     }
+    if (premove) {
+      s[premove.from] = { ...(s[premove.from] ?? {}), background: "rgba(220,62,62,.38)", boxShadow: "inset 0 0 0 3px rgba(220,62,62,.9)" };
+      s[premove.to] = { ...(s[premove.to] ?? {}), background: "rgba(220,62,62,.22)", boxShadow: "inset 0 0 0 3px rgba(220,62,62,.75)" };
+    }
     if (extraSquareStyles) for (const [k, v] of Object.entries(extraSquareStyles)) s[k] = { ...(s[k] ?? {}), ...v };
     return s;
-  }, [lastMove, selected, chess, extraSquareStyles, badge?.square, badge?.cls, animKey]);
+  }, [lastMove, highlightLastMove, selected, chess, extraSquareStyles, badge?.square, badge?.cls, animKey, premove, selectedPremoveMoves, showLegalMoves, canMoveColor]);
 
-  const chessArrows = useMemo(
-    () => arrows.map((a) => ({ startSquare: a.from, endSquare: a.to, color: a.color })),
-    [arrows]
-  );
+  const chessArrows = useMemo(() => [
+    ...arrows.map((a) => ({ startSquare: a.from, endSquare: a.to, color: a.color })),
+    ...(premove ? [{ startSquare: premove.from, endSquare: premove.to, color: "rgba(230,65,65,.95)" }] : []),
+  ], [arrows, premove]);
+
+  useEffect(() => {
+    if ((!premove && !promotionDraft) || (!onClearPremove && !promotionDraft)) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (promotionDraft) setPromotionDraft(null);
+        if (premove) onClearPremove?.();
+        setSelected(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [premove, promotionDraft, onClearPremove]);
 
   return (
-    <div className="relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40" style={{ containerType: "inline-size" }}>
+    <div
+      className="relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40"
+      style={{ containerType: "inline-size" }}
+      onContextMenu={(event) => {
+        if (!premove && !promotionDraft) return;
+        event.preventDefault();
+        setPromotionDraft(null);
+        if (premove) onClearPremove?.();
+        setSelected(null);
+      }}
+    >
       <Chessboard
         options={{
           id: "review-board",
@@ -167,31 +254,59 @@ export function GameBoard({
           boardOrientation: orientation,
           darkSquareStyle: { backgroundColor: BOARD_PALETTES[theme].dark },
           lightSquareStyle: { backgroundColor: BOARD_PALETTES[theme].light },
-          animationDurationInMs: 180,
-          showAnimations: true,
-          allowDragging: interactive,
+          animationDurationInMs: animations ? 180 : 0,
+          showAnimations: animations,
+          allowDragging: interactive || premoveEnabled,
           allowDrawingArrows: true,
           clearArrowsOnClick: true,
           arrows: chessArrows,
           arrowOptions: { ...defaultArrowOptions, opacity: 0.8, arrowWidthDenominator: 6.5 },
-          canDragPiece: ({ piece }) => canMoveColor(piece.pieceType[0] === "w" ? "w" : "b"),
+          canDragPiece: ({ piece }) => {
+            const color = piece.pieceType[0] === "w" ? "w" : "b";
+            return canMoveColor(color) || canPremoveColor(color);
+          },
           onPieceDrop: ({ sourceSquare, targetSquare }) => {
-            if (!targetSquare) return false;
+            if (!targetSquare || !chess) return false;
             setSelected(null);
+            const piece = chess.get(sourceSquare as Square);
+            if (piece && canPremoveColor(piece.color)) {
+              selectOrQueuePremove(sourceSquare, targetSquare);
+              return false; // Keep the live board unchanged; only draw the queued premove.
+            }
             return tryMove(sourceSquare, targetSquare);
           },
           onSquareClick: ({ square, piece }) => {
-            if (!interactive || !chess) return;
+            if (!chess) return;
+            if (premove && square === premove.from && onClearPremove) {
+              onClearPremove();
+              setSelected(null);
+              return;
+            }
             if (selected && selected !== square) {
-              const legal = chess.moves({ square: selected as Square, verbose: true }).some((m) => m.to === square);
-              if (legal) {
-                setSelected(null);
-                tryMove(selected, square);
+              const movingPiece = chess.get(selected as Square);
+              if (movingPiece && canPremoveColor(movingPiece.color)) {
+                if (selectedPremoveMoves.some((move) => move.to === square)) {
+                  selectOrQueuePremove(selected, square);
+                  setSelected(null);
+                  return;
+                }
+              } else {
+                const legal = chess.moves({ square: selected as Square, verbose: true }).some((move) => move.to === square);
+                if (legal) {
+                  setSelected(null);
+                  tryMove(selected, square);
+                  return;
+                }
+              }
+            }
+            if (piece) {
+              const color = piece.pieceType[0] === "w" ? "w" : "b";
+              if (canMoveColor(color) || canPremoveColor(color)) {
+                setSelected(selected === square ? null : square);
                 return;
               }
             }
-            if (piece && canMoveColor(piece.pieceType[0] === "w" ? "w" : "b")) setSelected(selected === square ? null : square);
-            else setSelected(null);
+            setSelected(null);
           },
           squareStyles,
           squareRenderer: ({ square, children }) => (
@@ -202,6 +317,52 @@ export function GameBoard({
         }}
       />
       {badge && <BadgeOverlay badge={badge} orientation={orientation} animKey={animKey} />}
+      {promotionDraft && allowedColor && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center rounded-md bg-black/55">
+          <div className="rounded-xl border border-white/15 bg-[#20231d] p-3 shadow-2xl">
+            <div className="mb-2 text-center text-xs font-bold text-white">Выбери превращение premove</div>
+            <div className="flex gap-2">
+              {(["q", "r", "b", "n"] as const).map((piece) => (
+                <button
+                  key={piece}
+                  type="button"
+                  aria-label={piece === "q" ? "Ферзь" : piece === "r" ? "Ладья" : piece === "b" ? "Слон" : "Конь"}
+                  onClick={() => {
+                    if (promotionDraft.kind === "premove" && allowedColor) {
+                      const chosen = createPremove(fen, allowedColor, promotionDraft.from, promotionDraft.to, piece);
+                      if (chosen) onPremove?.(chosen);
+                    } else if (promotionDraft.kind === "move" && chess && onMove) {
+                      try {
+                        const next = new Chess(fen);
+                        const moved = next.move({
+                          from: promotionDraft.from as Square,
+                          to: promotionDraft.to as Square,
+                          promotion: piece,
+                        });
+                        if (moved) {
+                          onMove({
+                            from: moved.from, to: moved.to, san: moved.san,
+                            uci: moved.from + moved.to + (moved.promotion ?? ""),
+                            fenAfter: next.fen(),
+                          });
+                        }
+                      } catch {
+                        // Invalid promotion choice is ignored; the live FEN remains unchanged.
+                      }
+                    }
+                    setPromotionDraft(null);
+                    setSelected(null);
+                  }}
+                  className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#38432e] text-2xl text-white hover:bg-[#50643e]"
+                >
+                  {piece === "q" ? "♕" : piece === "r" ? "♖" : piece === "b" ? "♗" : "♘"}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setPromotionDraft(null)} className="mt-2 w-full rounded-md border border-white/15 px-3 py-1.5 text-[10px] font-bold text-[#bbb]">Отмена</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { GameBoard, type BoardMove } from "./GameBoard";
 import { clearAccountProfile, publishAccountProfile } from "../lib/accountProfile";
+import { resolvePremove, type Premove, formatPremove } from "../lib/premoves";
+import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation, clockUrgency, formatClock, type GameplayPreferences } from "../lib/gameplayPreferences";
+import { playSound, setSoundEnabled, soundForSan } from "../lib/sound";
+import { buildPgnFromUci, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
+import { replayUciHistory, getPositionInsights, formatMaterialBalance, gamePhaseLabel, terminalStateLabel, isNearFiftyMoveRule } from "../lib/gameInsights";
 
 interface OnlineSession {
   access_token: string;
@@ -20,7 +25,7 @@ interface OnlineProfile {
   rapid_games: number;
   avatar_url?: string | null;
 }
-interface OnlineMove { uci: string; san: string; color: "w" | "b"; at: string; }
+interface OnlineMove { uci: string; san: string; color: "w" | "b"; at: string; premove?: boolean; }
 interface OnlineGame {
   id: string;
   invite_code: string;
@@ -41,6 +46,8 @@ interface OnlineGame {
   reason: string | null;
   white_rating: number | null;
   black_rating: number | null;
+  minutes: number;
+  increment_seconds: number;
 }
 interface Invitation {
   id: string;
@@ -126,10 +133,6 @@ async function encodeAvatar(file: File): Promise<string> {
   return btoa(binary);
 }
 
-function clockText(ms: number): string {
-  const seconds = Math.max(0, Math.ceil(ms / 1000));
-  return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
-}
 function typeLabel(type: string): string {
   return type === "bullet" ? "Bullet" : type === "blitz" ? "Blitz" : "Rapid";
 }
@@ -178,6 +181,14 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const [now, setNow] = useState(Date.now());
   const [copied, setCopied] = useState(false);
   const [lastSync, setLastSync] = useState(Date.now());
+  const [premove, setPremove] = useState<Premove | null>(null);
+  const premoveGameIdRef = useRef<string | null>(null);
+  const [boardFlipped, setBoardFlipped] = useState(false);
+  const [preferences, setPreferences] = useState<GameplayPreferences>(() => loadGameplayPreferences());
+  const [connectionOnline, setConnectionOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  const [exportNotice, setExportNotice] = useState("");
+  const movePendingRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
   const timeoutRequestedRef = useRef(false);
   const timeoutLastAttemptRef = useRef(0);
   const searchBusyRef = useRef(false);
@@ -294,15 +305,58 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   }, [session, url, key]);
 
   const refreshGame = useCallback(async () => {
-    if (!session || !game?.id) return;
+    if (!session || !game?.id || refreshInFlightRef.current || document.visibilityState === "hidden") return;
+    refreshInFlightRef.current = true;
     try {
       const data = await callAction(url, key, session, "get", { gameId: game.id });
-      if (data.game) setGame(data.game);
+      if (data.game) {
+        const oldCount = game?.moves.length ?? 0;
+        const latest = data.game.moves.at(-1);
+        if (latest && data.game.moves.length > oldCount) {
+          const ownColor = data.game.white_id === session.user.id ? "w" : "b";
+          if (latest.color !== ownColor) playSound(soundForSan(latest.san));
+        }
+        setGame(data.game);
+      }
       setLastSync(Date.now());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      refreshInFlightRef.current = false;
     }
-  }, [session, game?.id, url, key]);
+  }, [session, game?.id, game?.moves.length, url, key]);
+
+  useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
+
+  const updatePreference = <K extends keyof GameplayPreferences>(key: K, value: GameplayPreferences[K]) => {
+    const next = updateGameplayPreferences(preferences, { [key]: value });
+    setPreferences(next);
+    setSoundEnabled(next.soundEnabled);
+    if (key === "premovesEnabled" && value === false) {
+      premoveGameIdRef.current = null;
+      setPremove(null);
+      setNotice("Очередь premove очищена.");
+    }
+  };
+
+  useEffect(() => {
+    const setOnline = () => setConnectionOnline(true);
+    const setOffline = () => setConnectionOnline(false);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setConnectionOnline(navigator.onLine);
+        void refreshGame();
+      }
+    };
+    window.addEventListener("online", setOnline);
+    window.addEventListener("offline", setOffline);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", setOnline);
+      window.removeEventListener("offline", setOffline);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshGame]);
 
   const refreshInvitations = useCallback(async () => {
     if (!session || game) return;
@@ -314,9 +368,10 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     if (!game || game.status === "completed" || !session) return;
-    const timer = window.setInterval(() => { void refreshGame(); }, 1400);
+    // A queued premove needs a quick authoritative update; otherwise poll at a quieter cadence.
+    const timer = window.setInterval(() => { void refreshGame(); }, premove ? 250 : 1000);
     return () => window.clearInterval(timer);
-  }, [game?.id, game?.status, session, refreshGame]);
+  }, [game?.id, game?.status, session, refreshGame, premove]);
 
   useEffect(() => {
     if (!session || game) return;
@@ -378,6 +433,36 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     timeoutRequestedRef.current = false;
   }, [game?.fen, game?.status]);
+
+  useEffect(() => {
+    setPremove(null);
+    movePendingRef.current = false;
+    setMovePending(false);
+    setBoardFlipped(false);
+    premoveGameIdRef.current = null;
+  }, [game?.id]);
+
+  // Apply a premove only after the authoritative server FEN says it is our turn.
+  useEffect(() => {
+    if (!premove || !game || premoveGameIdRef.current !== game.id || game.status !== "active" || !myColor || turn !== myColor || movePending) return;
+    const resolved = resolvePremove(game.fen, myColor, premove);
+    setPremove(null);
+    if (!resolved) {
+      setNotice("Premove отменён: ход соперника сделал его нелегальным.");
+      playSound("wrong");
+      return;
+    }
+    setNotice("Premove отправлен автоматически: " + resolved.san);
+    sendMove(resolved, true);
+  }, [premove, game?.id, game?.fen, game?.status, myColor, turn, movePending]);
+  useEffect(() => {
+    if (premove && game?.status === "completed") {
+      premoveGameIdRef.current = null;
+      setPremove(null);
+      setNotice("Premove отменён: партия уже завершена.");
+    }
+  }, [premove, game?.id, game?.status]);
+
   useEffect(() => {
     if (!session || !game || game.status !== "active" || timeoutRequestedRef.current) return;
     const expired = (turn === "w" && whiteClock <= 0) || (turn === "b" && blackClock <= 0);
@@ -393,9 +478,15 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   }, [session, game?.id, game?.fen, game?.status, turn, whiteClock, blackClock, now, url, key]);
 
   const isMyTurn = !!game && game.status === "active" && !!myColor && turn === myColor && !movePending;
+  const canQueuePremove = !!game && game.status === "active" && !!myColor && turn !== myColor && preferences.premovesEnabled && !movePending;
   const myRating = game && myColor === "w" ? game.white_rating : game?.black_rating;
   const opponentName = game && myColor === "w" ? (game.black_name ?? "Ожидаем игрока") : game?.white_name ?? "Соперник";
   const ratingType = game?.rating_type ?? "blitz";
+  const positionInsights = useMemo(() => {
+    if (!game) return null;
+    try { return getPositionInsights(game.fen, replayUciHistory(game.moves)); }
+    catch { return getPositionInsights(game.fen); }
+  }, [game?.fen, game?.moves]);
 
   const rememberGame = (next: OnlineGame) => {
     setGame(next);
@@ -467,17 +558,27 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
       setInvitations((items) => items.filter((item) => item.id !== inviteId));
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
   };
-  const sendMove = (move: BoardMove): boolean => {
-    if (!session || !game || !isMyTurn) return false;
+  const sendMove = (move: BoardMove, isPremove = false): boolean => {
+    if (!session || !game || !isMyTurn || movePendingRef.current) return false;
+    movePendingRef.current = true;
     setMovePending(true);
-    void callAction(url, key, session, "move", { gameId: game.id, uci: move.uci })
-      .then((data) => { if (data.game) setGame(data.game); })
+    void callAction(url, key, session, "move", { gameId: game.id, uci: move.uci, premove: isPremove })
+      .then((data) => {
+        if (data.game) setGame(data.game);
+        playSound(soundForSan(move.san));
+      })
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)))
-      .finally(() => setMovePending(false));
+      .finally(() => {
+        movePendingRef.current = false;
+        setMovePending(false);
+      });
     return true;
   };
   const resign = async () => {
     if (!session || !game) return;
+    if (preferences.confirmResign && !window.confirm("Сдаться в этой партии?")) return;
+    premoveGameIdRef.current = null;
+    setPremove(null);
     setBusy(true);
     try {
       const data = await callAction(url, key, session, "resign", { gameId: game.id });
@@ -496,7 +597,53 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
       window.setTimeout(() => setCopied(false), 1600);
     } catch { setError("Не удалось скопировать ссылку. Код приглашения: " + game.invite_code); }
   };
+  const exportPgn = () => {
+    if (!game) return;
+    try {
+      const pgn = buildPgnFromUci(game.moves, { Event: "CHESSMART Online", White: game.white_name, Black: game.black_name ?? "Соперник", Result: game.result === "white_win" ? "1-0" : game.result === "black_win" ? "0-1" : game.result === "draw" ? "1/2-1/2" : "*" });
+      downloadTextFile(pgn, pgnFilename("chessmart-online"));
+      setExportNotice("PGN скачан.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  };
+  const copyPgn = async () => {
+    if (!game) return;
+    try {
+      const pgn = buildPgnFromUci(game.moves, { Event: "CHESSMART Online", White: game.white_name, Black: game.black_name ?? "Соперник" });
+      setExportNotice(await copyText(pgn) ? "PGN скопирован." : "Не удалось скопировать PGN.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  };
+  const requestRematch = async () => {
+    if (!session || !game || !opponentName || opponentName === "Ожидаем игрока") return;
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await callAction(url, key, session, "challenge_player", {
+        username: opponentName,
+        minutes: game.minutes,
+        increment: game.increment_seconds,
+        rated: game.rated,
+      });
+      if (!data.game) throw new Error(data.error || "Не удалось создать реванш.");
+      setInviteTarget(opponentName);
+      rememberGame(data.game);
+      setNotice("Реванш создан. Отправь сопернику приглашение.");
+      setInviteCode(data.game.invite_code);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally { setBusy(false); }
+  };
+  const copyFen = async () => {
+    if (!game) return;
+    setExportNotice(await copyText(game.fen) ? "FEN скопирован." : "Не удалось скопировать FEN.");
+  };
+  const copyMoves = async () => {
+    if (!game) return;
+    setExportNotice(await copyText(formatSanMoveList(game.moves.map((move) => move.san))) ? "Список ходов скопирован." : "Не удалось скопировать ходы.");
+  };
+
   const clearGame = () => {
+    premoveGameIdRef.current = null;
+    setPremove(null);
     localStorage.removeItem(GAME_KEY);
     setGame(null);
     setInviteTarget("");
@@ -685,10 +832,29 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
                 <div><div className="text-sm font-bold">{game.status === "waiting" ? "Ожидаем соперника" : opponentName}</div><div className="mt-0.5 text-xs text-[#9a9992]">{typeLabel(game.rating_type)} · {game.rated ? "Рейтинговая" : "Без рейтинга"}</div></div>
                 <div className="rounded-md bg-[#242520] px-2 py-1 text-xs font-semibold text-[#c9c8c1]">{myColor === "w" ? "Вы играете белыми" : myColor === "b" ? "Вы играете чёрными" : "Ожидание"}</div>
               </div>
-              <div className="mb-2 flex items-center justify-between rounded-lg bg-[#252621] px-3 py-2 text-sm"><span>{game.black_name ?? "Соперник"} <span className="text-xs text-[#85847d]">чёрные</span></span><b className={"font-mono text-xl tabular-nums " + (turn === "b" ? "text-white" : "text-[#aaa9a2]")}>{clockText(blackClock)}</b></div>
-              <GameBoard fen={game.fen} orientation={myColor === "b" ? "black" : "white"} interactive={isMyTurn} allowedColor={myColor} onMove={sendMove} />
-              <div className="mt-2 flex items-center justify-between rounded-lg bg-[#252621] px-3 py-2 text-sm"><span>{game.white_name} <span className="text-xs text-[#85847d]">белые</span></span><b className={"font-mono text-xl tabular-nums " + (turn === "w" ? "text-white" : "text-[#aaa9a2]")}>{clockText(whiteClock)}</b></div>
+              <div className="mb-2 flex items-center justify-between rounded-lg bg-[#252621] px-3 py-2 text-sm"><span>{game.black_name ?? "Соперник"} <span className="text-xs text-[#85847d]">чёрные</span></span><b className={"font-mono text-xl tabular-nums " + (turn === "b" ? (clockUrgency(blackClock) === "critical" ? "text-[#ff7770]" : "text-white") : "text-[#aaa9a2]")}>{formatClock(blackClock, true)}</b></div>
+              <GameBoard
+                fen={game.fen}
+                orientation={getBoardOrientation(myColor ?? "w", boardFlipped)}
+                interactive={isMyTurn}
+                allowedColor={myColor}
+                onMove={(move) => sendMove(move, false)}
+                premoveEnabled={canQueuePremove}
+                premove={premove}
+                onPremove={(next) => { premoveGameIdRef.current = game.id; setPremove(next); setNotice(""); }}
+                onClearPremove={() => { premoveGameIdRef.current = null; setPremove(null); setNotice("Premove отменён."); }}
+                theme={preferences.boardTheme}
+                showLegalMoves={preferences.showLegalMoves}
+                highlightLastMove={preferences.highlightLastMove}
+                animations={preferences.boardAnimations}
+                autoQueen={preferences.autoQueen}
+              />
+              <div className="mt-2 flex items-center justify-between rounded-lg bg-[#252621] px-3 py-2 text-sm"><span>{game.white_name} <span className="text-xs text-[#85847d]">белые</span></span><b className={"font-mono text-xl tabular-nums " + (turn === "w" ? (clockUrgency(whiteClock) === "critical" ? "text-[#ff7770]" : "text-white") : "text-[#aaa9a2]")}>{formatClock(whiteClock, true)}</b></div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button onClick={() => setBoardFlipped((value) => !value)} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2.5 text-xs font-bold">Перевернуть доску</button>
+                <button onClick={() => void copyFen()} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2.5 text-xs font-bold">Скопировать FEN</button>
+                <button onClick={() => void copyPgn()} disabled={!game.moves.length} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2.5 text-xs font-bold disabled:opacity-40">Копировать PGN</button>
+                <button onClick={exportPgn} disabled={!game.moves.length} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2.5 text-xs font-bold disabled:opacity-40">Скачать PGN</button>
                 <button onClick={() => void copyInvite()} className="rounded-lg bg-[#81b64c] px-4 py-2.5 text-xs font-extrabold text-[#17210f]">{copied ? "Ссылка скопирована" : "Скопировать приглашение"}</button>
                 {game.status === "active" && <button onClick={() => void resign()} disabled={busy} className="rounded-lg border border-[#7d4a44] bg-[#422a27] px-4 py-2.5 text-xs font-bold text-[#ffd2cd]">Сдаться</button>}
                 <button onClick={clearGame} className="ml-auto rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2.5 text-xs font-bold">В меню</button>
@@ -696,13 +862,34 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
             </section>
             <aside className="space-y-3">
               {game.status === "waiting" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-sm font-extrabold text-[#d7edbd]">Комната создана</div><div className="mt-2 font-mono text-2xl font-black tracking-[0.2em]">{game.invite_code}</div><p className="mt-2 text-xs text-[#b7cba0]">{inviteTarget ? "Вызов отправлен игроку @" + inviteTarget + ". Ожидаем, пока он примет приглашение." : "Отправь код или ссылку другу."}</p></section>}
-              {game.status === "active" && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="text-sm font-bold">Статус партии</div><p className="mt-2 text-sm text-[#c9c8c1]">{isMyTurn ? "Ваш ход" : "Ход соперника"}{movePending ? " · отправляем ход…" : ""}</p><p className="mt-2 text-[10px] text-[#85847d]">Синхронизация: {Math.max(0, Math.floor((now - lastSync) / 1000))} сек. назад</p><p className="mt-2 text-xs text-[#a3c86d]">Рейтинг {typeLabel(ratingType)}: {myRating ?? "—"}</p></section>}
-              {game.status === "completed" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-lg font-extrabold">{resultText(game, myColor)}</div><p className="mt-2 text-sm text-[#d7edbd]">{reasonText(game.reason)}</p><p className="mt-2 text-xs text-[#b7cba0]">Рейтинг после партии: {myRating ?? "—"}</p></section>}
+              {game.status === "active" && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="text-sm font-bold">Статус партии</div><p className="mt-2 text-sm text-[#c9c8c1]">{isMyTurn ? "Ваш ход" : "Ход соперника"}{movePending ? " · отправляем ход…" : ""}</p><p className={"mt-2 text-[10px] " + (connectionOnline ? "text-[#9acb72]" : "text-[#ff7770]")}>{connectionOnline ? "Соединение активно" : "Нет соединения"} · синхронизация {Math.max(0, Math.floor((now - lastSync) / 1000))} сек. назад</p>{canQueuePremove && <p className="mt-2 text-xs text-[#ff9b94]">Можно поставить premove — он будет проверен после ответа соперника.</p>}<p className="mt-2 text-xs text-[#a3c86d]">Рейтинг {typeLabel(ratingType)}: {myRating ?? "—"}</p></section>}
+              {positionInsights && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="mb-2 flex items-center justify-between text-sm font-bold"><span>Позиция сейчас</span><span className="text-[10px] text-[#91ad76]">{gamePhaseLabel(positionInsights.phase)}</span></div><div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Материал белых</div><b className="mt-1 block text-base">{positionInsights.whiteMaterial}</b></div><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Материал чёрных</div><b className="mt-1 block text-base">{positionInsights.blackMaterial}</b></div><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Легальные ходы</div><b className="mt-1 block text-base">{positionInsights.legalMoves}</b></div><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Счётчик 50 ходов</div><b className="mt-1 block text-base">{positionInsights.halfmoveClock}/100</b></div></div><div className="mt-2 rounded-lg bg-[#242520] p-2 text-xs text-[#b7b4aa]">{formatMaterialBalance(positionInsights.materialBalance)} · {terminalStateLabel(positionInsights.terminal)}</div>{isNearFiftyMoveRule(game.fen) && <p className="mt-2 text-[10px] text-[#e7bd73]">Скоро можно будет заявить ничью по правилу 50 ходов.</p>}</section>}
+              {game.status === "completed" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-lg font-extrabold">{resultText(game, myColor)}</div><p className="mt-2 text-sm text-[#d7edbd]">{reasonText(game.reason)}</p><p className="mt-2 text-xs text-[#b7cba0]">Рейтинг после партии: {myRating ?? "—"}</p><button onClick={() => void requestRematch()} disabled={busy || !game.black_id} className="mt-3 w-full rounded-lg bg-[#81b64c] px-3 py-2.5 text-xs font-extrabold text-[#17210f] disabled:opacity-40">Реванш</button></section>}
               <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4">
-                <div className="mb-2 text-sm font-bold">Ходы</div>
-                <div className="max-h-72 overflow-y-auto text-xs leading-7 text-[#c9c8c1]">
-                  {game.moves.length ? game.moves.map((move, index) => <span key={move.at + move.uci} className="mr-2 inline-block"><span className="text-[#77766f]">{Math.floor(index / 2) + 1}{move.color === "w" ? "." : "…"}</span> {move.san}</span>) : <span className="text-[#85847d]">Пока нет ходов.</span>}
+                <div className="mb-2 text-sm font-bold">Настройки доски</div>
+                <div className="space-y-2 text-xs text-[#c2c0b8]">
+                  <label className="flex items-center justify-between gap-2"><span>Разрешить premove</span><input type="checkbox" checked={preferences.premovesEnabled} onChange={(e) => updatePreference("premovesEnabled", e.target.checked)} className="accent-[#81b64c]" /></label>
+                  <label className="flex items-center justify-between gap-2"><span>Автопревращение в ферзя</span><input type="checkbox" checked={preferences.autoQueen} onChange={(e) => updatePreference("autoQueen", e.target.checked)} className="accent-[#81b64c]" /></label>
+<label className="flex items-center justify-between gap-2"><span>Звук ходов</span><input type="checkbox" checked={preferences.soundEnabled} onChange={(e) => updatePreference("soundEnabled", e.target.checked)} className="accent-[#81b64c]" /></label>
+                  <label className="flex items-center justify-between gap-2"><span>Подсветка легальных ходов</span><input type="checkbox" checked={preferences.showLegalMoves} onChange={(e) => updatePreference("showLegalMoves", e.target.checked)} className="accent-[#81b64c]" /></label>
+                  <label className="flex items-center justify-between gap-2"><span>Последний ход</span><input type="checkbox" checked={preferences.highlightLastMove} onChange={(e) => updatePreference("highlightLastMove", e.target.checked)} className="accent-[#81b64c]" /></label>
+                  <label className="flex items-center justify-between gap-2"><span>Анимации фигур</span><input type="checkbox" checked={preferences.boardAnimations} onChange={(e) => updatePreference("boardAnimations", e.target.checked)} className="accent-[#81b64c]" /></label>
+                  <label className="flex items-center justify-between gap-2"><span>Подтверждать сдачу</span><input type="checkbox" checked={preferences.confirmResign} onChange={(e) => updatePreference("confirmResign", e.target.checked)} className="accent-[#81b64c]" /></label>
+                  <label className="flex items-center justify-between gap-2"><span>Цвет доски</span><select value={preferences.boardTheme} onChange={(e) => updatePreference("boardTheme", e.target.value as GameplayPreferences["boardTheme"])} className="rounded-md bg-[#242520] px-2 py-1"><option value="classic">Классическая</option><option value="blue">Синяя</option><option value="walnut">Ореховая</option><option value="violet">Фиолетовая</option></select></label>
                 </div>
+              </section>
+              <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4">
+                <div className="mb-2 flex items-center justify-between gap-2"><span className="text-sm font-bold">Ходы</span><button onClick={() => void copyMoves()} disabled={!game.moves.length} className="rounded-md bg-[#3d3a37] px-2 py-1 text-[10px] font-bold disabled:opacity-40">Копировать</button></div>
+                <div className="max-h-72 overflow-y-auto text-xs leading-7 text-[#c9c8c1]">
+                  {game.moves.length ? game.moves.map((move, index) => <span key={move.at + move.uci} className="mr-2 inline-block"><span className="text-[#77766f]">{Math.floor(index / 2) + 1}{move.color === "w" ? "." : "…"}</span> {move.premove && <span title="Автоматический premove" className="text-[#ff7770]">▶ </span>}{move.san}</span>) : <span className="text-[#85847d]">Пока нет ходов.</span>}
+                </div>
+                {premove && (
+                  <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-[#8b4444] bg-[#3c2928] px-3 py-2 text-xs text-[#ffd4d1]">
+                    <span>Ожидающий premove: <b>{formatPremove(premove)}</b></span>
+                    <button type="button" onClick={() => { premoveGameIdRef.current = null; setPremove(null); setNotice("Premove отменён."); }} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Отменить</button>
+                  </div>
+                )}
+                {exportNotice && <p role="status" className="mt-2 text-xs text-[#a3d160]">{exportNotice}</p>}
               </section>
               <p className="px-1 text-[10px] leading-relaxed text-[#77766f]">Во время рейтинговой партии не используй подсказки движка. Ходы и результат проверяются сервером.</p>
             </aside>
