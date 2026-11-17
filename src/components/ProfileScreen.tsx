@@ -11,6 +11,36 @@ interface Props {
   onBack: () => void;
 }
 
+function csvCell(value: string | number): string {
+  const text = String(value ?? "");
+  return /[",\n\r;]/.test(text) ? \`"\${text.replace(/"/g, '""')}"\` : text;
+}
+
+function downloadProfileReport(profile: PlayerProfile): void {
+  const rows: Array<Array<string | number>> = [
+    ["Тип", "Дата", "Белые / игрок", "Чёрные / соперник", "Результат", "Ходы", "Точность белых", "Точность чёрных", "Средняя точность", "Дебют", "ECO", "Блестящие", "Упущенные шансы"],
+    ...(profile.reviews ?? []).map((record) => [
+      "Анализ партии", record.date, record.white, record.black, record.result, record.plies,
+      record.accuracy.w.toFixed(1), record.accuracy.b.toFixed(1), record.accuracy.average.toFixed(1),
+      record.opening?.name ?? "", record.opening?.eco ?? "", record.brilliantMoves.length, record.missedWins.length,
+    ]),
+    ...profile.history.map((entry) => [
+      "Игра против бота", new Date(entry.at).toISOString(), profile.name, \`Stockfish \${entry.botElo} Elo\`,
+      entry.result, "", "", "", "", "", "", "", "",
+    ]),
+  ];
+  const csv = "\uFEFF" + rows.map((row) => row.map(csvCell).join(";")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = \`chessmart-statistics-\${new Date().toISOString().slice(0, 10)}.csv\`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function RatingChart({ values }: { values: number[] }) {
   if (!values.length) return <div className="flex h-32 items-center justify-center text-xs text-[#77746f]">График появится после первой партии против бота.</div>;
   const width = 520;
@@ -111,7 +141,14 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
           <section className="rounded-xl bg-[#2b2926] p-3">
             <div className="mb-1 font-extrabold">Резервная копия профиля</div>
             <p className="mb-3 text-xs leading-relaxed text-[#a7a6a2]">Сохрани рейтинг, историю партий, статистику и задачи в JSON-файл. Файл остаётся на твоём устройстве.</p>
+            <p className="mb-3 text-xs leading-relaxed text-[#a7a6a2]">Выгрузи историю анализов и результаты игр в CSV — файл откроется в Excel и Google Sheets.</p>
             <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => downloadProfileReport(profile)}
+                className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold hover:bg-[#4b4844]"
+              >
+                Экспорт статистики CSV
+              </button>
               <button
                 onClick={() => downloadProfileBackup(profile)}
                 className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold hover:bg-[#4b4844]"
