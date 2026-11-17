@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { Chess, type Square } from "chess.js";
 import type { EngineLine } from "../types";
 import { formatScore, sanRu } from "../lib/format";
 import { winPercent } from "../lib/winprob";
+import { explainStockfishMove } from "../lib/engineCoach";
 
 export function pvToSans(fen: string, pv: string[], max = 9): string[] {
   const out: string[] = [];
@@ -39,6 +41,11 @@ interface Props {
 export function AnalysisTab({ enabled, onToggle, lines, fen, targetDepth, threads, variantLabel, onPlayUci, onReset, exploring, disabled }: Props) {
   const depth = lines.length ? Math.min(...lines.map((line) => line.depth)) : 0;
   const best = lines[0];
+  const explanation = useMemo(
+    () => enabled && best?.pv[0] ? explainStockfishMove(fen, best.pv[0]) : null,
+    [enabled, fen, best?.pv[0]],
+  );
+
   return (
     <section className="overflow-hidden rounded-xl border border-[#46443e] bg-[#292824] shadow-lg shadow-black/10">
       <div className="flex items-center justify-between gap-3 border-b border-[#41403a] px-4 py-3">
@@ -100,7 +107,7 @@ export function AnalysisTab({ enabled, onToggle, lines, fen, targetDepth, thread
                 className="group flex w-full items-start gap-3 border-b border-[#3d3b35] px-4 py-3 text-left last:border-0 hover:bg-[#35342e] disabled:cursor-default"
                 title="Сыграть первый ход варианта"
               >
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#3a3932] text-[10px] font-black tabular-nums text-[#b4b2a9]">{index + 1}</span>
+                <span className={"mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-black tabular-nums " + (index === 0 ? "bg-[#83ad5f] text-[#172013]" : "bg-[#3a3932] text-[#b4b2a9]")}>{index + 1}</span>
                 <span className={"mt-0.5 min-w-[54px] rounded-md px-2 py-1 text-center font-mono text-xs font-extrabold tabular-nums " + (probability >= 50 ? "bg-[#e9e8e1] text-[#292824]" : "bg-[#45433d] text-[#f0efe9]")}>{formatScore(line.score)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[12px] leading-6 text-[#e2e1da] group-hover:text-white">{sans.join(" ") || "Линия не получена"}</span>
@@ -110,6 +117,52 @@ export function AnalysisTab({ enabled, onToggle, lines, fen, targetDepth, thread
               </button>
             );
           })}
+
+          {explanation && (
+            <div className="border-t border-[#596b48]/50 bg-[#242a20] px-4 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#a8c98a]">Что меняет лучший ход</div>
+                  <div className="mt-1 text-sm font-extrabold text-[#f1f0ec]">Stockfish №1 · {sanRu(explanation.san)}</div>
+                </div>
+                <span className="rounded-md border border-[#718b59]/40 bg-[#526d3c]/20 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-[#c6dda9]">300 проверок</span>
+              </div>
+
+              {explanation.tactical.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {explanation.tactical.map((item) => (
+                    <div key={item} className="flex gap-2 text-xs leading-relaxed text-[#d9e7ce]">
+                      <span className="font-black text-[#a8d17d]">•</span>
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {explanation.changes.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {explanation.changes.map((change) => (
+                    <div key={change.title} className="rounded-lg border border-white/[0.06] bg-black/15 p-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-bold text-[#e3e5dc]">{change.title}</span>
+                        <span className="font-mono font-extrabold tabular-nums text-[#b9d99a]">{change.before} → {change.after}</span>
+                      </div>
+                      <p className="mt-1 text-[10px] leading-relaxed text-[#a8ad9f]">{change.explanation}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs leading-relaxed text-[#c1c5b8]">
+                  В 300 позиционных проверках не обнаружено надёжного структурного изменения после этого хода. Это нормально: Stockfish может выбирать ход из-за конкретного тактического варианта или расчёта на несколько ходов вперёд.
+                </p>
+              )}
+
+              <p className="mt-3 border-t border-white/[0.07] pt-2 text-[9px] leading-relaxed text-[#7e8975]">
+                Это дополнительное объяснение по разнице позиции до и после хода, а не новая оценка движка. Проверки эвристические; лучший ход, оценка и глубина по-прежнему полностью принадлежат Stockfish 19.
+              </p>
+            </div>
+          )}
+
           {exploring && (
             <div className="border-t border-[#41403a] bg-[#24231f] p-3">
               <button type="button" onClick={onReset} className="w-full rounded-lg border border-[#55534b] bg-[#393831] px-3 py-2.5 text-xs font-bold text-[#d7d6cf] hover:bg-[#45443c]">Вернуться к партии</button>
