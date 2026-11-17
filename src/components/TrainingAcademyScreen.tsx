@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { PlayerProfile } from "../lib/playerProfile";
 import {
   buildAcademyDashboard,
@@ -41,7 +41,7 @@ function StatCard({ label, value, detail, accent = "text-white" }: { label: stri
   );
 }
 
-function DestinationButton({ destination, onNavigate, children }: { destination: AcademyDestination; onNavigate: (destination: AcademyDestination) => void; children: React.ReactNode }) {
+function DestinationButton({ destination, onNavigate, children }: { destination: AcademyDestination; onNavigate: (destination: AcademyDestination) => void; children: ReactNode }) {
   return (
     <button type="button" onClick={() => onNavigate(destination)} className="rounded-lg border border-[#596b49] bg-[#34442c] px-3 py-2 text-xs font-extrabold text-[#e1ebd7] transition hover:bg-[#415438]">
       {children}
