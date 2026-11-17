@@ -155,6 +155,21 @@ assert.deepEqual(parseAcademySettings(serializeAcademySettings(settings)), setti
 assert.equal(parseAcademySettings("{broken").weeklySessionsTarget, 5);
 assert.equal(normalizeAcademySettings(null).dailyPuzzleTarget, 3);
 
+const puzzleBankOnly = emptyProfile();
+puzzleBankOnly.puzzleRatingHistory.push({
+  at: NOW,
+  puzzleId: "lichess-001",
+  mode: "daily",
+  solved: true,
+  change: 12,
+  ratingAfter: 1212,
+});
+const bankDashboard = buildAcademyDashboard(puzzleBankOnly, NOW);
+assert.equal(bankDashboard.solvedPuzzleCount, 1);
+assert.equal(bankDashboard.unsolvedPuzzleCount, 0);
+assert.equal(bankDashboard.weekly.solvedPuzzles, 1);
+assert.equal(bankDashboard.streak.current, 1);
+
 for (let index = 0; index < 15000; index += 1) {
   const profile = emptyProfile();
   const ageDays = index % 84;
@@ -174,6 +189,7 @@ for (let index = 0; index < 15000; index += 1) {
     profile.puzzles.push(makePuzzle("stress-p-" + index + "-" + i, stamp, comment, cls, solvedAt));
   }
   for (let i = 0; i < sessionCount; i += 1) profile.trainingSessions.push(makeSession("stress-s-" + index + "-" + i, stamp - i * 3600000, (i + 1) * 60000));
+  if (index % 4 === 0) profile.puzzleRatingHistory.push({ at: stamp, puzzleId: "bank-" + index, mode: "daily", solved: true, change: 8, ratingAfter: 1208 });
   if (index % 5 === 0) profile.history.push({ at: stamp, result: "draw", botElo: 1000, change: 0, ratingAfter: 1000 });
 
   const variedSettings = normalizeAcademySettings({
