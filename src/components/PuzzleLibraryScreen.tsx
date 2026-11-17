@@ -215,18 +215,25 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
   const finishPuzzle = useCallback((puzzle: Puzzle, wasRevealed: boolean) => {
     const alreadySolved = stats.solved.includes(puzzle.id);
     const nextRating = Math.max(400, Math.min(3200, Math.round(stats.rating + 24 * ((wasRevealed ? 0 : 1) - expectedScore(stats.rating, puzzle.rating)))));
-    setStats((previous) => ({
-      ...previous,
-      rating: alreadySolved ? previous.rating : nextRating,
-      solved: alreadySolved ? previous.solved : [...previous.solved, puzzle.id],
-      attempts: previous.attempts + 1,
-      correct: previous.correct + (wasRevealed ? 0 : 1),
-      streak: mode === "daily" ? previous.streak : (wasRevealed ? 0 : previous.streak + 1),
-    }));
-    if (mode === "daily" && !wasRevealed && stats.lastDaily !== localDateKey()) {
-      setStats((previous) => ({ ...previous, lastDaily: localDateKey(), streak: previous.streak + 1 }));
-      setDailyDone(true);
-    }
+    const today = localDateKey();
+    const now = new Date();
+    const yesterday = localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+    setStats((previous) => {
+      const completedDailyToday = mode === "daily" && !wasRevealed && previous.lastDaily !== today;
+      const nextDailyStreak = previous.lastDaily === yesterday ? previous.streak + 1 : 1;
+      return {
+        ...previous,
+        rating: alreadySolved ? previous.rating : nextRating,
+        solved: alreadySolved ? previous.solved : [...previous.solved, puzzle.id],
+        attempts: previous.attempts + 1,
+        correct: previous.correct + (wasRevealed ? 0 : 1),
+        streak: mode === "daily"
+          ? (completedDailyToday ? nextDailyStreak : previous.streak)
+          : (wasRevealed ? 0 : previous.streak + 1),
+        lastDaily: completedDailyToday ? today : previous.lastDaily,
+      };
+    });
+    if (mode === "daily" && !wasRevealed && stats.lastDaily !== today) setDailyDone(true);
     if (mode === "rated" && !wasRevealed) setRushCount((value) => value + 1);
     setFeedback(wasRevealed ? "revealed" : "solved");
   }, [stats.solved, stats.rating, stats.lastDaily, mode]);
