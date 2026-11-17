@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { PlayerProfile, TrainingPuzzle } from "../lib/playerProfile";
+import type { PlayerProfile, TrainingPuzzle, TrainingSessionSummary } from "../lib/playerProfile";
 import { markPuzzleSolved, recordPuzzleAttempt } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
 
@@ -16,6 +16,8 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
   const [solutionShown, setSolutionShown] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "solved">("open");
   const [severityFilter, setSeverityFilter] = useState<"all" | TrainingPuzzle["cls"]>("all");
+  const [session, setSession] = useState<{ id: string; startedAt: number; puzzleIds: string[]; completedIds: string[]; attempts: number; correctMoves: number } | null>(null);
+  const [lastSession, setLastSession] = useState<TrainingSessionSummary | null>(null);
   const unsolved = useMemo(() => profile.puzzles.filter((p) => !p.solvedAt), [profile.puzzles]);
   const visiblePuzzles = useMemo(() => profile.puzzles.filter((puzzle) => {
     const statusMatches = statusFilter === "all" || (statusFilter === "open" ? !puzzle.solvedAt : !!puzzle.solvedAt);
@@ -30,9 +32,38 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
     setSolutionShown(false);
   }, [current?.id, current?.fen]);
 
+  const startSession = () => {
+    const queue = profile.puzzles.filter((puzzle) => !puzzle.solvedAt).slice(0, 10);
+    if (!queue.length) return;
+    setStatusFilter("open");
+    setSeverityFilter("all");
+    setSession({ id: "training-" + Date.now(), startedAt: Date.now(), puzzleIds: queue.map((puzzle) => puzzle.id), completedIds: [], attempts: 0, correctMoves: 0 });
+    setLastSession(null);
+    setSelectedId(queue[0].id);
+  };
+
+  const finishSession = () => {
+    if (!session) return;
+    const summary: TrainingSessionSummary = {
+      id: session.id,
+      startedAt: session.startedAt,
+      durationMs: Math.max(0, Date.now() - session.startedAt),
+      total: session.puzzleIds.length,
+      solved: session.completedIds.length,
+      attempts: session.attempts,
+      correctMoves: session.correctMoves,
+      accuracy: session.attempts ? Math.round(session.correctMoves / session.attempts * 100) : 0,
+    };
+    onChange({ ...profile, trainingSessions: [...(profile.trainingSessions ?? []), summary].slice(-100) });
+    setLastSession(summary);
+    setSession(null);
+  };
+
   const selectNext = () => {
-    const next = visiblePuzzles.find((p) => !p.solvedAt && p.id !== current?.id);
-    if (next) setSelectedId(next.id);
+    const queue = session
+      ? session.puzzleIds.filter((id) => !session.completedIds.includes(id) && id !== current?.id)
+      : visiblePuzzles.filter((p) => !p.solvedAt && p.id !== current?.id).map((p) => p.id);
+    if (queue[0]) setSelectedId(queue[0]);
     else if (current) setSelectedId(current.id);
   };
 
@@ -41,9 +72,13 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
     if (move.uci === current.bestUci) {
       setPosition(move.fenAfter);
       setFeedback("solved");
+      if (session?.puzzleIds.includes(current.id)) {
+        setSession((active) => active ? { ...active, attempts: active.attempts + 1, correctMoves: active.correctMoves + 1, completedIds: active.completedIds.includes(current.id) ? active.completedIds : [...active.completedIds, current.id] } : active);
+      }
       onChange(markPuzzleSolved(profile, current.id));
       return true;
     }
+    if (session?.puzzleIds.includes(current.id)) setSession((active) => active ? { ...active, attempts: active.attempts + 1 } : active);
     onChange(recordPuzzleAttempt(profile, current.id));
     setFeedback("wrong");
     return false;
@@ -96,6 +131,28 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
 
           <aside className="space-y-3">
             <section className="rounded-2xl bg-[#262421] p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-extrabold">Тренировочная сессия</div>
+                <span className="rounded bg-[#3d3a37] px-2 py-1 text-[10px] text-[#c8c6c1]">{session ? "Идёт" : "Готова"}</span>
+              </div>
+              {session ? (
+                <>
+                  <div className="mt-2 text-2xl font-black tabular-nums">{session.completedIds.length} / {session.puzzleIds.length}</div>
+                  <div className="mt-1 text-xs text-[#a7a6a2]">Решено · попыток: {session.attempts}</div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#1f1d1b]"><div className="h-full rounded-full bg-[#81b64c]" style={{ width: (session.completedIds.length / session.puzzleIds.length * 100) + "%" }} /></div>
+                  <button onClick={selectNext} disabled={session.completedIds.length >= session.puzzleIds.length} className="mt-3 w-full rounded-lg bg-[#3d3a37] px-3 py-2 text-sm font-bold hover:bg-[#4b4844] disabled:opacity-40">Следующая задача сессии</button>
+                  <button onClick={finishSession} className="mt-2 w-full rounded-lg bg-[#81b64c] px-3 py-2 text-sm font-extrabold text-[#17210f] hover:bg-[#95c75f]">Завершить и сохранить</button>
+                </>
+              ) : (
+                <>
+                  <p className="mt-2 text-xs leading-relaxed text-[#a7a6a2]">Серия из 10 нерешённых задач. В конце сохраним результат, точность и затраченное время.</p>
+                  <button onClick={startSession} disabled={!unsolved.length} className="mt-3 w-full rounded-lg bg-[#81b64c] px-3 py-2.5 text-sm font-extrabold text-[#17210f] hover:bg-[#95c75f] disabled:opacity-40">Начать сессию · до 10 задач</button>
+                </>
+              )}
+              {lastSession && <div className="mt-3 rounded-lg bg-[#2f3a28] p-3 text-xs text-[#cfe7ac]">Последняя сессия: {lastSession.solved}/{lastSession.total} задач · точность {lastSession.accuracy}% · {Math.round(lastSession.durationMs / 60000)} мин.</div>}
+              {(profile.trainingSessions ?? []).length > 0 && <div className="mt-3 border-t border-white/[0.06] pt-3"><div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#a7a6a2]">История сессий</div>{[...(profile.trainingSessions ?? [])].slice(-3).reverse().map((item) => <div key={item.id} className="flex justify-between gap-2 py-1 text-xs text-[#a7a6a2]"><span>{new Date(item.startedAt).toLocaleDateString()}</span><span className="font-bold text-white">{item.solved}/{item.total} · {item.accuracy}%</span></div>)}</div>}
+            </section>
+            <section className="rounded-2xl bg-[#262421] p-4">
               <div className="text-xs font-bold uppercase tracking-wide text-[#a7a6a2]">Прогресс</div>
               <div className="mt-1 text-3xl font-black tabular-nums">{solvedCount}<span className="text-base text-[#77746f]"> / {profile.puzzles.length}</span></div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#1f1d1b]"><div className="h-full rounded-full bg-[#81b64c]" style={{ width: `${profile.puzzles.length ? solvedCount / profile.puzzles.length * 100 : 0}%` }} /></div>
@@ -113,7 +170,7 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
                   </button>
                 )}
                 {solutionShown && <div className="mt-2 rounded-lg bg-[#2f3a28] p-2 text-sm text-[#cfe7ac]">Лучший ход: {current.bestSan ?? current.bestUci}</div>}
-                <button onClick={selectNext} disabled={!visiblePuzzles.some((p) => !p.solvedAt && p.id !== current.id)} className="mt-2 w-full rounded-lg bg-[#81b64c] px-3 py-2.5 text-sm font-extrabold text-[#17210f] hover:bg-[#95c75f] disabled:opacity-40">Следующая задача →</button>
+                {!session && <button onClick={selectNext} disabled={!visiblePuzzles.some((p) => !p.solvedAt && p.id !== current.id)} className="mt-2 w-full rounded-lg bg-[#81b64c] px-3 py-2.5 text-sm font-extrabold text-[#17210f] hover:bg-[#95c75f] disabled:opacity-40">Следующая задача →</button>}
               </section>
             )}
             <section className="rounded-2xl bg-[#262421] p-3">
