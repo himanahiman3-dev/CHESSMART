@@ -14,8 +14,14 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
   const [position, setPosition] = useState("");
   const [feedback, setFeedback] = useState<"idle" | "wrong" | "solved">("idle");
   const [solutionShown, setSolutionShown] = useState(false);
-  const current = profile.puzzles.find((p) => p.id === selectedId) ?? null;
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "solved">("open");
+  const [severityFilter, setSeverityFilter] = useState<"all" | TrainingPuzzle["cls"]>("all");
   const unsolved = useMemo(() => profile.puzzles.filter((p) => !p.solvedAt), [profile.puzzles]);
+  const visiblePuzzles = useMemo(() => profile.puzzles.filter((puzzle) => {
+    const statusMatches = statusFilter === "all" || (statusFilter === "open" ? !puzzle.solvedAt : !!puzzle.solvedAt);
+    return statusMatches && (severityFilter === "all" || puzzle.cls === severityFilter);
+  }), [profile.puzzles, statusFilter, severityFilter]);
+  const current = visiblePuzzles.find((p) => p.id === selectedId) ?? visiblePuzzles[0] ?? null;
   const solvedCount = profile.puzzles.length - unsolved.length;
 
   useEffect(() => {
@@ -25,7 +31,7 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
   }, [current?.id, current?.fen]);
 
   const selectNext = () => {
-    const next = unsolved.find((p) => p.id !== current?.id);
+    const next = visiblePuzzles.find((p) => !p.solvedAt && p.id !== current?.id);
     if (next) setSelectedId(next.id);
     else if (current) setSelectedId(current.id);
   };
@@ -82,8 +88,8 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
               </>
             ) : (
               <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
-                <div className="text-xl font-extrabold">Пока нет задач</div>
-                <p className="mt-2 max-w-md text-sm text-[#a7a6a2]">Загрузи и проанализируй партию. Ошибки, зевки и упущенные возможности автоматически попадут сюда.</p>
+                <div className="text-xl font-extrabold">{profile.puzzles.length ? "Нет задач по этому фильтру" : "Пока нет задач"}</div>
+                <p className="mt-2 max-w-md text-sm text-[#a7a6a2]">{profile.puzzles.length ? "Измени фильтры справа или покажи все задачи, чтобы выбрать другую позицию." : "Загрузи и проанализируй партию. Ошибки, зевки и упущенные возможности автоматически попадут сюда."}</p>
               </div>
             )}
           </section>
@@ -107,18 +113,39 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
                   </button>
                 )}
                 {solutionShown && <div className="mt-2 rounded-lg bg-[#2f3a28] p-2 text-sm text-[#cfe7ac]">Лучший ход: {current.bestSan ?? current.bestUci}</div>}
-                <button onClick={selectNext} disabled={!unsolved.some((p) => p.id !== current.id)} className="mt-2 w-full rounded-lg bg-[#81b64c] px-3 py-2.5 text-sm font-extrabold text-[#17210f] hover:bg-[#95c75f] disabled:opacity-40">Следующая задача →</button>
+                <button onClick={selectNext} disabled={!visiblePuzzles.some((p) => !p.solvedAt && p.id !== current.id)} className="mt-2 w-full rounded-lg bg-[#81b64c] px-3 py-2.5 text-sm font-extrabold text-[#17210f] hover:bg-[#95c75f] disabled:opacity-40">Следующая задача →</button>
               </section>
             )}
             <section className="rounded-2xl bg-[#262421] p-3">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[#a7a6a2]">Все задачи</div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-xs font-bold uppercase tracking-wide text-[#a7a6a2]">Задачи · {visiblePuzzles.length}</div>
+                <button onClick={() => { setStatusFilter("all"); setSeverityFilter("all"); }} className="text-[10px] font-bold text-[#a3d160] hover:text-white">Сбросить</button>
+              </div>
+              <div className="mb-2 flex flex-wrap gap-1">
+                {(["open", "solved", "all"] as const).map((filter) => (
+                  <button key={filter} onClick={() => setStatusFilter(filter)} className={`rounded-md px-2 py-1 text-[10px] font-bold ${statusFilter === filter ? "bg-[#526d3e] text-white" : "bg-[#1f1d1b] text-[#a7a6a2] hover:text-white"}`}>
+                    {filter === "open" ? "Нерешённые" : filter === "solved" ? "Решённые" : "Все"}
+                  </button>
+                ))}
+              </div>
+              <label className="mb-2 block text-[10px] text-[#a7a6a2]">
+                Тип ошибки
+                <select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)} className="mt-1 w-full rounded-lg border border-[#45413c] bg-[#1f1d1b] px-2 py-2 text-xs text-white outline-none focus:border-[#81b64c]">
+                  <option value="all">Все типы</option>
+                  <option value="inaccuracy">Неточности</option>
+                  <option value="mistake">Ошибки</option>
+                  <option value="miss">Упущенные возможности</option>
+                  <option value="blunder">Зевки</option>
+                </select>
+              </label>
               <div className="max-h-64 space-y-1 overflow-y-auto">
-                {[...profile.puzzles].reverse().map((puzzle: TrainingPuzzle) => (
+                {[...visiblePuzzles].reverse().map((puzzle: TrainingPuzzle) => (
                   <button key={puzzle.id} onClick={() => setSelectedId(puzzle.id)} className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs ${selectedId === puzzle.id ? "bg-[#3d3a37]" : "hover:bg-[#2b2926]"}`}>
                     <span className={`h-2 w-2 shrink-0 rounded-full ${puzzle.solvedAt ? "bg-[#81b64c]" : "bg-[#f7c045]"}`} />
                     <span className="min-w-0 flex-1 truncate">{puzzle.moveNumber}. {puzzle.playedSan} · {puzzle.sourceGame}</span>
                   </button>
                 ))}
+                {visiblePuzzles.length === 0 && <div className="p-3 text-center text-xs text-[#77746f]">Нет задач под выбранные фильтры.</div>}
               </div>
             </section>
           </aside>
