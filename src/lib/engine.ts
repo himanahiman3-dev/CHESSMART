@@ -138,6 +138,10 @@ export class StockfishEngine {
 
   private waitFor(predicate: (line: string) => boolean, timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
+      if (this.dead) {
+        reject(new Error("Движок Stockfish завершён или недоступен"));
+        return;
+      }
       let timer: ReturnType<typeof setTimeout> | undefined;
       const cleanup = () => {
         if (timer) clearTimeout(timer);
