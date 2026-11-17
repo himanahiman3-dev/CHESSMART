@@ -22,6 +22,7 @@ import {
   type PlayerProfile,
 } from "./lib/playerProfile";
 import type { GameReview } from "./types";
+import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
 
 type Stage = "import" | "analyzing" | "review";
 type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "coach" | "endgame" | "openings" | "lab";
@@ -80,9 +81,25 @@ function Main() {
   const [isRefining, setIsRefining] = useState(false);
   const [profile, setProfile] = useState<PlayerProfile>(() => loadPlayerProfile());
   const [mobileMore, setMobileMore] = useState(false);
+  const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(() => readAccountProfile());
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => savePlayerProfile(profile), [profile]);
+
+  useEffect(() => {
+    const handleAccountProfile = (event: Event) => {
+      setAccountProfile((event as CustomEvent<AccountProfile | null>).detail ?? null);
+    };
+    window.addEventListener(ACCOUNT_PROFILE_EVENT, handleAccountProfile);
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === "chessmart:account-profile:v1") setAccountProfile(readAccountProfile());
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(ACCOUNT_PROFILE_EVENT, handleAccountProfile);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   const start = useCallback(async (pgn: string, depth: number) => {
     if (!engine) return;
@@ -210,10 +227,17 @@ function Main() {
           ))}
         </nav>
         <div className="border-t border-white/[0.06] p-4">
-          <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[#2b3327] to-[#22271f] p-3.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#8ca96b]/25 bg-[#526d3e] text-sm font-black text-white shadow-inner">{profile.name.slice(0, 1).toUpperCase()}</div>
-            <div className="min-w-0 flex-1"><div className="truncate text-xs font-bold text-white">{profile.name}</div><div className="text-[10px] text-[#96968d]">Против бота · {profile.rating} Elo</div></div>
-          </div>
+          <button type="button" onClick={() => changeMode("online")} aria-label={accountProfile ? "Открыть аккаунт " + accountProfile.username : "Открыть профиль игрока"}
+            className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[#2b3327] to-[#22271f] p-3.5 text-left transition hover:border-[#8ca96b]/35 hover:from-[#303c2b]">
+            {accountProfile?.avatar_url
+              ? <img src={accountProfile.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-xl border border-[#8ca96b]/25 object-cover shadow-inner" />
+              : <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#8ca96b]/25 bg-[#526d3e] text-sm font-black text-white shadow-inner">{(accountProfile?.username ?? profile.name).slice(0, 1).toUpperCase()}</div>}
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-bold text-white">{accountProfile?.username ?? profile.name}</div>
+              <div className="text-[10px] text-[#96968d]">{accountProfile ? "Аккаунт CHESSMART" : "Локальный профиль · " + profile.rating + " Elo"}</div>
+            </div>
+            <span className="text-[#849078]" aria-hidden="true">›</span>
+          </button>
           <div className="mt-4 flex items-center justify-center gap-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#687362]"><span className="h-1 w-1 rounded-full bg-[#90b96a]" />Independent chess toolkit</div>
         </div>
       </aside>
@@ -228,7 +252,9 @@ function Main() {
             <div className="hidden items-center gap-3 sm:flex">
               <div className="rounded-xl border border-white/[0.06] bg-white/[0.035] px-3.5 py-2 text-right"><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#7f8c73]">Локальный рейтинг</div><div className="mt-0.5 text-sm font-black tabular-nums text-[#d9edc4]">{profile.rating} <span className="text-[9px] font-bold text-[#89977c]">ELO</span></div></div>
               <div className="h-8 w-px bg-white/[0.08]" />
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#596b49] bg-[#34442c] text-sm font-black text-[#e3f0d5] shadow-[0_4px_14px_rgba(0,0,0,.18)]">{profile.name.slice(0, 1).toUpperCase()}</div>
+              {accountProfile?.avatar_url
+                ? <img src={accountProfile.avatar_url} alt="" className="h-10 w-10 rounded-xl border border-[#596b49] object-cover shadow-[0_4px_14px_rgba(0,0,0,.18)]" />
+                : <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#596b49] bg-[#34442c] text-sm font-black text-[#e3f0d5] shadow-[0_4px_14px_rgba(0,0,0,.18)]">{(accountProfile?.username ?? profile.name).slice(0, 1).toUpperCase()}</div>}
             </div>
           </div>
         </header>
