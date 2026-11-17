@@ -95,9 +95,6 @@ function buildAttackMap(pieces: PieceOnBoard[], color: Color): AttackMap {
   }
   return map;
 }
-function countWhere(pieces: PieceOnBoard[], color: Color, predicate: (piece: PieceOnBoard) => boolean): number {
-  return pieces.filter((piece) => piece.color === color && predicate(piece)).length;
-}
 function pawnFiles(pieces: PieceOnBoard[], color: Color): number[] {
   return Array.from({ length: 8 }, (_, file) => pieces.filter((p) => p.color === color && p.type === "p" && p.file === file).length);
 }
@@ -277,7 +274,6 @@ function buildFacts(chess: Chess): PositionFacts {
     set(prefix + "ThreatsOnQueen", threatsOnQueen);
     set(prefix + "PawnAdvanceTotal", pawnAdvanceTotal);
     set(prefix + "PieceActivity", piecesEnemyHalf + seventh + outposts);
-    set(prefix + "PhaseMaterial", phaseWeight);
     set(prefix + "KingEscapeSquares", king ? pieceAttacks(king, pieces).filter((sq) => !own.some((p) => p.square === sq)).length : 0);
     set(prefix + "KingInCheck", king && (attacks[color === "w" ? "b" : "w"].get(king.square) ?? 0) > 0 ? 1 : 0);
     set(prefix + "KingFilePawns", king ? ownPawns.filter((p) => Math.abs(p.file - king.file) <= 1).length : 0);
