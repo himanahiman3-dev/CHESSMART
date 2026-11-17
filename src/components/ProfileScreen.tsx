@@ -164,14 +164,14 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
     const sortedDays = [...counts.keys()].sort();
     let longestStreak = 0;
     let runningStreak = 0;
-    let previous: Date | null = null;
+    let previousDayNumber: number | null = null;
     for (const key of sortedDays) {
       const [year, month, day] = key.split("-").map(Number);
-      const date = new Date(year, month - 1, day);
-      const consecutive = previous !== null && date.getTime() - previous.getTime() === 86400000;
+      const dayNumber = Date.UTC(year, month - 1, day);
+      const consecutive = previousDayNumber !== null && dayNumber - previousDayNumber === 86400000;
       runningStreak = consecutive ? runningStreak + 1 : 1;
       longestStreak = Math.max(longestStreak, runningStreak);
-      previous = date;
+      previousDayNumber = dayNumber;
     }
     return { days, activeDays30, currentStreak, longestStreak, totalActiveDays: counts.size };
   }, [profile.history, profile.puzzles, profile.trainingSessions, reviewRecords, puzzleRatingHistory]);
