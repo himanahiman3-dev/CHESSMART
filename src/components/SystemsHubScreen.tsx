@@ -35,7 +35,7 @@ import {
 } from "../lib/systemsSuite";
 
 type HubTab = "overview" | "analysis" | "quests" | "cache" | "network" | "settings";
-type HubDestination = "review" | "puzzles" | "mistakes" | "play" | "academy";
+type HubDestination = "review" | "puzzles" | "mistakes" | "play" | "academy" | "online" | "profile";
 
 const TABS: Array<{ id: HubTab; label: string }> = [
   { id: "overview", label: "Обзор" },
@@ -441,8 +441,8 @@ export function SystemsHubScreen({ profile, onBack, onNavigate }: {
               ) : <div className="rounded-xl border border-dashed border-[#526148] p-5 text-center text-xs text-[#9da795]">Запусти проверку — увидишь время ответа сайта и API онлайн-игры.</div>}
               <div className="mt-4 flex flex-wrap gap-2">
                 <ActionButton disabled={busy} onClick={() => void runNetworkCheck()}>{busy ? "Проверяю…" : "Проверить соединение"}</ActionButton>
+                <ActionButton secondary onClick={() => openDestination("online")}>Открыть онлайн-комнаты</ActionButton>
                 <ActionButton secondary onClick={() => openDestination("play")}>Играть против бота</ActionButton>
-                <ActionButton secondary onClick={() => openDestination("review")}>Назад к анализу</ActionButton>
               </div>
             </Panel>
             <Panel title="Стратегия повторных запросов" eyebrow="Стабильность онлайн-игры">
