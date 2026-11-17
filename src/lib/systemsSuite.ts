@@ -601,7 +601,7 @@ export async function checkOnlineServices(supabaseUrl: string): Promise<NetworkD
   const endpoints: EndpointHealth[] = [];
   endpoints.push(await measureEndpoint("website", "Сайт CHESSMART", siteUrl, { method: "HEAD" }));
   const base = supabaseUrl.trim().replace(/\/+$/, "");
-  if (base && anonKey.trim()) {
+  if (base) {
     endpoints.push(await measureEndpoint("online-api", "Сервер онлайн-игры", base + "/functions/v1/game-action", {
       method: "OPTIONS",
     }));
