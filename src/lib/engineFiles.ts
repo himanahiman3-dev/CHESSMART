@@ -93,34 +93,40 @@ async function readCached(spec: EngineFileSpec): Promise<Blob | null> {
   const meta = await idbGet<MetaRec>("meta", `file:${spec.name}`);
   if (!meta || meta.version !== ENGINE_VERSION || meta.size !== spec.size) return null;
   try {
-    if (meta.store === "cache" && "caches" in self) {
+    if (meta.store === "cache") {
+      if (!("caches" in self)) return null;
       const cache = await caches.open(CACHE_NAME);
       const res = await cache.match(cacheRequest(spec.name));
-      if (res) {
-        const b = await res.blob();
-        if (b.size === spec.size) return new Blob([b], { type: spec.mime });
-      }
-    } else {
-      const rec = await idbGet<{ blob: Blob }>("files", spec.name);
-      if (rec?.blob && rec.blob.size === spec.size) return new Blob([rec.blob], { type: spec.mime });
+      if (!res) return null;
+      const blob = await res.blob();
+      return blob.size === spec.size ? new Blob([blob], { type: spec.mime }) : null;
     }
+    const rec = await idbGet<{ blob: Blob }>("files", spec.name);
+    return rec?.blob && rec.blob.size === spec.size
+      ? new Blob([rec.blob], { type: spec.mime })
+      : null;
   } catch {
     /* упадём в повторную загрузку */
+    return null;
   }
-  return null;
 }
 
 export async function isEngineCached(set: EngineFileSet): Promise<boolean> {
   for (const spec of [set.js, set.wasm]) {
     const meta = await idbGet<MetaRec>("meta", `file:${spec.name}`);
     if (!meta || meta.version !== ENGINE_VERSION || meta.size !== spec.size) return false;
-    if (meta.store === "cache" && "caches" in self) {
-      try {
+    try {
+      if (meta.store === "cache") {
+        if (!("caches" in self)) return false;
         const cache = await caches.open(CACHE_NAME);
-        if (!(await cache.match(cacheRequest(spec.name)))) return false;
-      } catch {
-        return false;
+        const response = await cache.match(cacheRequest(spec.name));
+        if (!response || (await response.blob()).size !== spec.size) return false;
+      } else {
+        const rec = await idbGet<{ blob: Blob }>("files", spec.name);
+        if (!rec?.blob || rec.blob.size !== spec.size) return false;
       }
+    } catch {
+      return false;
     }
   }
   return true;
