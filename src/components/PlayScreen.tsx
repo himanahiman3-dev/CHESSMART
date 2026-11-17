@@ -76,6 +76,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
   const finish = (result: Result) => {
     if (finishedRef.current) return;
     finishedRef.current = true;
+    setPremove(null);
     setFinished(result);
     setStarted(false);
     const update = recordBotGame(profile, botElo, result);
@@ -310,7 +311,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
               <span className="text-xs text-[#a7a6a2]">{thinking ? "Движок думает…" : game.isCheck() ? "Шах" : ""}</span>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button onClick={undoTurn} disabled={!started || thinking || !lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Отменить ход</button>
+              <button onClick={undoTurn} disabled={!started || thinking || lastSan.length < 2} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Отменить ход</button>
               <button onClick={redoTurn} disabled={!started || thinking || !redoSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Повторить</button>
               <button onClick={() => setBoardFlipped((value) => !value)} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold">Перевернуть доску</button>
               <button onClick={() => void copyFen()} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold">Копировать FEN</button>
