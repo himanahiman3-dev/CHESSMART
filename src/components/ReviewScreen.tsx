@@ -40,7 +40,7 @@ function PlayerBar({ name, elo, acc, white }: { name: string; elo?: string; acc:
   );
 }
 
-export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () => void }) {
+export function ReviewScreen({ review, onNew, isRefining = false }: { review: GameReview; onNew: () => void; isRefining?: boolean }) {
   const { engine, info } = useEngine();
   const N = review.moves.length;
   const [ply, setPly] = useState(0);
@@ -379,6 +379,12 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
           <div className="hidden min-w-0 items-center gap-2 rounded-full border border-[#514a3c] bg-[#302b22] px-3 py-1.5 md:flex">
             <span className="font-mono text-[10px] font-black text-[#d7b887]">{review.opening.eco}</span>
             <span className="max-w-[250px] truncate text-[11px] font-bold text-[#ded4c0]">{review.opening.ru}</span>
+          </div>
+        )}
+        {isRefining && (
+          <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-full border border-[#789c54]/40 bg-[#34432b]/60 px-3 py-1.5 text-[10px] font-semibold text-[#cfe5b8]">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-[#a3d160]" />
+            Глубокая проверка жертв и тактики…
           </div>
         )}
         <div className="flex items-center gap-1.5 text-xs sm:gap-2">

@@ -77,6 +77,7 @@ function Main() {
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null);
   const [review, setReview] = useState<GameReview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isRefining, setIsRefining] = useState(false);
   const [profile, setProfile] = useState<PlayerProfile>(() => loadPlayerProfile());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -84,20 +85,48 @@ function Main() {
 
   const start = useCallback(async (pgn: string, depth: number) => {
     if (!engine) return;
+    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    let partialPublished = false;
     setError(null);
     setProgress(null);
+    setIsRefining(false);
     setStage("analyzing");
     try {
-      const result = await reviewGame(pgn, depth, engine, setProgress, controller.signal);
+      const result = await reviewGame(
+        pgn,
+        depth,
+        engine,
+        setProgress,
+        controller.signal,
+        undefined,
+        (partial) => {
+          if (controller.signal.aborted || abortRef.current !== controller) return;
+          partialPublished = true;
+          setReview(partial);
+          setMode("review");
+          setIsRefining(true);
+          setStage("review");
+        }
+      );
+      if (controller.signal.aborted || abortRef.current !== controller) return;
       setReview(result);
       setProfile((current) => recordReviewedGame(current, result));
       setMode("review");
+      setIsRefining(false);
       setStage("review");
+      abortRef.current = null;
     } catch (reason) {
-      if (controller.signal.aborted) setStage("import");
-      else {
+      if (abortRef.current !== controller) return;
+      abortRef.current = null;
+      setIsRefining(false);
+      if (controller.signal.aborted) {
+        setStage("import");
+      } else if (partialPublished) {
+        // Keep the usable first-pass review on screen if an optional deep pass fails.
+        setStage("review");
+      } else {
         setError(reason instanceof Error ? reason.message : String(reason));
         setStage("import");
       }
@@ -105,6 +134,9 @@ function Main() {
   }, [engine]);
 
   const changeMode = useCallback((next: MainMode) => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setIsRefining(false);
     setMode(next);
     setStage("import");
     setError(null);
@@ -123,7 +155,20 @@ function Main() {
   else if (mode === "endgame") page = <EndgameTrainingScreen engine={engine} onBack={() => changeMode("review")} />;
   else if (mode === "openings") page = <OpeningExplorerScreen onBack={() => changeMode("review")} />;
   else if (mode === "lab") page = <PositionLabScreen engine={engine} onBack={() => changeMode("review")} />;
-  else if (stage === "review" && review) page = <ReviewScreen review={review} onNew={() => { setReview(null); setMode("review"); setStage("import"); }} />;
+  else if (stage === "review" && review) page = (
+    <ReviewScreen
+      review={review}
+      isRefining={isRefining}
+      onNew={() => {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        setIsRefining(false);
+        setReview(null);
+        setMode("review");
+        setStage("import");
+      }}
+    />
+  );
   else {
     page = (
       <>

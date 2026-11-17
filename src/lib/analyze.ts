@@ -73,24 +73,8 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-/** Сколько миллисекунд на анализ всей партии приходится на один ход (10 ходов = 6 с). */
-export const TIME_PER_MOVE_MS = 600;
-/** Нижняя граница времени на одну позицию, чтобы движок успел выдать хоть какую-то оценку. */
-const MIN_POSITION_MS = 120;
-
-/** Общий бюджет времени на партию из `moveCount` ходов. */
-export function gameBudgetMs(moveCount: number): number {
-  return Math.max(0, Math.round(moveCount * TIME_PER_MOVE_MS));
-}
-
-/**
- * Время на текущую позицию: всё ещё не израсходованное время делится поровну между оставшимися позициями.
- * Недоиспользованное предыдущими позициями время автоматически переходит к следующим.
- */
-export function slotForPosition(budgetMs: number, elapsedMs: number, positionsLeft: number): number {
-  const remaining = Math.max(0, budgetMs - elapsedMs);
-  return Math.max(MIN_POSITION_MS, Math.round(remaining / Math.max(1, positionsLeft)));
-}
+import { gameBudgetMs, slotForPosition } from "./analysisBudget";
+export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
 export const FAST_MAX_DEPTH = 14;
@@ -240,7 +224,8 @@ export async function reviewGame(
   engine: StockfishEngine,
   onProgress: (p: AnalyzeProgress) => void,
   signal?: AbortSignal,
-  moveTimeMs?: number
+  moveTimeMs?: number,
+  onPartialReview?: (review: GameReview) => void
 ): Promise<GameReview> {
   const game = parseGame(pgn);
   const N = game.moves.length;
@@ -299,6 +284,13 @@ export async function reviewGame(
     budgetMs,
     elapsedMs: now() - startedAt,
   });
+
+  if (signal?.aborted) throw new Error("cancelled");
+  // Publish a complete, immediately usable review before the optional deep
+  // tactical passes. The same positions are refined below and the caller gets
+  // the final, higher-confidence result from the returned Promise.
+  onPartialReview?.(buildReview(game, positions, depth));
+
   await refineSacrifices(game, positions, depth, engine, onProgress, signal);
   const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, depth, engine, signal);
   return buildReview(game, positions, depth, deferredSacrifices);
