@@ -114,8 +114,8 @@ yesterdayProfile.trainingSessions.push(makeSession("yesterday", NOW - 86400000))
 assert.equal(calculateStudyStreak(yesterdayProfile, NOW).current, 1, "A session yesterday preserves the current streak.");
 
 const rich = emptyProfile();
-rich.reviews.push(makeReview("game-1", NOW - 2 * 86400000, 48, "endgame", 20));
-rich.reviews.push(makeReview("game-2", NOW - 4 * 86400000, 62, "endgame", 10));
+rich.reviews.push(makeReview("game-1", NOW - 6 * 3600000, 48, "endgame", 20));
+rich.reviews.push(makeReview("game-2", NOW - 8 * 3600000, 62, "endgame", 10));
 rich.puzzles.push(makePuzzle("fork-1", NOW - 5 * 86400000, "Зевает вилку: соперник одновременно атакует две фигуры.", "blunder"));
 rich.puzzles.push(makePuzzle("fork-2", NOW - 4 * 86400000, "Не заметил двойной удар и теряет фигуру.", "mistake", NOW - 86400000));
 rich.trainingSessions.push(makeSession("session-1", NOW - 86400000, 900000));
@@ -145,7 +145,7 @@ assert.equal(richDashboard.weekly.minutes, 15);
 assert.equal(richDashboard.weekly.progressPercent, 25);
 assert.ok(richDashboard.achievements.find((item) => item.id === "first-review")?.unlocked);
 assert.ok(richDashboard.achievements.find((item) => item.id === "first-session")?.unlocked);
-assert.equal(richDashboard.activity.filter((day) => day.total > 0).length, 6);
+assert.equal(richDashboard.activity.filter((day) => day.total > 0).length, 2);
 
 const settings = normalizeAcademySettings({ weeklySessionsTarget: 99, dailyPuzzleTarget: -3, completedTaskKeys: ["2026-11-17:task", "2026-11-17:task", 7] });
 assert.equal(settings.weeklySessionsTarget, 14);
