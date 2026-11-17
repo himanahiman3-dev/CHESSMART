@@ -93,10 +93,7 @@ export function PersonalCoachScreen({ profile, onChange, onBack }: Props) {
     () => profile.puzzles.filter((puzzle) => !puzzle.solvedAt).sort((a, b) => puzzlePriority(b) - puzzlePriority(a)),
     [profile.puzzles],
   );
-  const current = profile.puzzles.find((puzzle) => puzzle.id === selectedId)
-    ?? unsolved[0]
-    ?? profile.puzzles[profile.puzzles.length - 1]
-    ?? null;
+  const current = profile.puzzles.find((puzzle) => puzzle.id === selectedId) ?? unsolved[0] ?? null;
   const phases = useMemo(() => phaseStats(profile), [profile.reviews]);
   const availablePhases = phases.filter((item) => item.moves > 0);
   const weakestPhase = [...availablePhases].sort((a, b) => a.accuracy - b.accuracy)[0];
