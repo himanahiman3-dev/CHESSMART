@@ -103,6 +103,8 @@ function validTrainingSession(value: unknown): value is TrainingSessionSummary {
     && finite(value.attempts)
     && finite(value.correctMoves)
     && finite(value.accuracy)
+    && (value.category === undefined || value.category === "mistakes" || value.category === "endgame")
+    && (value.label === undefined || typeof value.label === "string")
     && value.total >= 0
     && value.solved >= 0
     && value.solved <= value.total
