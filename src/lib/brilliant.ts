@@ -1,0 +1,48 @@
+/**
+ * Chess.com describes a Brilliant move as a best/nearly-best good piece sacrifice:
+ * the resulting position must not be bad, and the player must not already be
+ * completely winning without finding it. Exact numeric thresholds are not public.
+ */
+export const BRILLIANT_MAX_LOSS = 3;
+export const BRILLIANT_MIN_AFTER = 40;
+
+export interface BrilliantCriteria {
+  sacrifice: boolean;
+  legalMoves: number;
+  alternativeWin: number | null;
+  winLoss: number;
+  winAfter: number;
+  lostMate: boolean;
+  allowedMate: boolean;
+  elo?: number;
+  /** A continuation of a previously established sacrifice, not a fresh sacrifice. */
+  continuation?: boolean;
+}
+
+/**
+ * Approximation of Chess.com's unpublished "already completely winning" cutoff.
+ * Expected-points values are in percent. Lower-rated players receive the more
+ * generous cutoff, as described by Chess.com; higher-rated players remain stricter.
+ */
+export function brilliantAlternativeLimit(elo?: number): number {
+  if (elo === undefined || !Number.isFinite(elo)) return 97;
+  if (elo < 1000) return 98;
+  if (elo < 1800) return 97;
+  return 96;
+}
+
+export function qualifiesAsBrilliant(criteria: BrilliantCriteria): boolean {
+  if (
+    !criteria.sacrifice ||
+    criteria.legalMoves <= 1 ||
+    criteria.lostMate ||
+    criteria.allowedMate ||
+    criteria.winLoss > BRILLIANT_MAX_LOSS ||
+    criteria.winAfter < BRILLIANT_MIN_AFTER
+  ) return false;
+
+  if (criteria.continuation) return true;
+
+  return criteria.alternativeWin !== null
+    && criteria.alternativeWin <= brilliantAlternativeLimit(criteria.elo);
+}
