@@ -393,7 +393,7 @@ const CATEGORIES: Array<{ name: string; entries: Array<[string,string,Direction,
     ["Расширенный центр белых","whiteExtendedCenterControl","high",6,"кл.","Контроль расширенного центрального квадрата."],["Расширенный центр чёрных","blackExtendedCenterControl","high",6,"кл.","Контроль расширенного центрального квадрата."],
     ["Пешки белых в центре","whiteCenterPawns","high",1,"п.","Пешки белых на четырёх центральных клетках."],["Пешки чёрных в центре","blackCenterPawns","high",1,"п.","Пешки чёрных на четырёх центральных клетках."],
     ["Общий контроль центра","centerControlTotal","high",4,"кл.","Сколько центральных клеток атакуется хотя бы одной стороной."],["Разница контроля центра","centerControlDifference","balanced",1,"кл.","Разница количества центральных клеток под контролем."],
-    ["Контроль центра d4 белыми","whiteCentralControl","info",0,"кл.","Сводный показатель центрального контроля белых."],["Контроль центра d4 чёрными","blackCentralControl","info",0,"кл.","Сводный показатель центрального контроля чёрных."]
+    ["Контроль центральной зоны белыми","whiteCentralControl","info",0,"кл.","Сводный показатель центрального контроля белых."],["Контроль центральной зоны чёрными","blackCentralControl","info",0,"кл.","Сводный показатель центрального контроля чёрных."]
   ]},
   { name: "Подвижность", entries: [
     ["Легальные ходы","legalMoves","high",20,"ход.","Количество легальных ходов стороны, чей сейчас ход."],["Псевдоподвижность белых","whitePseudoMobility","high",25,"ат.","Количество атак белых фигур."],
@@ -494,10 +494,10 @@ const CATEGORIES: Array<{ name: string; entries: Array<[string,string,Direction,
     ["Материал белых на светлопольной сетке","whiteLightSquarePieces","info",0,"шт.","Распределение фигур белых по цвету клеток."],["Материал чёрных на темнопольной сетке","blackDarkSquarePieces","info",0,"шт.","Распределение фигур чёрных по цвету клеток."]
   ]},
   { name: "Атака на короля", entries: [
-    ["Фигуры белых рядом с королём чёрных","whiteKingZonePressure","high",2,"кл.","Вражеский контроль зоны короля чёрных."],["Фигуры чёрных рядом с королём белых","blackKingZonePressure","high",2,"кл.","Вражеский контроль зоны короля белых."],
+    ["Давление чёрных вокруг белого короля","whiteKingZonePressure","high",2,"кл.","Контроль чёрных в зоне белого короля."],["Давление белых вокруг чёрного короля","blackKingZonePressure","high",2,"кл.","Контроль белых в зоне чёрного короля."],
     ["Атакующие на короля чёрных","blackKingAttackers","present",0,"ат.","Количество атакующих белых на поле чёрного короля."],["Атакующие на короля белых","whiteKingAttackers","present",0,"ат.","Количество атакующих чёрных на поле белого короля."],
     ["Щит короля чёрных","blackKingShield","high",2,"п.","Пешечная защита короля."],["Щит короля белых","whiteKingShield","high",2,"п.","Пешечная защита короля."],
-    ["Белые создают шах","checksAvailable","present",0,"ход.","Наличие легального шахующего хода белых, если сейчас их очередь."],["Чёрные создают шах","checksAvailable","info",0,"ход.","Показатель шахующих ходов текущей стороны."],
+    ["Шахующий ход стороны на очереди","checksAvailable","present",0,"ход.","Наличие легального шахующего хода текущей стороны."],["Число шахующих продолжений","checksAvailable","info",0,"ход.","Показатель шахующих ходов текущей стороны."],
     ["Король чёрных в шахе","blackKingInCheck","absent",0,"","Проверка прямой атаки на короля чёрных."],["Король белых в шахе","whiteKingInCheck","absent",0,"","Проверка прямой атаки на короля белых."]
   ]},
   { name: "Королевские пешки", entries: [
@@ -590,7 +590,6 @@ for (const group of CATEGORIES) {
 const ALIASES: Record<string,string> = {
   whiteLightSquarePieces: "whiteLightBishops", whiteDarkSquarePieces: "whiteDarkBishops",
   blackLightSquarePieces: "blackLightBishops", blackDarkSquarePieces: "blackDarkBishops",
-  whiteAttackedPawns: "whiteAttackedPieces", blackAttackedPawns: "blackAttackedPieces",
   minorDifference: "whiteMinorCount", majorDifference: "whiteMajorCount",
   totalRooks: "whiteRooks", totalBishops: "whiteBishops", totalKnights: "whiteKnights",
 };
