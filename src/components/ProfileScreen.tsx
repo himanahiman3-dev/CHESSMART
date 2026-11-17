@@ -4,11 +4,13 @@ import { updatePlayerName } from "../lib/playerProfile";
 import { PHASE_LABELS, type GamePhase } from "../lib/learningStats";
 import { sanRu } from "../lib/format";
 import { downloadProfileBackup, parseProfileBackup } from "../lib/profileBackup";
+import { ProfileCloudSyncPanel } from "./ProfileCloudSyncPanel";
 
 interface Props {
   profile: PlayerProfile;
   onChange: (profile: PlayerProfile) => void;
   onBack: () => void;
+  onOpenAccount: () => void;
 }
 
 function csvCell(value: string | number): string {
@@ -230,6 +232,8 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
             <label className="min-w-[180px] flex-1"><span className="mb-1 block text-xs font-bold text-[#a7a6a2]">Имя игрока</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} className="w-full rounded-lg border border-[#4b4844] bg-[#1f1d1b] px-3 py-2 outline-none focus:border-[#81b64c]" /></label>
             <button onClick={() => onChange(updatePlayerName(profile, name))} className="rounded-lg bg-[#81b64c] px-4 py-2 font-bold text-[#17210f] hover:bg-[#95c75f]">Сохранить</button>
           </div>
+
+          <ProfileCloudSyncPanel profile={profile} onChange={onChange} onOpenAccount={onOpenAccount} />
 
           <section className="rounded-xl bg-[#2b2926] p-3">
             <div className="mb-1 font-extrabold">Резервная копия профиля</div>
