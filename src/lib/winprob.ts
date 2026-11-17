@@ -54,7 +54,7 @@ export function cpFor(score: Score, color: Color): number {
   return color === "w" ? v : -v;
 }
 
-/** Точность одного хода по потере Win% (формула chess.com / Lichess). */
+/** Точность одного хода по потере Win% (формула Lichess; не формула CAPS2 Chess.com). */
 export function moveAccuracy(winLoss: number): number {
   const a = 103.1668 * Math.exp(-0.04354 * winLoss) - 3.1669;
   return Math.max(0, Math.min(100, a));
@@ -67,7 +67,7 @@ function stdDev(arr: number[]): number {
 }
 
 /**
- * CAPS2-подобная итоговая точность.
+ * Собственная агрегация Chessmart, а не закрытый алгоритм Chess.com CAPS2.
  * Берётся среднее из: (1) средневзвешенной точности, где вес хода — волатильность
  * позиции (σ Win% в скользящем окне), (2) гармонического среднего.
  */
