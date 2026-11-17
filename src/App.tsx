@@ -108,7 +108,7 @@ function Main() {
       const configuredUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
       const url = configuredUrl.endsWith("/") ? configuredUrl.slice(0, -1) : configuredUrl;
       const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? "";
-      if (!url || !key || readAccountProfile()) return;
+      if (!url || !key) return;
       try {
         const raw = localStorage.getItem("chessmart:account-session:v2");
         if (!raw) return;
