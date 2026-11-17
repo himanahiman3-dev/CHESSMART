@@ -1,6 +1,48 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-const MESSAGES = [
+// 8 original lines plus 16 distinct prompts × 21 chess lessons = 344 unique quotes.
+const INTRODUCTIONS = [
+  "На доске всё начинается с простого:",
+  "Главный шахматный урок звучит так:",
+  "Сильный игрок помнит:",
+  "Каждая партия напоминает:",
+  "За каждым хорошим ходом стоит мысль:",
+  "Шахматы учат нас одному:",
+  "Настоящий прогресс начинается там, где",
+  "В сложной позиции особенно важно помнить:",
+  "Путь к мастерству строится на том, что",
+  "Хорошая привычка шахматиста — помнить:",
+  "Самое ценное качество за доской — понимание, что",
+  "Даже трудная партия доказывает:",
+  "Секрет уверенной игры прост:",
+  "Перед следующим ходом вспомни:",
+  "Мудрость шахмат заключается в том, что",
+  "Каждый новый день за доской подтверждает:"
+];
+const LESSONS = [
+  "терпение часто сильнее спешки",
+  "точность рождается из внимания к деталям",
+  "ошибка становится уроком, если разобрать её честно",
+  "один спокойный расчёт лучше десяти поспешных решений",
+  "сильный ход начинается с хорошего вопроса к позиции",
+  "поражение не отменяет проделанную работу",
+  "каждая сыгранная партия добавляет новый опыт",
+  "план важен, но умение его пересмотреть ещё важнее",
+  "инициатива требует смелости и точного расчёта",
+  "защита тоже может быть проявлением силы",
+  "простые ходы часто скрывают глубокую идею",
+  "внимание к угрозам спасает больше фигур, чем надежда на удачу",
+  "лучший способ расти — искать причины, а не оправдания",
+  "выдержка помогает увидеть то, что скрывает спешка",
+  "материал важен, но активность фигур порой важнее",
+  "пешечная структура рассказывает историю всей позиции",
+  "король должен быть в безопасности, а фигуры — в игре",
+  "план появляется там, где заканчивается случайное движение фигур",
+  "тактика любит подготовку и наказывает невнимательность",
+  "умение ждать нужного момента — тоже часть атаки",
+  "прогресс складывается из маленьких осознанных решений"
+];
+const ORIGINAL_QUOTES = [
   "Каждая партия может стать сильнее.",
   "Сильная игра начинается с одного точного решения.",
   "Ошибки — это позиции, которые ты ещё не научился выигрывать.",
@@ -10,21 +52,47 @@ const MESSAGES = [
   "Анализируй не поражения — находи в них будущие победы.",
   "Терпение, расчёт, точность. Ход за ходом."
 ];
+const MESSAGES = [
+  ...ORIGINAL_QUOTES,
+  ...INTRODUCTIONS.flatMap((introduction) =>
+    LESSONS.map((lesson) => `${introduction} ${lesson}.`)
+  ),
+];
 
 export function MotivationBanner() {
-  const [message] = useState(() => MESSAGES[Math.floor(Math.random() * MESSAGES.length)]);
+  const [messageIndex, setMessageIndex] = useState(
+    () => Math.floor(Math.random() * MESSAGES.length)
+  );
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setMessageIndex((current) => {
+        const next = Math.floor(Math.random() * MESSAGES.length);
+        return next === current ? (next + 1) % MESSAGES.length : next;
+      });
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
   return (
-    <section className="motivation-banner mx-auto mb-5 flex max-w-5xl items-center gap-4 overflow-hidden rounded-2xl border border-[#8eaf68]/20 px-4 py-3.5 sm:px-5" aria-label="Мотивация дня">
-      <div className="motivation-piece relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#81b64c]/10 text-[34px] leading-none text-[#a3d16f]" aria-hidden="true">
-        <span className="motivation-piece-glyph">♞</span>
-        <span className="motivation-orbit motivation-orbit-one" />
-        <span className="motivation-orbit motivation-orbit-two" />
-      </div>
+    <section
+      className="motivation-banner mx-auto mb-5 flex max-w-5xl items-center overflow-hidden rounded-2xl border border-[#8eaf68]/20 px-4 py-3.5 sm:px-5"
+      aria-label="Шахматная мотивация"
+    >
       <div className="min-w-0">
-        <div className="motivation-kicker mb-1 text-[9px] font-extrabold uppercase tracking-[0.22em] text-[#91ad76]">Твой ход к мастерству</div>
-        <p className="motivation-phrase text-sm font-bold leading-snug text-[#edf4e5] sm:text-[15px]">{message}</p>
+        <div className="motivation-kicker mb-1 text-[9px] font-extrabold uppercase tracking-[0.22em] text-[#91ad76]">
+          Твой ход к мастерству · {MESSAGES.length} мыслей о шахматах
+        </div>
+        <p
+          key={messageIndex}
+          className="motivation-phrase motivation-quote text-sm font-bold leading-snug text-[#edf4e5] sm:text-[15px]"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {MESSAGES[messageIndex]}
+        </p>
       </div>
-      <div className="motivation-spark ml-auto hidden h-8 w-8 shrink-0 items-center justify-center text-lg text-[#a3d16f] sm:flex" aria-hidden="true">✦</div>
     </section>
   );
 }
