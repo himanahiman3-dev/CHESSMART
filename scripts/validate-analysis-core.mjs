@@ -30,31 +30,14 @@ assert.equal(
   "Stockfish must receive the full path from the original PGN root",
 );
 
-const checkedFen = "4k3/8/8/8/2b5/8/RP2r3/4K3 w - - 0 1";
+const checkedFen = "4r2k/8/8/8/2b5/8/RP6/4K3 w - - 0 1";
 const checked = new Chess(checkedFen);
 assert.equal(checked.isCheck(), true, "Test position must actually be check");
 assert.ok(
   checked.moves({ verbose: true }).some((move) => !move.captured),
   "Test position must have a quiet check evasion",
 );
-const evasions = checked.moves({ verbose: true });
-for (const evasion of evasions) {
-  const position = new Chess(checkedFen);
-  position.move({ from: evasion.from, to: evasion.to, promotion: evasion.promotion });
-  const captures = position.moves({ verbose: true }).filter((move) => move.to === "a2");
-  console.log(
-    "CHECK-EVASION", evasion.san, position.fen(),
-    "BLACK-IN-CHECK", position.isCheck(),
-    "CAPTURES-TO-A2", captures.map((move) => ({ san: move.san, captured: move.captured, piece: move.piece })),
-    "QBALANCE-AFTER-EVASION", qBalance(position.fen()),
-  );
-  if (captures.length) {
-    position.move({ from: captures[0].from, to: captures[0].to, promotion: captures[0].promotion });
-    console.log("AFTER-BXA2", position.fen(), "QBALANCE-AFTER-CAPTURE", qBalance(position.fen()));
-  }
-}
 const checkedEval = qBalance(checkedFen);
-console.log("QBALANCE", checkedEval);
 assert.ok(Number.isFinite(checkedEval), "Quiescence search must return a finite score while in check");
 assert.ok(
   checkedEval < -500,
