@@ -14,7 +14,7 @@ import type { StockfishEngine } from "./engine";
 import { getCachedPosition, putCachedPosition } from "./db";
 import { analyzeBook, openingForCode } from "./openings";
 import { detectSacrifice } from "./see";
-import { BRILLIANT_MAX_LOSS, qualifiesAsBrilliant } from "./brilliant";
+import { BRILLIANT_MAX_LOSS, BRILLIANT_MIN_AFTER, qualifiesAsBrilliant } from "./brilliant";
 import { buildComment } from "./coach";
 import { cpFor, estimateGameRating, gameAccuracy, moveAccuracy, winFor, winForRated, winPercent } from "./winprob";
 
