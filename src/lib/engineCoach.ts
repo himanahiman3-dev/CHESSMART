@@ -89,6 +89,7 @@ export function explainStockfishMove(fen: string, uci: string): EngineMoveExplan
     if (!move) return null;
 
     const fenAfter = board.fen();
+    const beforeDiagnostics = evaluatePositionDiagnostics(fen);
     const afterDiagnostics = evaluatePositionDiagnostics(fenAfter);
     const beforeByTitle = new Map<string, DiagnosticResult>();
     for (const item of beforeDiagnostics.results) {
