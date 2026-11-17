@@ -12,7 +12,8 @@
     "validate:analysis-core": "node --experimental-strip-types scripts/validate-analysis-core.mjs",
     "validate:profile-sync": "node --experimental-strip-types scripts/validate-profile-sync.mjs",
     "validate:gameplay": "node --experimental-strip-types scripts/validate-gameplay.mjs",
-    "validate:diagnostics": "node --experimental-strip-types scripts/validate-diagnostics.mjs"
+    "validate:diagnostics": "node --experimental-strip-types scripts/validate-diagnostics.mjs",
+    "validate:engine-coach": "node --experimental-strip-types scripts/validate-engine-coach.mjs"
   },
   "dependencies": {
     "chess.js": "^1.4.0",
