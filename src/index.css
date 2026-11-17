@@ -575,3 +575,46 @@ button:not(:disabled):hover {
   .mobile-nav-item { font-size: 8px; }
   .mobile-nav-item svg { width: 17px; height: 17px; }
 }
+
+
+@media (max-width: 640px) {
+  /* During engine work, show the live board and essential stats together. */
+  .analyzing-screen {
+    min-height: 100dvh !important;
+    align-items: flex-start !important;
+    padding: 8px !important;
+  }
+  .analyzing-screen > .relative.w-full {
+    max-width: 520px;
+  }
+  .analyzing-screen header { margin-bottom: 8px !important; gap: 8px !important; }
+  .analyzing-screen header > svg { width: 30px; height: 30px; }
+  .analyzing-screen section { border-radius: 17px !important; }
+  .analyzing-screen section > div:first-child { padding: 10px 12px !important; }
+  .analyzing-screen h1 { font-size: 18px !important; }
+  .analyzing-screen section > div:first-child p { font-size: 10px !important; }
+  .analyzing-grid {
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr) !important;
+    gap: 8px !important;
+    padding: 9px !important;
+  }
+  .analyzing-board { padding: 6px !important; border-radius: 12px !important; }
+  .analyzing-board > div:first-child { margin-bottom: 5px !important; }
+  .analyzing-board > div:nth-child(2) { max-width: 100% !important; }
+  .analyzing-board > div:last-child { margin-top: 5px !important; font-size: 7px !important; }
+  .analyzing-grid > div:last-child { min-width: 0; }
+  .analyzing-grid > div:last-child > div:first-child { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 5px !important; }
+  .analyzing-grid > div:last-child > div:first-child > div { padding: 7px !important; }
+  .analyzing-grid > div:last-child > div:first-child > div:last-child { grid-column: span 2 / span 2; }
+  .analyzing-grid > div:last-child > div:first-child > div > div:first-child { font-size: 7px !important; }
+  .analyzing-grid > div:last-child > div:first-child > div > div:last-child { margin-top: 2px !important; font-size: 14px !important; }
+  .analyzing-grid > div:last-child > div:nth-child(2) { margin-top: 9px !important; }
+  .analyzing-grid > div:last-child > div:nth-child(2) > div:first-child > div:first-child { font-size: 11px !important; }
+  .analyzing-grid > div:last-child > div:nth-child(2) > div:nth-child(3) { font-size: 7px !important; }
+  .analyzing-explanation, .analyzing-footer { display: none !important; }
+  .analyzing-grid button { margin-top: 10px !important; min-height: 38px; padding: 8px !important; font-size: 10px !important; }
+}
+@media (max-width: 380px) {
+  .analyzing-grid { grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr) !important; }
+  .analyzing-screen header > div:nth-child(2) > div:last-child { display: none; }
+}
