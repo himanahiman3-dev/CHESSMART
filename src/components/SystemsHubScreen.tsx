@@ -21,6 +21,8 @@ import {
   getSuiteDashboardGreeting,
   getSuiteLevelTitle,
   getQuestDestinationLabel,
+  getRecommendedAnalysisDepth,
+  getPerformanceLabel,
   loadSuiteSettings,
   saveSuiteSettings,
   updateSuitePreference,
@@ -110,7 +112,7 @@ function QuestCard({ quest, onClaim, onOpen }: {
       <div className="mt-3 flex flex-wrap gap-2">
         {quest.completed && !quest.claimed
           ? <ActionButton onClick={() => onClaim(quest)}>Забрать XP</ActionButton>
-          : <ActionButton secondary disabled={quest.claimed} onClick={() => onOpen(destination)}>Перейти к заданию</ActionButton>}
+          : <ActionButton secondary disabled={quest.claimed} onClick={() => onOpen(destination)}>Перейти: {getQuestDestinationLabel(destination)}</ActionButton>}
         {quest.completed && quest.claimed && <span className="self-center text-[10px] font-bold text-[#a8c98d]">Выполнено</span>}
       </div>
     </div>
@@ -207,7 +209,6 @@ export function SystemsHubScreen({ profile, onBack, onNavigate }: {
     try {
       const result = await checkOnlineServices(
         (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "",
-        (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? "",
       );
       setNetwork(result);
       setNotice(getNetworkSummary(result));
@@ -233,6 +234,10 @@ export function SystemsHubScreen({ profile, onBack, onNavigate }: {
 
   const weakest = dashboard.metrics.weakestPhase;
   const accuracyChange = dashboard.metrics.accuracyChange;
+  const averagePlies = profile.reviews.length
+    ? profile.reviews.reduce((sum, item) => sum + item.plies, 0) / profile.reviews.length
+    : 0;
+  const recommendedDepth = getRecommendedAnalysisDepth(profile.rating, averagePlies);
 
   return (
     <main className={"systems-hub min-h-screen bg-[#20251e] p-3 text-[#f0f2eb] sm:p-6 " + (settings.compactMode ? "systems-hub-compact " : "") + (settings.reducedMotion ? "systems-hub-reduced-motion" : "")}>
@@ -333,9 +338,10 @@ export function SystemsHubScreen({ profile, onBack, onNavigate }: {
                 </>
               ) : <p className="text-xs leading-relaxed text-[#9aa38f]">График появится после первых разборов партий.</p>}
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <Metric label="Средняя точность" value={dashboard.metrics.averageAccuracy === null ? "—" : dashboard.metrics.averageAccuracy.toFixed(1) + "%"} detail="Все сохранённые обзоры" />
+                <Metric label="Средняя точность" value={dashboard.metrics.averageAccuracy === null ? "—" : dashboard.metrics.averageAccuracy.toFixed(1) + "%"} detail={getPerformanceLabel(dashboard.metrics.averageAccuracy)} />
                 <Metric label="Изменение" value={formatSignedPercent(dashboard.metrics.accuracyChange)} detail="Последние 5 против предыдущих 5" tone={accuracyChange !== null && accuracyChange >= 0 ? "text-[#bfe19c]" : "text-[#e3a38e]"} />
               </div>
+              <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/10 p-3 text-[10px] leading-relaxed text-[#a4b098]">Для следующих разборов ориентир по глубине — <b className="text-[#d9edc4]">{recommendedDepth}</b>. Это рекомендация по рейтингу и средней длине партий, а не изменение настроек Stockfish автоматически.</div>
             </Panel>
             <Panel title="Сильные и слабые зоны" eyebrow="По стадиям партии">
               {weakest ? (
