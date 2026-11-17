@@ -100,7 +100,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
     }
     const timer = window.setTimeout(() => {
       const next = review.moves[ply];
-      if (next) playSound(soundForSan(next.san, ply + 1 === N && next.san.includes("#")));
+      if (next) playSound(soundForSan(next.san, ply + 1 === N && next.san.includes("#"), next.cls));
       setPly((current) => Math.min(N, current + 1));
     }, autoPlayDelay);
     return () => window.clearTimeout(timer);
@@ -134,7 +134,7 @@ export function ReviewScreen({ review, onNew }: { review: GameReview; onNew: () 
       setExplore(null);
       if (!silent && target !== plyRef.current && target > 0) {
         const m = review.moves[target - 1];
-        playSound(soundForSan(m.san, target === N && m.san.includes("#")));
+        playSound(soundForSan(m.san, target === N && m.san.includes("#"), m.cls));
       }
       setPly(target);
     },
