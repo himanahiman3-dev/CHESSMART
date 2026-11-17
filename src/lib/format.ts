@@ -54,5 +54,5 @@ export const PIECE_VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 
 
 /** Position identity for evaluation: keep the 50-move counter, ignore only fullmove number. */
 export function fenKey(fen: string): string {
-  return fen.trim().split(/\\s+/).slice(0, 5).join(" ");
+  return fen.trim().split(/\s+/).slice(0, 5).join(" ");
 }
