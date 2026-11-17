@@ -13,6 +13,7 @@ import { PuzzleLibraryScreen } from "./components/PuzzleLibraryScreen";
 import { EndgameTrainingScreen } from "./components/EndgameTrainingScreen";
 import { OpeningExplorerScreen } from "./components/OpeningExplorerScreen";
 import { PositionLabScreen } from "./components/PositionLabScreen";
+import { PersonalCoachScreen } from "./components/PersonalCoachScreen";
 import { reviewGame, type AnalyzeProgress } from "./lib/analyze";
 import {
   loadPlayerProfile,
@@ -23,8 +24,8 @@ import {
 import type { GameReview } from "./types";
 
 type Stage = "import" | "analyzing" | "review";
-type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "endgame" | "openings" | "lab";
-type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "endgame" | "openings" | "profile" | "lab";
+type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "coach" | "endgame" | "openings" | "lab";
+type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "coach" | "endgame" | "openings" | "profile" | "lab";
 
 const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconName }> = [
   { id: "review", label: "Анализ партий", group: "Играть", icon: "analysis" },
@@ -32,6 +33,7 @@ const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconN
   { id: "online", label: "Играть онлайн", group: "Играть", icon: "online" },
   { id: "puzzles", label: "Тактические задачи", group: "Тренировка", icon: "puzzles" },
   { id: "mistakes", label: "Мои ошибки", group: "Тренировка", icon: "mistakes" },
+  { id: "coach", label: "Personal Coach", group: "Тренировка", icon: "coach" },
   { id: "endgame", label: "Эндшпиль", group: "Тренировка", icon: "endgame" },
   { id: "openings", label: "Дебютная база", group: "Изучать", icon: "openings" },
   { id: "profile", label: "Статистика", group: "Изучать", icon: "profile" },
@@ -48,6 +50,7 @@ function NavIcon({ name, active = false }: { name: IconName; active?: boolean })
       {name === "online" && <><circle {...common} cx="9" cy="8" r="3" /><path {...common} d="M3.5 19v-1.2A4.8 4.8 0 0 1 8.3 13h1.4a4.8 4.8 0 0 1 4.8 4.8V19" /><path {...common} d="M16 5.5a3 3 0 0 1 0 5.8M17 13.5a4.5 4.5 0 0 1 3.5 4.4V19" /></>}
       {name === "puzzles" && <><path {...common} d="M8 4h8v4a2 2 0 1 1 0 4v8H8v-4a2 2 0 1 0 0-4z" /></>}
       {name === "mistakes" && <><path {...common} d="M12 3 2.8 19h18.4L12 3Z" /><path {...common} d="M12 9v4.5M12 17h.01" /></>}
+      {name === "coach" && <><path {...common} d="M12 3.5 14 8l4.9.6-3.6 3.3.9 4.8-4.2-2.4-4.2 2.4.9-4.8-3.6-3.3L11 8z" /><path {...common} d="M6 20h12M8 17.5V20m8-2.5V20" /></>}
       {name === "endgame" && <><path {...common} d="M4 20h16M6 20V8l6-4 6 4v12" /><path {...common} d="M9 11h6M9 15h6" /></>}
       {name === "openings" && <><path {...common} d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" /></>}
       {name === "profile" && <><circle {...common} cx="12" cy="8" r="3.2" /><path {...common} d="M4.5 20a7.5 7.5 0 0 1 15 0" /></>}
@@ -116,6 +119,7 @@ function Main() {
   else if (mode === "profile") page = <ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "puzzles") page = <PuzzleLibraryScreen onBack={() => changeMode("review")} />;
   else if (mode === "mistakes") page = <MistakeTrainerScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
+  else if (mode === "coach") page = <PersonalCoachScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "endgame") page = <EndgameTrainingScreen engine={engine} onBack={() => changeMode("review")} />;
   else if (mode === "openings") page = <OpeningExplorerScreen onBack={() => changeMode("review")} />;
   else if (mode === "lab") page = <PositionLabScreen engine={engine} onBack={() => changeMode("review")} />;
