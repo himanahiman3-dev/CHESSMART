@@ -4,6 +4,14 @@ import { fenKey } from "../src/lib/format.ts";
 import { positionKey } from "../src/lib/db.ts";
 import { buildPositionCommand } from "../src/lib/engine.ts";
 import { qBalance } from "../src/lib/see.ts";
+import { gameBudgetMs, slotForPosition } from "../src/lib/analyze.ts";
+
+assert.equal(gameBudgetMs(10), 6000, "A ten-ply game gets the configured base budget");
+assert.equal(gameBudgetMs(1), 600, "A one-ply game still budgets both evaluated positions");
+assert.ok(gameBudgetMs(10) >= 11 * 120, "The total budget reserves the minimum for every position");
+assert.equal(slotForPosition(6000, 0, 11), 545, "The initial position receives an even share");
+assert.equal(slotForPosition(6000, 5970, 1), 30, "A position never receives more than the remaining budget");
+assert.equal(slotForPosition(0, 0, 1), 1, "An exhausted budget cannot create an over-budget slot");
 
 const board = "4k3/8/8/8/8/8/8/4K3 w - -";
 const fresh = `${board} 0 1`;
