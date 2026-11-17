@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chess } from "chess.js";
+import type { PlayerProfile, PuzzleRatingEntry } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
 
 interface Puzzle {
@@ -132,7 +133,13 @@ function expectedScore(rating: number, opponent: number): number {
   return 1 / (1 + 10 ** ((opponent - rating) / 400));
 }
 
-export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
+interface Props {
+  onBack: () => void;
+  profile: PlayerProfile;
+  onChange: (profile: PlayerProfile) => void;
+}
+
+export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
   const [bank, setBank] = useState<Puzzle[]>([]);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -167,6 +174,19 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
   }, []);
 
   useEffect(() => saveStats(stats), [stats]);
+
+  // Keep the legacy puzzle-bank rating while moving new snapshots into the portable profile.
+  useEffect(() => {
+    if (profile.puzzleRatingHistory.length > 0) {
+      if (stats.rating !== profile.puzzleRating) {
+        setStats((previous) => ({ ...previous, rating: profile.puzzleRating }));
+      }
+    } else if (stats.rating !== profile.puzzleRating) {
+      onChange({ ...profile, puzzleRating: stats.rating });
+    }
+    // This is a one-time migration on screen entry; later writes use the latest props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const dailyId = useMemo(() => {
     if (!bank.length) return "";
     const day = Math.floor(new Date().setHours(0, 0, 0, 0) / 86400000);
@@ -221,9 +241,24 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
   const finishPuzzle = useCallback((puzzle: Puzzle, wasRevealed: boolean) => {
     const alreadySolved = stats.solved.includes(puzzle.id);
     const nextRating = Math.max(400, Math.min(3200, Math.round(stats.rating + 24 * ((wasRevealed ? 0 : 1) - expectedScore(stats.rating, puzzle.rating)))));
-    const today = localDateKey();
-    const now = new Date();
+    const completedAt = Date.now();
+    const today = localDateKey(new Date(completedAt));
+    const now = new Date(completedAt);
     const yesterday = localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+    const ratingAfter = alreadySolved ? stats.rating : nextRating;
+    const ratingEntry: PuzzleRatingEntry = {
+      at: completedAt,
+      puzzleId: puzzle.id,
+      mode,
+      solved: !wasRevealed,
+      change: ratingAfter - stats.rating,
+      ratingAfter,
+    };
+    onChange({
+      ...profile,
+      puzzleRating: ratingAfter,
+      puzzleRatingHistory: [...profile.puzzleRatingHistory, ratingEntry].slice(-180),
+    });
     setStats((previous) => {
       const completedDailyToday = mode === "daily" && !wasRevealed && previous.lastDaily !== today;
       const nextDailyStreak = previous.lastDaily === yesterday ? previous.streak + 1 : 1;
@@ -241,7 +276,7 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
     });
     if (mode === "rated" && !wasRevealed) setRushCount((value) => value + 1);
     setFeedback(wasRevealed ? "revealed" : "solved");
-  }, [stats.solved, stats.rating, stats.lastDaily, mode]);
+  }, [stats.solved, stats.rating, stats.lastDaily, mode, profile, onChange]);
 
   const handleMove = useCallback((move: BoardMove): boolean => {
     if (!current || feedback === "solved" || feedback === "revealed" || !playerMove) return false;
