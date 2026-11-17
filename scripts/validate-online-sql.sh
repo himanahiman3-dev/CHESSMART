@@ -14,6 +14,14 @@ create role authenticated nologin;
 create role service_role nologin bypassrls;
 create schema auth;
 create table auth.users (id uuid primary key);
+create schema storage;
+create table storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean not null default false,
+  file_size_limit bigint,
+  allowed_mime_types text[]
+);
 create function auth.uid() returns uuid
 language sql stable
 as $$ select null::uuid $$;
@@ -23,6 +31,7 @@ SQL
 
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611160001_online_chess.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611160002_accounts_matchmaking.sql
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170001_account_avatars.sql
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
 insert into auth.users(id) values
@@ -40,6 +49,18 @@ insert into public.online_profiles(user_id, username) values
 ('00000000-0000-0000-0000-000000000004', 'delta'),
 ('00000000-0000-0000-0000-000000000005', 'echo'),
 ('00000000-0000-0000-0000-000000000006', 'foxtrot');
+
+-- Avatar schema and public storage bucket must be ready for authenticated uploads.
+do $avatar_test$
+begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'online_profiles' and column_name = 'avatar_url') then
+    raise exception 'Avatar URL column was not created';
+  end if;
+  if not exists (select 1 from storage.buckets where id = 'chessmart-avatars' and public = true and file_size_limit = 1048576) then
+    raise exception 'Public avatar bucket was not configured';
+  end if;
+end;
+$avatar_test$;
 
 -- The first player waits; the second should be paired immediately at a similar Elo.
 do $test$

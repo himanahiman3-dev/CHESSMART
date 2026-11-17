@@ -8,14 +8,15 @@ The website remains a **Render Static Site**. Supabase hosts the database, accou
 2. In Authentication → Providers, make sure the **Email** provider is enabled. The app creates and confirms users through the server Admin API.
 3. Copy the Project URL and the public anon/publishable key from Project Settings → API.
 
-## 2. Apply both database migrations
+## 2. Apply the database migrations
 
 Run these files in the Supabase SQL Editor, in this order:
 
 1. supabase/migrations/202611160001_online_chess.sql
 2. supabase/migrations/202611160002_accounts_matchmaking.sql
+3. supabase/migrations/202611170001_account_avatars.sql
 
-The first migration creates online profiles, games and protected Elo updates. The second adds nickname-account matchmaking, the queue, direct invitations and rate limits for registration/login.
+The first migration creates online profiles, games and protected Elo updates. The second adds nickname-account matchmaking, the queue, direct invitations and rate limits for registration/login. The third adds avatar URLs to online profiles and creates the public avatar-storage bucket. Apply all three migrations in order.
 
 ## 3. Deploy the Edge Function
 
@@ -37,7 +38,7 @@ Save and rebuild/redeploy the static site. Vite embeds public VITE_ variables at
 
 ## Accounts
 
-Players register with a unique nickname (3–18 lowercase Latin letters, digits or _) and a password of at least 8 characters. No email is required. The account uses a private synthetic email address only for Supabase Auth, so password recovery is not available yet. Players must keep their password safe.
+Players register with a unique nickname (3–18 lowercase Latin letters, digits or _) and a password of at least 8 characters. They may choose an avatar during registration and change it later from the online account screen. Avatar images are center-cropped, resized to 512×512 WebP and limited to 1 MB after processing. No email is required. The account uses a private synthetic email address only for Supabase Auth, so password recovery is not available yet. Players must keep their password safe.
 
 Online ratings are stored server-side and kept separately for Bullet, Blitz and Rapid. The local Stockfish rating and local puzzle rating are not used for matchmaking.
 

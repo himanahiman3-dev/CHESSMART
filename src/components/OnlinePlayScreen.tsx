@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { GameBoard, type BoardMove } from "./GameBoard";
+import { clearAccountProfile, publishAccountProfile } from "../lib/accountProfile";
 
 interface OnlineSession {
   access_token: string;
@@ -17,6 +18,7 @@ interface OnlineProfile {
   bullet_games: number;
   blitz_games: number;
   rapid_games: number;
+  avatar_url?: string | null;
 }
 interface OnlineMove { uci: string; san: string; color: "w" | "b"; at: string; }
 interface OnlineGame {
@@ -98,6 +100,32 @@ async function refreshSession(url: string, key: string, refreshToken: string): P
 function saveSession(session: OnlineSession) {
   try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* storage can be disabled */ }
 }
+async function encodeAvatar(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("Выбери файл изображения.");
+  if (file.size > 8 * 1024 * 1024) throw new Error("Исходное изображение должно быть меньше 8 МБ.");
+  const bitmap = await createImageBitmap(file);
+  const side = Math.min(bitmap.width, bitmap.height);
+  const sx = (bitmap.width - side) / 2;
+  const sy = (bitmap.height - side) / 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Браузер не смог обработать изображение.");
+  context.drawImage(bitmap, sx, sy, side, side, 0, 0, 512, 512);
+  bitmap.close();
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Не удалось обработать изображение.")), "image/webp", 0.82);
+  });
+  if (blob.size > 1_048_576) throw new Error("Не удалось сжать аватар до 1 МБ.");
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
 function clockText(ms: number): string {
   const seconds = Math.max(0, Math.ceil(ms / 1000));
   return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
@@ -131,6 +159,10 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [game, setGame] = useState<OnlineGame | null>(null);
   const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.search).get("challenge") ?? "");
   const [inviteUsername, setInviteUsername] = useState("");
@@ -150,6 +182,28 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const timeoutLastAttemptRef = useRef(0);
   const searchBusyRef = useRef(false);
 
+  const selectAvatar = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("Выбери файл изображения."); return; }
+    if (file.size > 8 * 1024 * 1024) { setError("Исходное изображение должно быть меньше 8 МБ."); return; }
+    setAvatarFile(file);
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = () => setAvatarPreview(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
+  };
+
+  const saveAvatar = async (file: File, activeSession: OnlineSession) => {
+    const avatarData = await encodeAvatar(file);
+    const data = await callAction(url, key, activeSession, "update_avatar", { avatarData, contentType: "image/webp" });
+    if (!data.profile) throw new Error("Сервер не вернул обновлённый профиль.");
+    setOnlineProfile(data.profile);
+    publishAccountProfile(data.profile);
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setNotice("Аватар успешно обновлён.");
+  };
+
   useEffect(() => {
     if (!configured) return;
     let cancelled = false;
@@ -168,7 +222,10 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
           Promise.resolve(localStorage.getItem(GAME_KEY)),
         ]);
         if (cancelled) return;
-        if (profileData.profile) setOnlineProfile(profileData.profile);
+        if (profileData.profile) {
+          setOnlineProfile(profileData.profile);
+          publishAccountProfile(profileData.profile);
+        }
         setSession(saved);
         if (profileData.game) {
           if (!cancelled) {
@@ -183,6 +240,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
         }
       } catch {
         localStorage.removeItem(SESSION_KEY);
+        clearAccountProfile();
       } finally {
         if (!cancelled) setAuthBusy(false);
       }
@@ -207,13 +265,19 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
       saveSession(nextSession);
       setSession(nextSession);
       setOnlineProfile(data.profile);
+      publishAccountProfile(data.profile);
       setPassword("");
       setNotice(authMode === "register" ? "Аккаунт создан. Добро пожаловать в CHESSMART." : "Вход выполнен.");
+      if (authMode === "register" && avatarFile) {
+        try { await saveAvatar(avatarFile, nextSession); }
+        catch (avatarError) { setNotice("Аккаунт создан, но аватар не загрузился: " + (avatarError instanceof Error ? avatarError.message : String(avatarError))); }
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally { setBusy(false); }
   };
   const signOut = () => {
+    clearAccountProfile();
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(GAME_KEY);
     setSession(null); setOnlineProfile(null); setGame(null); setSearching(false);
@@ -223,7 +287,10 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const refreshProfile = useCallback(async () => {
     if (!session) return;
     const data = await callAction(url, key, session, "profile");
-    if (data.profile) setOnlineProfile(data.profile);
+    if (data.profile) {
+      setOnlineProfile(data.profile);
+      publishAccountProfile(data.profile);
+    }
   }, [session, url, key]);
 
   const refreshGame = useCallback(async () => {
@@ -473,6 +540,21 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
             <label className="block text-xs font-bold text-[#cbc9c1]" htmlFor="account-username">Ник</label>
             <input id="account-username" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 18))} placeholder="например, chessking" className="mt-2 w-full rounded-lg border border-[#4a4942] bg-[#22231f] px-3 py-3 text-sm outline-none focus:border-[#81b64c]" />
             <p className="mt-1 text-[10px] text-[#85847d]">3–18 символов: латиница, цифры и подчёркивание. По нику тебя смогут найти другие игроки.</p>
+            {authMode === "register" && (
+              <div className="mt-4 rounded-xl border border-[#4a5940] bg-[#262b23] p-3">
+                <div className="flex items-center gap-3">
+                  {avatarPreview
+                    ? <img src={avatarPreview} alt="Предпросмотр аватара" className="h-14 w-14 rounded-xl object-cover" />
+                    : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#3d5033] text-xl font-black text-[#d9edc4]">?</div>}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-[#e3ecd9]">Аватар профиля</div>
+                    <div className="mt-1 text-[10px] text-[#929b89]">Необязательно · изображение будет обрезано по центру</div>
+                    <button type="button" onClick={() => avatarInputRef.current?.click()} className="mt-2 rounded-lg bg-[#3d5033] px-3 py-1.5 text-[11px] font-bold text-[#e3ecd9]">Выбрать фото</button>
+                  </div>
+                </div>
+                <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => { selectAvatar(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
+              </div>
+            )}
             <label className="mt-4 block text-xs font-bold text-[#cbc9c1]" htmlFor="account-password">Пароль</label>
             <input id="account-password" type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void authenticate(); }} placeholder="Минимум 8 символов" className="mt-2 w-full rounded-lg border border-[#4a4942] bg-[#22231f] px-3 py-3 text-sm outline-none focus:border-[#81b64c]" />
             {authMode === "register" && <p className="mt-3 text-[10px] leading-relaxed text-[#85847d]">Аккаунт создаётся по нику и паролю без email. Пока восстановление забытого пароля не подключено — обязательно сохрани пароль.</p>}
@@ -501,6 +583,26 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
           </div>
         </header>
 
+        <section className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-[#414d39] bg-[#30382c] p-3">
+          {avatarPreview
+            ? <img src={avatarPreview} alt="Предпросмотр аватара" className="h-14 w-14 rounded-xl object-cover" />
+            : onlineProfile.avatar_url
+              ? <img src={onlineProfile.avatar_url} alt={"Аватар " + onlineProfile.username} className="h-14 w-14 rounded-xl object-cover" />
+              : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#526d3e] text-xl font-black text-white">{onlineProfile.username.slice(0, 1).toUpperCase()}</div>}
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-extrabold">Аватар профиля</div>
+            <div className="mt-1 text-[10px] text-[#a6b19b]">Фото видно в профиле и навигации CHESSMART</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" onClick={() => avatarInputRef.current?.click()} className="rounded-lg border border-[#657a51] bg-[#3d5033] px-3 py-1.5 text-[11px] font-bold">Выбрать фото</button>
+              {avatarFile && <button type="button" disabled={avatarBusy} onClick={() => {
+                if (!session || !avatarFile) return;
+                setAvatarBusy(true);
+                void saveAvatar(avatarFile, session).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => setAvatarBusy(false));
+              }} className="rounded-lg bg-[#81b64c] px-3 py-1.5 text-[11px] font-extrabold text-[#17210f] disabled:opacity-50">{avatarBusy ? "Загружаем…" : "Сохранить аватар"}</button>}
+            </div>
+          </div>
+          <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => { selectAvatar(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
+        </section>
         {error && <section role="alert" className="mb-4 rounded-xl border border-[#81504a] bg-[#402b28] p-3 text-sm text-[#ffd2cd]">{error}</section>}
         {notice && !game && <section className="mb-4 rounded-xl border border-[#6b814a] bg-[#303c28] p-3 text-sm text-[#d7edbd]">{notice}</section>}
 
