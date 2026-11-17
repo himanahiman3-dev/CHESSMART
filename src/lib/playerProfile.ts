@@ -25,6 +25,16 @@ export interface TrainingPuzzle {
   solvedAt?: number;
 }
 
+export interface TrainingSessionSummary {
+  id: string;
+  startedAt: number;
+  durationMs: number;
+  total: number;
+  solved: number;
+  attempts: number;
+  accuracy: number;
+}
+
 export interface PlayerProfile {
   name: string;
   rating: number;
@@ -36,6 +46,7 @@ export interface PlayerProfile {
   history: RatingEntry[];
   reviews: ReviewSummary[];
   puzzles: TrainingPuzzle[];
+  trainingSessions: TrainingSessionSummary[];
 }
 
 const STORAGE_KEY = "chess-review:player-profile:v1";
@@ -50,6 +61,7 @@ const DEFAULT_PROFILE: PlayerProfile = {
   history: [],
   reviews: [],
   puzzles: [],
+  trainingSessions: [],
 };
 
 export function loadPlayerProfile(): PlayerProfile {
@@ -64,6 +76,7 @@ export function loadPlayerProfile(): PlayerProfile {
       history: Array.isArray(value.history) ? value.history.slice(-100) : [],
       reviews: Array.isArray(value.reviews) ? value.reviews.slice(-100) : [],
       puzzles: Array.isArray(value.puzzles) ? value.puzzles.slice(-300) : [],
+      trainingSessions: Array.isArray(value.trainingSessions) ? value.trainingSessions.slice(-100) : [],
     };
   } catch {
     return { ...DEFAULT_PROFILE, history: [], reviews: [], puzzles: [] };
