@@ -33,7 +33,6 @@ export interface CoachContext {
   legalMoves: number;
   isCheck: boolean;
   isMate: boolean;
-  exceptionPawn: boolean;
   bestSecondGapCp: number;
   bestSecondSan?: string;
 }
@@ -188,13 +187,8 @@ export function buildComment(ctx: CoachContext): string {
       break;
     }
     case "inaccuracy": {
-      if (ctx.exceptionPawn) {
-        parts.push(`${san} — неточность: ${side.toLowerCase()} теряют материал, но сохраняют огромное преимущество (${formatScore(ctx.scoreAfter)}).`);
-        if (best) parts.push(`Точнее было ${best}.`);
-      } else {
-        parts.push(`${san} — неточность: ${whyBad(ctx)}.`);
-        if (best) parts.push(`Лучше было ${best}.`);
-      }
+      parts.push(`${san} — неточность: ${whyBad(ctx)}.`);
+      if (best) parts.push(`Лучше было ${best}.`);
       break;
     }
     case "mistake": {
