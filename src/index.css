@@ -767,3 +767,38 @@ button:not(:disabled):hover {
     animation: none !important;
   }
 }
+
+
+/* CHESSMART Systems Hub preferences */
+.chessmart-compact .systems-hub section {
+  padding: .85rem !important;
+}
+.chessmart-compact .systems-hub .systems-hub-card {
+  gap: .5rem !important;
+}
+.chessmart-reduce-motion *,
+.chessmart-reduce-motion *::before,
+.chessmart-reduce-motion *::after {
+  scroll-behavior: auto !important;
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .systems-hub *,
+  .systems-hub *::before,
+  .systems-hub *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+.chessmart-large-text .systems-hub {
+  font-size: 1.0625rem;
+}
+.chessmart-large-text .systems-hub .text-\[9px\],
+.chessmart-large-text .systems-hub .text-\[10px\],
+.chessmart-large-text .systems-hub .text-\[11px\] {
+  font-size: .75rem !important;
+}

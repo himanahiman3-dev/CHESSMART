@@ -7,6 +7,7 @@ import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation
 import { playSound, setSoundEnabled, soundForSan } from "../lib/sound";
 import { buildPgnFromUci, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
 import { replayUciHistory, getPositionInsights, formatMaterialBalance, gamePhaseLabel, terminalStateLabel, isNearFiftyMoveRule } from "../lib/gameInsights";
+import { getOnlinePollDelay } from "../lib/systemsSuite";
 
 interface OnlineSession {
   access_token: string;
@@ -189,6 +190,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const [exportNotice, setExportNotice] = useState("");
   const movePendingRef = useRef(false);
   const refreshInFlightRef = useRef(false);
+  const gamePollFailuresRef = useRef(0);
   const timeoutRequestedRef = useRef(false);
   const timeoutLastAttemptRef = useRef(0);
   const searchBusyRef = useRef(false);
@@ -306,6 +308,10 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
 
   const refreshGame = useCallback(async () => {
     if (!session || !game?.id || refreshInFlightRef.current || document.visibilityState === "hidden") return;
+    if (!navigator.onLine) {
+      setConnectionOnline(false);
+      return;
+    }
     refreshInFlightRef.current = true;
     try {
       const data = await callAction(url, key, session, "get", { gameId: game.id });
@@ -318,8 +324,12 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
         }
         setGame(data.game);
       }
+      gamePollFailuresRef.current = 0;
+      setConnectionOnline(true);
       setLastSync(Date.now());
     } catch (reason) {
+      gamePollFailuresRef.current = Math.min(12, gamePollFailuresRef.current + 1);
+      if (!navigator.onLine || gamePollFailuresRef.current >= 2) setConnectionOnline(false);
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       refreshInFlightRef.current = false;
@@ -368,9 +378,25 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     if (!game || game.status === "completed" || !session) return;
-    // A queued premove needs a quick authoritative update; otherwise poll at a quieter cadence.
-    const timer = window.setInterval(() => { void refreshGame(); }, premove ? 250 : 1000);
-    return () => window.clearInterval(timer);
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      if (cancelled) return;
+      if (navigator.onLine && document.visibilityState !== "hidden") await refreshGame();
+      if (cancelled) return;
+      const delay = getOnlinePollDelay({
+        online: navigator.onLine,
+        visible: document.visibilityState !== "hidden",
+        consecutiveFailures: gamePollFailuresRef.current,
+        urgent: !!premove,
+      });
+      timer = window.setTimeout(() => { void poll(); }, delay);
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [game?.id, game?.status, session, refreshGame, premove]);
 
   useEffect(() => {

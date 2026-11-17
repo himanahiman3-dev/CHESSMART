@@ -16,6 +16,8 @@ import { PositionLabScreen } from "./components/PositionLabScreen";
 import { Grandmaster300Screen } from "./components/Grandmaster300Screen";
 import { TrainingAcademyScreen } from "./components/TrainingAcademyScreen";
 import { PersonalCoachScreen } from "./components/PersonalCoachScreen";
+import { SystemsHubScreen } from "./components/SystemsHubScreen";
+import { applySuitePreferences, loadSuiteSettings } from "./lib/systemsSuite";
 import { MotivationBanner } from "./components/MotivationBanner";
 import { reviewGame, type AnalyzeProgress } from "./lib/analyze";
 import {
@@ -28,8 +30,8 @@ import type { GameReview } from "./types";
 import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
 
 type Stage = "import" | "analyzing" | "review";
-type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "coach" | "academy" | "endgame" | "openings" | "lab" | "diagnostics";
-type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "coach" | "academy" | "endgame" | "openings" | "profile" | "lab" | "diagnostics";
+type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "coach" | "academy" | "endgame" | "openings" | "lab" | "diagnostics" | "systems";
+type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "coach" | "academy" | "endgame" | "openings" | "profile" | "lab" | "diagnostics" | "systems";
 
 const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconName }> = [
   { id: "review", label: "Анализ партий", group: "Играть", icon: "analysis" },
@@ -44,6 +46,7 @@ const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconN
   { id: "profile", label: "Статистика", group: "Изучать", icon: "profile" },
   { id: "lab", label: "Лаборатория позиции", group: "Изучать", icon: "lab" },
   { id: "diagnostics", label: "Диагностика 300", group: "Изучать", icon: "diagnostics" },
+  { id: "systems", label: "Центр систем", group: "Система", icon: "systems" },
 ];
 
 function NavIcon({ name, active = false }: { name: IconName; active?: boolean }) {
@@ -63,6 +66,7 @@ function NavIcon({ name, active = false }: { name: IconName; active?: boolean })
       {name === "profile" && <><circle {...common} cx="12" cy="8" r="3.2" /><path {...common} d="M4.5 20a7.5 7.5 0 0 1 15 0" /></>}
       {name === "lab" && <><path {...common} d="m14.5 6.5 3-3 3 3-3 3" /><path {...common} d="m3 21 8-8M12 5a5 5 0 0 0 7 7L10 21l-7-7 4-4" /></>}
       {name === "diagnostics" && <><circle {...common} cx="12" cy="12" r="8.5" /><path {...common} d="M12 7v5l3.5 2M5.8 5.8l2 2M18.2 5.8l-2 2" /></>}
+      {name === "systems" && <><path {...common} d="M4 7h16M4 12h16M4 17h16" /><circle cx="8" cy="7" r="2" fill="#20251e" stroke={stroke} strokeWidth="1.8" /><circle cx="15" cy="12" r="2" fill="#20251e" stroke={stroke} strokeWidth="1.8" /><circle cx="10" cy="17" r="2" fill="#20251e" stroke={stroke} strokeWidth="1.8" /></>}
     </svg>
   );
 }
@@ -92,6 +96,13 @@ function Main() {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => savePlayerProfile(profile), [profile]);
+
+  useEffect(() => {
+    const applyPreferences = () => applySuitePreferences(loadSuiteSettings());
+    applyPreferences();
+    window.addEventListener("storage", applyPreferences);
+    return () => window.removeEventListener("storage", applyPreferences);
+  }, []);
 
   useEffect(() => {
     const handleAccountProfile = (event: Event) => {
@@ -224,6 +235,7 @@ function Main() {
   else if (mode === "openings") page = <OpeningExplorerScreen onBack={() => changeMode("review")} />;
   else if (mode === "lab") page = <PositionLabScreen engine={engine} onBack={() => changeMode("review")} />;
   else if (mode === "diagnostics") page = <Grandmaster300Screen onBack={() => changeMode("review")} />;
+  else if (mode === "systems") page = <SystemsHubScreen profile={profile} onBack={() => changeMode("review")} onNavigate={changeMode} />;
   else if (stage === "review" && review) page = (
     <ReviewScreen
       review={review}
@@ -252,7 +264,7 @@ function Main() {
   }
 
   const activeItem = NAV_ITEMS.find((item) => item.id === mode) ?? NAV_ITEMS[0];
-  const grouped = ["Играть", "Тренировка", "Изучать"];
+  const grouped = ["Играть", "Тренировка", "Изучать", "Система"];
 
   return (
     <div className="min-h-screen bg-[#1d211c] text-[#f0f2eb]">
