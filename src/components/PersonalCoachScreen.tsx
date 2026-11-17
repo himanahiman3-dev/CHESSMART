@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PlayerProfile, TrainingPuzzle } from "../lib/playerProfile";
 import { markPuzzleSolved, recordPuzzleAttempt } from "../lib/playerProfile";
-import { classifyGamePhase, PHASE_LABELS, type GamePhase } from "../lib/learningStats";
+import { PHASE_LABELS, type GamePhase } from "../lib/learningStats";
 import {
   getRussianVoices,
   loadCoachVoicePreferences,
