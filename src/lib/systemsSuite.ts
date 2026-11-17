@@ -1,14 +1,14 @@
 import type { PlayerProfile } from "./playerProfile";
 import type { GamePhase } from "./learningStats";
 
-export type SuitePreferenceKey = "compactMode" | "reducedMotion" | "soundsEnabled";
+export type SuitePreferenceKey = "compactMode" | "reducedMotion" | "largeText";
 export type QuestPeriod = "daily" | "weekly";
 export type QuestMetric = "reviews" | "puzzles" | "minutes" | "botGames" | "sessions";
 
 export interface SuiteSettings {
   compactMode: boolean;
   reducedMotion: boolean;
-  soundsEnabled: boolean;
+  largeText: boolean;
   totalXp: number;
   claimedQuestKeys: string[];
 }
@@ -110,7 +110,7 @@ const PHASE_LABELS: Record<GamePhase, string> = {
 const DEFAULT_SETTINGS: SuiteSettings = {
   compactMode: false,
   reducedMotion: false,
-  soundsEnabled: true,
+  largeText: false,
   totalXp: 0,
   claimedQuestKeys: [],
 };
@@ -190,7 +190,7 @@ export function normalizeSuiteSettings(value: unknown): SuiteSettings {
   return {
     compactMode: raw.compactMode === true,
     reducedMotion: raw.reducedMotion === true,
-    soundsEnabled: raw.soundsEnabled !== false,
+    largeText: raw.largeText === true,
     totalXp: clampSuiteNumber(raw.totalXp, 0, 1_000_000_000, 0),
     claimedQuestKeys: Array.isArray(raw.claimedQuestKeys)
       ? [...new Set(raw.claimedQuestKeys.filter((key): key is string => typeof key === "string" && key.length <= 100))].slice(-250)
@@ -226,15 +226,16 @@ export function applySuitePreferences(settings: SuiteSettings): void {
   if (typeof document !== "undefined") {
     document.documentElement.classList.toggle("chessmart-compact", settings.compactMode);
     document.documentElement.classList.toggle("chessmart-reduce-motion", settings.reducedMotion);
+    document.documentElement.classList.toggle("chessmart-large-text", settings.largeText);
   }
-  void import("./sound.ts").then(({ setSoundEnabled }) => setSoundEnabled(settings.soundsEnabled));
+
 }
 
 export function getSuitePreferenceSummary(settings: SuiteSettings): string[] {
   const enabled: string[] = [];
   if (settings.compactMode) enabled.push("Компактный интерфейс");
   if (settings.reducedMotion) enabled.push("Уменьшенная анимация");
-  if (settings.soundsEnabled) enabled.push("Звуки включены");
+  if (settings.largeText) enabled.push("Увеличенный текст");
   return enabled;
 }
 
