@@ -88,8 +88,8 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
               </>
             ) : (
               <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
-                <div className="text-xl font-extrabold">Пока нет задач</div>
-                <p className="mt-2 max-w-md text-sm text-[#a7a6a2]">Загрузи и проанализируй партию. Ошибки, зевки и упущенные возможности автоматически попадут сюда.</p>
+                <div className="text-xl font-extrabold">{profile.puzzles.length ? "Нет задач по этому фильтру" : "Пока нет задач"}</div>
+                <p className="mt-2 max-w-md text-sm text-[#a7a6a2]">{profile.puzzles.length ? "Измени фильтры справа или покажи все задачи, чтобы выбрать другую позицию." : "Загрузи и проанализируй партию. Ошибки, зевки и упущенные возможности автоматически попадут сюда."}</p>
               </div>
             )}
           </section>
