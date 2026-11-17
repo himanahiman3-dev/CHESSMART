@@ -275,7 +275,7 @@ function classifyPuzzleTheme(puzzle: TrainingPuzzle): string {
   const text = `${puzzle.comment} ${puzzle.playedSan}`.toLocaleLowerCase("ru");
   if (/вилк|двойной удар|одновременно атак/i.test(text)) return "Вилки и двойные удары";
   if (/связк|связывает|прикован/i.test(text)) return "Связки";
-  if (/мат|матов|матовая атака|шахмат/i.test(text)) return "Атака на короля";
+  if (/матовая атака|форсированн\\w* мат|поставить мат|поставил мат|матует|шахует|объявляет шах/i.test(text)) return "Атака на короля";
   if (/под боем|висящ|незащищ|теряет фиг|выигрывает .*фигур/i.test(text)) return "Защита фигур";
   if (/эндшпил|проходн|оппозици|пешечн.*гонк|король.*актив/i.test(text)) return "Эндшпиль";
   if (/дебют|развити|рокировк|центр/i.test(text)) return "Дебют и развитие";
@@ -538,7 +538,9 @@ export function buildAcademyDashboard(
   const sessions = weekActivity.reduce((sum, [, item]) => sum + item.sessions, 0);
   const solvedPuzzles = weekActivity.reduce((sum, [, item]) => sum + item.solvedPuzzles, 0);
   const reviewedGames = weekActivity.reduce((sum, [, item]) => sum + item.reviews, 0);
-  const mondayMs = weekStart.getTime();
+  const mondayMidnight = new Date(weekStart);
+  mondayMidnight.setHours(0, 0, 0, 0);
+  const mondayMs = mondayMidnight.getTime();
   const minutes = safeArray(profile.trainingSessions)
     .filter((session) => isFiniteNumber(session.startedAt) && session.startedAt >= mondayMs && session.startedAt <= now)
     .reduce((sum, session) => sum + (isFiniteNumber(session.durationMs) ? Math.max(0, session.durationMs) : 0), 0) / 60_000;
