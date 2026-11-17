@@ -152,11 +152,11 @@ for (let xp = 0; xp <= 100_000; xp += 137) {
 }
 
 const normalized = normalizeSuiteSettings({
-  compactMode: true, reducedMotion: true, soundsEnabled: false,
+  compactMode: true, reducedMotion: true, largeText: true,
   totalXp: -100, claimedQuestKeys: ["ok", "ok", 4, "x".repeat(150)],
 });
 assert.equal(normalized.compactMode, true);
-assert.equal(normalized.soundsEnabled, false);
+assert.equal(normalized.largeText, true);
 assert.equal(normalized.totalXp, 0);
 assert.deepEqual(normalized.claimedQuestKeys, ["ok"]);
 assert.deepEqual(parseSuiteSettings(serializeSuiteSettings(normalized)), normalized);
