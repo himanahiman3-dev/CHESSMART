@@ -68,38 +68,38 @@ async function runUciSmoke(engine) {
   output.on("line", (line) => {
     if (line === "uciok" && phase === "uci") {
       phase = "ready";
-      child.stdin.write("setoption name MultiPV value 2\\n");
-      if (engine.threads > 1) child.stdin.write(`setoption name Threads value ${engine.threads}\\n`);
-      child.stdin.write("isready\\n");
+      child.stdin.write("setoption name MultiPV value 2\n");
+      if (engine.threads > 1) child.stdin.write(`setoption name Threads value ${engine.threads}\n`);
+      child.stdin.write("isready\n");
       return;
     }
     if (line === "readyok" && phase === "ready") {
       phase = "search";
-      child.stdin.write("position startpos moves e2e4 e7e5 g1f3\\n");
-      child.stdin.write("go depth 8\\n");
+      child.stdin.write("position startpos moves e2e4 e7e5 g1f3\n");
+      child.stdin.write("go depth 8\n");
       return;
     }
     if (phase === "search" && line.startsWith("info ")) {
-      const depthMatch = line.match(/\\bdepth (\\d+)/);
-      const pvMatch = line.match(/\\bmultipv (\\d+)/);
+      const depthMatch = line.match(/\bdepth (\d+)/);
+      const pvMatch = line.match(/\bmultipv (\d+)/);
       if (depthMatch) maxDepth = Math.max(maxDepth, Number(depthMatch[1]));
       if (pvMatch) multipv.add(Number(pvMatch[1]));
       return;
     }
     if (phase === "search" && line.startsWith("bestmove ")) {
-      bestMove = line.split(/\\s+/)[1] ?? "";
+      bestMove = line.split(/\s+/)[1] ?? "";
       phase = "done";
-      child.stdin.write("quit\\n");
+      child.stdin.write("quit\n");
     }
   });
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-4000); });
-  child.stdin.write("uci\\n");
+  child.stdin.write("uci\n");
 
   await new Promise((resolveRun, rejectRun) => {
     const timeout = setTimeout(() => {
       child.kill("SIGKILL");
-      rejectRun(new Error(`${engine.label}: UCI smoke test timed out\\n${stderr}`));
+      rejectRun(new Error(`${engine.label}: UCI smoke test timed out\n${stderr}`));
     }, 120_000);
     child.once("error", (error) => {
       clearTimeout(timeout);
@@ -108,7 +108,7 @@ async function runUciSmoke(engine) {
     child.once("close", (code, signal) => {
       clearTimeout(timeout);
       if (code !== 0 || !bestMove) {
-        rejectRun(new Error(`${engine.label}: process exited (code=${code}, signal=${signal}), bestmove=${bestMove || "missing"}\\n${stderr}`));
+        rejectRun(new Error(`${engine.label}: process exited (code=${code}, signal=${signal}), bestmove=${bestMove || "missing"}\n${stderr}`));
         return;
       }
       try {
