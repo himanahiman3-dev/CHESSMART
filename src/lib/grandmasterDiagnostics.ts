@@ -32,7 +32,6 @@ type PieceOnBoard = { color: Color; type: PieceType; square: Square; file: numbe
 type AttackMap = Map<string, number>;
 type PositionFacts = Record<string, number>;
 
-const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const VALUES: Record<PieceType, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const FILES = "abcdefgh";
 const CENTER = new Set(["d4", "e4", "d5", "e5"]);
@@ -167,7 +166,6 @@ function buildFacts(chess: Chess): PositionFacts {
   for (const color of allColors) {
     const prefix = color === "w" ? "white" : "black";
     const own = byColor[color];
-    const enemy = byColor[color === "w" ? "b" : "w"];
     const ownPawns = pawns[color];
     const enemyPawns = pawns[color === "w" ? "b" : "w"];
     const ownFiles = files[color];
@@ -226,8 +224,6 @@ function buildFacts(chess: Chess): PositionFacts {
     const ownDefended = own.filter((p) => (ownAttack.get(p.square) ?? 0) > 0).length;
     const threatsOnQueen = queens.filter((p) => (enemyAttack.get(p.square) ?? 0) > 0).length;
     const ownPseudoMobility = Array.from(ownAttack.values()).reduce((sum, value) => sum + value, 0);
-    const phaseWeight = pieces.filter((p) => p.type === "q").length * 4 + pieces.filter((p) => p.type === "r").length * 2 +
-      pieces.filter((p) => p.type === "b" || p.type === "n").length;
     const development = 4 - undeveloped;
     const pawnAdvanceTotal = ownPawns.reduce((sum, p) => sum + (color === "w" ? p.rank - 2 : 7 - p.rank), 0);
     set(prefix + "Material", material);
@@ -247,6 +243,7 @@ function buildFacts(chess: Chess): PositionFacts {
     set(prefix + "KingZonePressure", kingZone);
     set(prefix + "KingShield", shield);
     set(prefix + "AttackedPieces", materialAttacked);
+    set(prefix + "AttackedPawns", ownPawns.filter((p) => (enemyAttack.get(p.square) ?? 0) > 0).length);
     set(prefix + "HangingPieces", hanging);
     set(prefix + "DefendedPieces", ownDefended);
     set(prefix + "DoubledPawns", doubled);
@@ -306,11 +303,9 @@ function buildFacts(chess: Chess): PositionFacts {
   const rights = chess.fen().split(/\s+/)[2] ?? "-";
   const allMaterial = whiteMaterial + blackMaterial;
   const phase = pieces.length <= 10 || allMaterial <= 22 ? 2 : allMaterial <= 50 ? 1 : 0;
-  const kings = [kingsafe("w"), kingsafe("b")];
-  function kingsafe(color: Color): number { return kings[color === "w" ? 0 : 1] ?? 0; }
-  const kingA = kings[0] ?? 0;
-  const kingB = kings[1] ?? 0;
-  const kingDistance = kingA && kingB ? Math.max(Math.abs(Number(kingA.toString()[1]) - Number(kingB.toString()[1])), Math.abs(FILES.indexOf(kingA.toString()[0]) - FILES.indexOf(kingB.toString()[0]))) : 0;
+  const kingA = kings.w?.square ?? "";
+  const kingB = kings.b?.square ?? "";
+  const kingDistance = kingA && kingB ? Math.max(Math.abs(Number(kingA[1]) - Number(kingB[1])), Math.abs(FILES.indexOf(kingA[0]) - FILES.indexOf(kingB[0]))) : 0;
   set("materialBalance", whiteMaterial - blackMaterial);
   set("totalMaterial", allMaterial);
   set("materialDifferenceAbs", Math.abs(whiteMaterial - blackMaterial));
@@ -346,17 +341,9 @@ function buildFacts(chess: Chess): PositionFacts {
   set("extendedCenterTotal", (facts.whiteExtendedCenterControl ?? 0) + (facts.blackExtendedCenterControl ?? 0));
   set("whitePawnMajority", (facts.whitePawns ?? 0) - (facts.blackPawns ?? 0));
   set("blackPawnMajority", (facts.blackPawns ?? 0) - (facts.whitePawns ?? 0));
-  set("kingsOnSameFile", kings[0] && kings[1] && kings[0].toString()[0] === kings[1].toString()[0] ? 1 : 0);
-  set("kingsOnSameRank", kings[0] && kings[1] && kings[0].toString()[1] === kings[1].toString()[1] ? 1 : 0);
+  set("kingsOnSameFile", kingA && kingB && kingA[0] === kingB[0] ? 1 : 0);
+  set("kingsOnSameRank", kingA && kingB && kingA[1] === kingB[1] ? 1 : 0);
   return facts;
-}
-function kingSquare(chess: Chess, color: Color): Square | null {
-  const board = chess.board();
-  for (let row = 0; row < 8; row += 1) for (let file = 0; file < 8; file += 1) {
-    const piece = board[row][file];
-    if (piece?.type === "k" && piece.color === color) return squareName(file, row);
-  }
-  return null;
 }
 function makeSpec(id: string, category: string, title: string, key: string, direction: Direction, target: number, unit: string, description: string): MetricSpec {
   return { id, category, title, key, direction, target, unit, description };
@@ -595,20 +582,7 @@ const CATEGORIES: Array<{ name: string; entries: Array<[string,string,Direction,
     ["Король белых имеет выходы","whiteKingEscapeSquares","high",2,"кл.","Соседние клетки до строгой проверки легальности."],["Король чёрных имеет выходы","blackKingEscapeSquares","high",2,"кл.","Соседние клетки до строгой проверки легальности."],
     ["Проходные пешки белых","whitePassedPawns","present",0,"п.","Потенциальные проходные."],["Проходные пешки чёрных","blackPassedPawns","present",0,"п.","Потенциальные проходные."]
   ]},
-  { name: "Ничейные факторы", entries: [
-    ["Пат","stalemateStatus","info",0,"","Позиция патовая."],["Ничья по chess.js","drawStatus","info",0,"","Автоматические правила ничьей."],
-    ["Недостаточный материал","insufficientMaterial","info",0,"","Недостаточный материал."],["Счётчик 50 ходов","halfmoveClock","low",80,"полуход.","Предупреждение до 100 полуходов."],
-    ["Материал близок к равенству","materialBalance","balanced",1,"п.","Только материальная часть, не оценка движка."],["Пешечный баланс","pawnCountDifference","balanced",1,"п.","Разница пешек."],
-    ["Баланс минорных фигур","minorDifference","balanced",1,"шт.","Разница числа коней и слонов."],["Баланс тяжёлых фигур","majorDifference","balanced",1,"шт.","Разница ладей и ферзей."],
-    ["Короли сближены","kingDistance","low",3,"кл.","Могут помогать пешкам, но вывод зависит от позиции."],["Общий материал","totalMaterial","low",18,"п.","Низкий материал характерен для упрощённых позиций."]
-  ]},
-  { name: "Финальная сводка", entries: [
-    ["Общий материал на доске","totalMaterial","info",0,"п.","Суммарные очки материала."],["Количество фигур","totalPieces","info",0,"шт.","Фигуры и пешки на доске."],
-    ["Материальный баланс","materialBalance","balanced",2,"п.","Материальная разница."],["Контроль центра","centerControlDifference","balanced",1,"кл.","Разница центрального контроля."],
-    ["Разница пространства","spaceDifference","balanced",3,"шт.","Разница вторжения на половину соперника."],["Легальные ходы","legalMoves","info",0,"ход.","Количество легальных ходов текущего игрока."],
-    ["Наличие шаха","checkStatus","info",0,"","Текущий игрок под шахом."],["Наличие мата","checkmateStatus","info",0,"","Текущий игрок получил мат."],
-    ["Наличие пата","stalemateStatus","info",0,"","Текущий игрок в пате."],["Позиция ничейная","drawStatus","info",0,"","Проверка состояния ничьей."]
-  ]}
+
 ];
 
 const SPECS: MetricSpec[] = [];
@@ -618,45 +592,6 @@ for (const group of CATEGORIES) {
     SPECS.push(makeSpec(group.name.toLowerCase().replace(/[^a-zа-яё0-9]+/gi, "-") + "-" + (index + 1), group.name, title, key, direction, target, unit, description));
   }
 }
-function addFamilyVariants(): void {
-  const families: Array<[string, Array<[string,string,Direction,number,string,string]>]> = [
-    ["Профиль давления", [
-      ["Атакованные фигуры белых — контроль","whiteAttackedPieces","info",0,"шт.","Сводка атак на фигуры белых."],["Атакованные фигуры чёрных — контроль","blackAttackedPieces","info",0,"шт.","Сводка атак на фигуры чёрных."],
-      ["Висящие белые фигуры — риск","whiteHangingPieces","low",0,"шт.","Псевдозащищённость фигур белых."],["Висящие чёрные фигуры — риск","blackHangingPieces","low",0,"шт.","Псевдозащищённость фигур чёрных."],
-      ["Давление на белого короля","whiteKingZonePressure","low",2,"кл.","Давление рядом с королём."],["Давление на чёрного короля","blackKingZonePressure","low",2,"кл.","Давление рядом с королём."],
-      ["Ферзи белых под атакой","whiteThreatsOnQueen","low",0,"шт.","Угроза ферзю."],["Ферзи чёрных под атакой","blackThreatsOnQueen","low",0,"шт.","Угроза ферзю."],
-      ["Защита белых фигур","whiteDefendedPieces","high",4,"шт.","Фигуры под защитой."],["Защита чёрных фигур","blackDefendedPieces","high",4,"шт.","Фигуры под защитой."]
-    ]],
-    ["Планирование эндшпиля", [
-      ["Продвижение проходных белых","whiteAdvancedPassedPawns","present",0,"п.","Продвинутые проходные."],["Продвижение проходных чёрных","blackAdvancedPassedPawns","present",0,"п.","Продвинутые проходные."],
-      ["Мобильность белого короля","whiteKingEscapeSquares","high",2,"кл.","Соседние клетки короля."],["Мобильность чёрного короля","blackKingEscapeSquares","high",2,"кл.","Соседние клетки короля."],
-      ["Сближение королей","kingDistance","info",0,"кл.","Расстояние королей."],["Пешечный перевес белых","whitePawnMajority","high",1,"п.","Пешечное большинство."],
-      ["Пешечный перевес чёрных","blackPawnMajority","high",1,"п.","Пешечное большинство."],["Низкий общий материал","totalMaterial","low",22,"п.","Признак упрощённой позиции."],
-      ["Ничья по недостаточному материалу","insufficientMaterial","info",0,"","Точное правило недостаточного материала."],["Полусчётчик","halfmoveClock","low",90,"полуход.","Остаток до 100 полуходов."]
-    ]],
-    ["Контроль и инициатива", [
-      ["Легальные варианты белых/чёрных","legalMoves","info",0,"ход.","Легальные ходы стороны, чей сейчас ход."],["Шахующие продолжения","checksAvailable","present",0,"ход.","Наличие легального шаха."],
-      ["Взятия в позиции","capturesAvailable","present",0,"ход.","Наличие легального взятия."],["Рокировки в позиции","castlesAvailable","present",0,"ход.","Наличие легальной рокировки."],
-      ["Превращения в позиции","promotionsAvailable","present",0,"ход.","Наличие легального превращения."],["Контроль пространства белых","whiteControlledSquares","high",20,"кл.","Псевдолегальные атаки."],
-      ["Контроль пространства чёрных","blackControlledSquares","high",20,"кл.","Псевдолегальные атаки."],["Центральная инициатива белых","whiteCentralControl","high",2,"кл.","Контроль центра."],
-      ["Центральная инициатива чёрных","blackCentralControl","high",2,"кл.","Контроль центра."],["Разница центра","centerControlDifference","balanced",1,"кл.","Преимущество контроля центра."]
-    ]],
-    ["Структурный аудит", [
-      ["Острова белых — аудит","whitePawnIslands","low",3,"остр.","Число групп пешек."],["Острова чёрных — аудит","blackPawnIslands","low",3,"остр.","Число групп пешек."],
-      ["Слабость белых изоляторов","whiteIsolatedPawns","low",1,"п.","Количество изолированных пешек."],["Слабость чёрных изоляторов","blackIsolatedPawns","low",1,"п.","Количество изолированных пешек."],
-      ["Слабость белых сдвоений","whiteDoubledPawns","low",1,"п.","Количество лишних пешек на файлах."],["Слабость чёрных сдвоений","blackDoubledPawns","low",1,"п.","Количество лишних пешек на файлах."],
-      ["Связность белых пешек","whiteConnectedPawns","high",3,"п.","Пешки рядом."],["Связность чёрных пешек","blackConnectedPawns","high",3,"п.","Пешки рядом."],
-      ["Отсталые белые пешки","whiteBackwardPawns","low",1,"п.","Эвристическая оценка."],["Отсталые чёрные пешки","blackBackwardPawns","low",1,"п.","Эвристическая оценка."]
-    ]]
-  ];
-  for (const [category, entries] of families) {
-    for (let index = 0; index < entries.length; index += 1) {
-      const [title,key,direction,target,unit,description] = entries[index];
-      SPECS.push(makeSpec("supplement-" + category.toLowerCase().replace(/[^a-zа-яё0-9]+/gi,"-") + "-" + (index + 1),category,title,key,direction,target,unit,description));
-    }
-  }
-}
-addFamilyVariants();
 const ALIASES: Record<string,string> = {
   whiteMajorCount: "whiteRooks", blackMajorCount: "blackRooks",
   whiteLightSquarePieces: "whiteLightBishops", whiteDarkSquarePieces: "whiteDarkBishops",
