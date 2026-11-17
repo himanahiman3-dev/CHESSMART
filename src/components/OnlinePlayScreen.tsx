@@ -313,14 +313,22 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     refreshInFlightRef.current = true;
     try {
       const data = await callAction(url, key, session, "get", { gameId: game.id });
-      if (data.game) setGame(data.game);
+      if (data.game) {
+        const oldCount = game?.moves.length ?? 0;
+        const latest = data.game.moves.at(-1);
+        if (latest && data.game.moves.length > oldCount) {
+          const ownColor = data.game.white_id === session.user.id ? "w" : "b";
+          if (latest.color !== ownColor) playSound(soundForSan(latest.san));
+        }
+        setGame(data.game);
+      }
       setLastSync(Date.now());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       refreshInFlightRef.current = false;
     }
-  }, [session, game?.id, url, key]);
+  }, [session, game?.id, game?.moves.length, url, key]);
 
   useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
 
@@ -362,7 +370,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     // A queued premove needs a quick authoritative update; otherwise poll at a quieter cadence.
     const timer = window.setInterval(() => { void refreshGame(); }, premove ? 250 : 1000);
     return () => window.clearInterval(timer);
-  }, [game?.id, game?.status, session, refreshGame]);
+  }, [game?.id, game?.status, session, refreshGame, premove]);
 
   useEffect(() => {
     if (!session || game) return;
