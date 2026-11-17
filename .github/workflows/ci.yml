@@ -59,6 +59,8 @@ jobs:
         run: npm run validate:diagnostics
       - name: Validate Stockfish diagnostic coach
         run: npm run validate:engine-coach
+      - name: Validate Training Academy and 15,000 scenarios
+        run: npm run validate:training-academy
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
