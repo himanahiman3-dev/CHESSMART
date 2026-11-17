@@ -21,7 +21,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1d211c] px-4 py-8 text-[#f0f2eb]">
+    <main className="analyzing-screen relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1d211c] px-4 py-8 text-[#f0f2eb]">
       <div className="pointer-events-none absolute -left-32 -top-40 h-[480px] w-[480px] rounded-full bg-[#8dbb61]/[0.07] blur-[120px]" />
       <div className="relative w-full max-w-5xl">
         <header className="mb-6 flex items-center gap-3">
@@ -48,8 +48,8 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
             </div>
           </div>
 
-          <div className="grid gap-6 p-5 sm:p-8 lg:grid-cols-[minmax(280px,.8fr)_minmax(0,1.2fr)]">
-            <div className="rounded-2xl border border-white/[0.06] bg-[#20241e] p-3 sm:p-4">
+          <div className="analyzing-grid grid gap-6 p-5 sm:p-8 lg:grid-cols-[minmax(280px,.8fr)_minmax(0,1.2fr)]">
+            <div className="analyzing-board rounded-2xl border border-white/[0.06] bg-[#20241e] p-3 sm:p-4">
               <div className="mb-3 flex items-center justify-between px-1">
                 <span className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-[#839078]">Позиция на доске</span>
                 <span className="rounded-full bg-[#34432b] px-2 py-1 text-[8px] font-bold text-[#b5d98e]">LIVE</span>
@@ -112,7 +112,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
                 </div>
               </div>
 
-              <div className="mt-6 rounded-xl border border-[#71865c]/20 bg-[#32402b]/35 p-4">
+              <div className="analyzing-explanation mt-6 rounded-xl border border-[#71865c]/20 bg-[#32402b]/35 p-4">
                 <div className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.13em] text-[#b8d69a]">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#a6d36e]" />
                   Что происходит
@@ -128,7 +128,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
             </div>
           </div>
         </section>
-        <p className="mt-4 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-[#687362]">Твой PGN остаётся в браузере · Chessmart</p>
+        <p className="analyzing-footer mt-4 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-[#687362]">Твой PGN остаётся в браузере · Chessmart</p>
       </div>
     </main>
   );
