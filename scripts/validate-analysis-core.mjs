@@ -42,7 +42,16 @@ for (const evasion of evasions) {
   const position = new Chess(checkedFen);
   position.move({ from: evasion.from, to: evasion.to, promotion: evasion.promotion });
   const captures = position.moves({ verbose: true }).filter((move) => move.to === "a2");
-  console.log("CHECK-EVASION", evasion.san, position.fen(), "CAPTURES-TO-A2", captures.map((move) => move.san));
+  console.log(
+    "CHECK-EVASION", evasion.san, position.fen(),
+    "BLACK-IN-CHECK", position.isCheck(),
+    "CAPTURES-TO-A2", captures.map((move) => ({ san: move.san, captured: move.captured, piece: move.piece })),
+    "QBALANCE-AFTER-EVASION", qBalance(position.fen()),
+  );
+  if (captures.length) {
+    position.move({ from: captures[0].from, to: captures[0].to, promotion: captures[0].promotion });
+    console.log("AFTER-BXA2", position.fen(), "QBALANCE-AFTER-CAPTURE", qBalance(position.fen()));
+  }
 }
 const checkedEval = qBalance(checkedFen);
 console.log("QBALANCE", checkedEval);
