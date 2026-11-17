@@ -366,7 +366,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
   const ctrl = "flex h-10 min-w-12 items-center justify-center rounded-lg bg-[#3d3a37] px-3 text-lg font-bold hover:bg-[#4b4844] active:translate-y-px disabled:opacity-30";
 
   return (
-    <div className="min-h-screen bg-[#262522] text-white">
+    <div className="review-screen min-h-screen text-white">
       <header className="review-header sticky top-0 z-40 flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-[#46433c] bg-[#211f1d]/95 px-3 py-2 shadow-xl shadow-black/20 backdrop-blur-xl sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
           <Logo size={32} />
