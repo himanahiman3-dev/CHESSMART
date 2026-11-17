@@ -36,9 +36,20 @@ export interface TrainingSessionSummary {
   accuracy: number;
 }
 
+export interface PuzzleRatingEntry {
+  at: number;
+  puzzleId: string;
+  mode: "rated" | "daily" | "themes";
+  solved: boolean;
+  change: number;
+  ratingAfter: number;
+}
+
 export interface PlayerProfile {
   name: string;
   rating: number;
+  puzzleRating: number;
+  puzzleRatingHistory: PuzzleRatingEntry[];
   games: number;
   wins: number;
   losses: number;
@@ -54,6 +65,8 @@ const STORAGE_KEY = "chess-review:player-profile:v1";
 const DEFAULT_PROFILE: PlayerProfile = {
   name: "Игрок",
   rating: 1000,
+  puzzleRating: 1200,
+  puzzleRatingHistory: [],
   games: 0,
   wins: 0,
   losses: 0,
@@ -65,22 +78,37 @@ const DEFAULT_PROFILE: PlayerProfile = {
   trainingSessions: [],
 };
 
+function validPuzzleRatingEntry(value: unknown): value is PuzzleRatingEntry {
+  if (typeof value !== "object" || value === null) return false;
+  const entry = value as Partial<PuzzleRatingEntry>;
+  return Number.isFinite(entry.at)
+    && typeof entry.puzzleId === "string"
+    && (entry.mode === "rated" || entry.mode === "daily" || entry.mode === "themes")
+    && typeof entry.solved === "boolean"
+    && Number.isFinite(entry.change)
+    && Number.isFinite(entry.ratingAfter);
+}
+
 export function loadPlayerProfile(): PlayerProfile {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_PROFILE, history: [], reviews: [], puzzles: [] };
+    if (!raw) return { ...DEFAULT_PROFILE, history: [], reviews: [], puzzles: [], puzzleRatingHistory: [] };
     const value = JSON.parse(raw) as Partial<PlayerProfile>;
     return {
       ...DEFAULT_PROFILE,
       ...value,
       rating: clamp(Math.round(Number(value.rating) || 1000), 100, 3200),
+      puzzleRating: clamp(Math.round(Number(value.puzzleRating) || 1200), 400, 3200),
+      puzzleRatingHistory: Array.isArray(value.puzzleRatingHistory)
+        ? value.puzzleRatingHistory.filter(validPuzzleRatingEntry).slice(-180)
+        : [],
       history: Array.isArray(value.history) ? value.history.slice(-100) : [],
       reviews: Array.isArray(value.reviews) ? value.reviews.slice(-100) : [],
       puzzles: Array.isArray(value.puzzles) ? value.puzzles.slice(-300) : [],
       trainingSessions: Array.isArray(value.trainingSessions) ? value.trainingSessions.slice(-100) : [],
     };
   } catch {
-    return { ...DEFAULT_PROFILE, history: [], reviews: [], puzzles: [] };
+    return { ...DEFAULT_PROFILE, history: [], reviews: [], puzzles: [], puzzleRatingHistory: [] };
   }
 }
 
