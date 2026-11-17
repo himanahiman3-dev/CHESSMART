@@ -14,6 +14,7 @@ import { EndgameTrainingScreen } from "./components/EndgameTrainingScreen";
 import { OpeningExplorerScreen } from "./components/OpeningExplorerScreen";
 import { PositionLabScreen } from "./components/PositionLabScreen";
 import { PersonalCoachScreen } from "./components/PersonalCoachScreen";
+import { MotivationBanner } from "./components/MotivationBanner";
 import { reviewGame, type AnalyzeProgress } from "./lib/analyze";
 import {
   loadPlayerProfile,
@@ -233,6 +234,9 @@ function Main() {
     page = (
       <>
         {error && <div className="mx-auto mt-3 max-w-5xl rounded-lg border border-[#8c5049] bg-[#3e2926] px-4 py-2 text-sm text-[#ffd2cd]">Ошибка анализа: {error}</div>}
+        <div className="mx-auto max-w-5xl px-4 pt-5 sm:px-6">
+          <MotivationBanner />
+        </div>
         <ImportScreen onStart={(pgn, depth) => void start(pgn, depth)} />
         <ProfileGamesPanel onSelectGame={(pgn) => void start(pgn, 14)} />
       </>
