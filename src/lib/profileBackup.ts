@@ -166,15 +166,23 @@ export function parseProfileBackup(source: string): PlayerProfile {
   };
 }
 
-/** Скачивает локальную резервную копию всего профиля в формате JSON. */
-export function downloadProfileBackup(profile: PlayerProfile): void {
-  const backup = {
+/** Создаёт переносимый снимок профиля для файла и облачного хранилища. */
+export function createProfileBackup(profile: PlayerProfile) {
+  return {
     format: FORMAT,
     version: 1,
     exportedAt: new Date().toISOString(),
     profile,
   };
-  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
+}
+
+export function serializeProfileBackup(profile: PlayerProfile): string {
+  return JSON.stringify(createProfileBackup(profile), null, 2);
+}
+
+/** Скачивает локальную резервную копию всего профиля в формате JSON. */
+export function downloadProfileBackup(profile: PlayerProfile): void {
+  const blob = new Blob([serializeProfileBackup(profile)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
