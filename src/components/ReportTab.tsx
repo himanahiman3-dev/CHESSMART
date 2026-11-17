@@ -124,7 +124,7 @@ export function ReportTab({ review, ply, onSeek }: { review: GameReview; ply: nu
           <div className="flex items-start gap-2"><ClsBadge cls="book" size={22} /><div><div className="text-sm font-bold"><span className="mr-1.5 rounded bg-[#a88865]/25 px-1.5 py-0.5 text-xs text-[#d6b88f]">{review.opening.eco}</span>{review.opening.ru}</div><div className="text-xs text-[#a7a6a2]">{review.opening.en}</div></div></div>
         </div>
       )}
-      <p className="px-1 text-[11px] leading-relaxed text-[#6f6d69]">Глубина анализа: {review.depth} · Stockfish 19 · MultiPV 2. Точность считается по формуле CAPS2 (Win% и волатильность позиции). Стадии — приближённое деление по номеру хода и материалу.</p>
+      <p className="px-1 text-[11px] leading-relaxed text-[#6f6d69]">Глубина анализа: {review.depth} · Stockfish 19 · MultiPV 2. Точность — оценка Chessmart на основе Win% и волатильности позиции (не официальный CAPS2 Chess.com). Стадии — приближённое деление по номеру хода и материалу.</p>
     </div>
   );
 }
