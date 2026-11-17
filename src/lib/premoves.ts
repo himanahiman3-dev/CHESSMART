@@ -33,7 +33,10 @@ export function getPremoveMoves(fen: string, color: "w" | "b", from: string): Pr
     if (!piece || piece.color !== color) return [];
     fields[1] = color;
     fields[3] = "-";
-    const projected = new Chess(fields.join(" "));
+    // After the player's last move, the opponent may currently be in check.
+    // This is valid for a real turn but fails ordinary FEN validation once we project
+    // our own next turn, so skip only constructor validation on the cloned position.
+    const projected = new Chess(fields.join(" "), { skipValidation: true });
     return projected.moves({ square: from, verbose: true }).map((move) => ({
       from: move.from, to: move.to, ...(move.promotion ? { promotion: move.promotion } : {}),
     }));
