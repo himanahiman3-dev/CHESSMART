@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import type { PlayerProfile } from "../lib/playerProfile";
+import type { PlayerProfile, PuzzleRatingEntry } from "../lib/playerProfile";
 import { updatePlayerName } from "../lib/playerProfile";
 import { PHASE_LABELS, type GamePhase } from "../lib/learningStats";
 import { sanRu } from "../lib/format";
@@ -27,6 +27,10 @@ function downloadProfileReport(profile: PlayerProfile): void {
     ...profile.history.map((entry) => [
       "Игра против бота", new Date(entry.at).toISOString(), profile.name, `Stockfish ${entry.botElo} Elo`,
       entry.result, "", "", "", "", "", "", "", "",
+    ]),
+    ...(profile.puzzleRatingHistory ?? []).map((entry) => [
+      "Тренировка задач", new Date(entry.at).toISOString(), profile.name, `Puzzle ${entry.puzzleId}`,
+      entry.solved ? "Решена" : "Подсказка", "", "", "", "", "", "", "", "",
     ]),
   ];
   const csv = "\uFEFF" + rows.map((row) => row.map(csvCell).join(";")).join("\r\n");
@@ -62,6 +66,35 @@ function RatingChart({ values }: { values: number[] }) {
   );
 }
 
+function localDayKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function PuzzleRatingChart({ entries, currentRating }: { entries: PuzzleRatingEntry[]; currentRating: number }) {
+  if (!entries.length) {
+    return <div className="flex h-32 items-center justify-center text-center text-xs text-[#77746f]">График появится после первых решённых задач.</div>;
+  }
+  const values = [1200, ...entries.slice(-30).map((entry) => entry.ratingAfter)];
+  const width = 520;
+  const height = 130;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = Math.max(30, max - min);
+  const y = (value: number) => height - 14 - ((value - (min - Math.max(0, spread * 0.08))) / (spread * 1.16)) * (height - 28);
+  const points = values.map((value, index) => `${(values.length === 1 ? width / 2 : index / (values.length - 1) * width).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+  return (
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-32 w-full" role="img" aria-label="График puzzle rating">
+        <line x1="0" x2={width} y1={height / 2} y2={height / 2} stroke="#4b4844" strokeDasharray="4 5" />
+        <polyline points={points} fill="none" stroke="#59c9c0" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {values.map((value, index) => <circle key={index} cx={values.length === 1 ? width / 2 : index / (values.length - 1) * width} cy={y(value)} r="3.5" fill="#59c9c0" />)}
+      </svg>
+      <div className="flex justify-between text-[10px] text-[#77746f]"><span>{entries.length} записей рейтинга</span><span>{min}–{max} Puzzle</span></div>
+      <div className="mt-1 text-center text-xs text-[#a7a6a2]">Текущий рейтинг: <b className="text-[#59c9c0]">{currentRating}</b></div>
+    </div>
+  );
+}
+
 export function ProfileScreen({ profile, onChange, onBack }: Props) {
   const [name, setName] = useState(profile.name);
   const [backupNotice, setBackupNotice] = useState<string | null>(null);
@@ -87,6 +120,61 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
   const missedTotal = reviewRecords.reduce((total, record) => total + record.missedWins.length, 0);
   const unsolved = (profile.puzzles ?? []).filter((puzzle) => !puzzle.solvedAt).length;
   const solved = (profile.puzzles ?? []).length - unsolved;
+  const puzzleRatingHistory = profile.puzzleRatingHistory ?? [];
+  const recentTrainingSessions = [...(profile.trainingSessions ?? [])].sort((a, b) => b.startedAt - a.startedAt).slice(0, 8);
+
+  const activitySummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    const addActivity = (timestamp: number) => {
+      if (!Number.isFinite(timestamp)) return;
+      const key = localDayKey(new Date(timestamp));
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    };
+    profile.history.forEach((entry) => addActivity(entry.at));
+    reviewRecords.forEach((entry) => addActivity(entry.at));
+    (profile.puzzles ?? []).forEach((puzzle) => { if (puzzle.solvedAt) addActivity(puzzle.solvedAt); });
+    (profile.trainingSessions ?? []).forEach((session) => addActivity(session.startedAt));
+    puzzleRatingHistory.forEach((entry) => addActivity(entry.at));
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayKey = localDayKey(today);
+    const weekOffset = (today.getDay() + 6) % 7;
+    const start = new Date(today);
+    start.setDate(start.getDate() - weekOffset - 11 * 7);
+    const days = Array.from({ length: 84 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const key = localDayKey(date);
+      return { key, date, count: counts.get(key) ?? 0, future: date > today };
+    });
+
+    const last30 = new Date(today);
+    last30.setDate(last30.getDate() - 29);
+    const activeDays30 = [...counts.keys()].filter((key) => key >= localDayKey(last30) && key <= todayKey).length;
+
+    let currentStreak = 0;
+    const streakCursor = new Date(today);
+    if (!counts.has(todayKey)) streakCursor.setDate(streakCursor.getDate() - 1);
+    while (counts.has(localDayKey(streakCursor))) {
+      currentStreak++;
+      streakCursor.setDate(streakCursor.getDate() - 1);
+    }
+
+    const sortedDays = [...counts.keys()].sort();
+    let longestStreak = 0;
+    let runningStreak = 0;
+    let previous: Date | null = null;
+    for (const key of sortedDays) {
+      const [year, month, day] = key.split("-").map(Number);
+      const date = new Date(year, month - 1, day);
+      const consecutive = previous !== null && date.getTime() - previous.getTime() === 86400000;
+      runningStreak = consecutive ? runningStreak + 1 : 1;
+      longestStreak = Math.max(longestStreak, runningStreak);
+      previous = date;
+    }
+    return { days, activeDays30, currentStreak, longestStreak, totalActiveDays: counts.size };
+  }, [profile.history, profile.puzzles, profile.trainingSessions, reviewRecords, puzzleRatingHistory]);
 
   const phaseTotals = useMemo(() => {
     const phases: Record<GamePhase, { wSum: number; wMoves: number; bSum: number; bMoves: number }> = {
@@ -191,6 +279,53 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
           <section className="rounded-xl bg-[#2b2926] p-3">
             <div className="mb-2 flex items-center justify-between"><h2 className="font-extrabold">График рейтинга</h2><span className="text-xs text-[#a7a6a2]">Elo</span></div>
             <RatingChart values={ratingValues} />
+          </section>
+
+          <section className="rounded-xl bg-[#2b2926] p-3">
+            <div className="mb-2 flex items-center justify-between"><h2 className="font-extrabold">Динамика Puzzle Rating</h2><span className="text-xs text-[#59c9c0]">Puzzle Elo</span></div>
+            <PuzzleRatingChart entries={puzzleRatingHistory} currentRating={profile.puzzleRating ?? 1200} />
+          </section>
+
+          <section className="rounded-xl bg-[#2b2926] p-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 className="font-extrabold">Календарь активности</h2><span className="text-[10px] text-[#a7a6a2]">последние 12 недель</span></div>
+            <div className="mb-3 grid grid-cols-3 gap-2">
+              <div className="rounded-lg bg-[#1f1d1b] p-2 text-center"><div className="text-xl font-black text-[#a3d160]">{activitySummary.currentStreak}</div><div className="text-[9px] text-[#a7a6a2]">Дней подряд</div></div>
+              <div className="rounded-lg bg-[#1f1d1b] p-2 text-center"><div className="text-xl font-black">{activitySummary.activeDays30}</div><div className="text-[9px] text-[#a7a6a2]">Активных дней / 30</div></div>
+              <div className="rounded-lg bg-[#1f1d1b] p-2 text-center"><div className="text-xl font-black">{activitySummary.longestStreak}</div><div className="text-[9px] text-[#a7a6a2]">Лучшая серия</div></div>
+            </div>
+            <div className="grid grid-cols-7 gap-1.5 text-center">
+              {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => <span key={day} className="pb-1 text-[9px] font-bold text-[#77746f]">{day}</span>)}
+              {activitySummary.days.map((day) => (
+                <div
+                  key={day.key}
+                  title={`${day.date.toLocaleDateString("ru-RU")}: ${day.count} событий активности`}
+                  aria-label={`${day.date.toLocaleDateString("ru-RU")}: ${day.count} событий активности`}
+                  className={`aspect-square rounded-[4px] ${day.count === 0 ? "bg-[#1f1d1b]" : day.count === 1 ? "bg-[#425437]" : day.count <= 3 ? "bg-[#6b8c4e]" : "bg-[#a3d160]"} ${day.future ? "opacity-25" : ""}`}
+                />
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[9px] text-[#77746f]">
+              <span>{activitySummary.totalActiveDays} активных дней за всё время</span>
+              <span>Меньше <i className="inline-block h-2.5 w-2.5 rounded-[2px] bg-[#1f1d1b] align-middle" /> <i className="inline-block h-2.5 w-2.5 rounded-[2px] bg-[#425437] align-middle" /> <i className="inline-block h-2.5 w-2.5 rounded-[2px] bg-[#6b8c4e] align-middle" /> <i className="inline-block h-2.5 w-2.5 rounded-[2px] bg-[#a3d160] align-middle" /> Больше</span>
+            </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-[#77746f]">Учитываются сыгранные партии с ботом, разборы PGN, решённые тренировочные позиции и сессии тренировки. Время берётся из локальной истории профиля.</p>
+          </section>
+
+          <section className="rounded-xl bg-[#2b2926] p-3">
+            <div className="mb-2 flex items-center justify-between"><h2 className="font-extrabold">Последние тренировочные сессии</h2><span className="text-xs text-[#a7a6a2]">{recentTrainingSessions.length} из {profile.trainingSessions?.length ?? 0}</span></div>
+            {recentTrainingSessions.length ? (
+              <div className="space-y-1.5">
+                {recentTrainingSessions.map((session) => (
+                  <div key={session.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-[#1f1d1b] px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold">{new Date(session.startedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}</div>
+                      <div className="mt-0.5 text-[10px] text-[#77746f]">{session.solved}/{session.total} задач · {Math.round(session.durationMs / 60000)} мин.</div>
+                    </div>
+                    <div className="text-right"><div className="text-sm font-black text-[#a3d160]">{session.accuracy}%</div><div className="text-[9px] text-[#77746f]">точность</div></div>
+                  </div>
+                ))}
+              </div>
+            ) : <div className="py-4 text-center text-xs text-[#77746f]">Здесь появятся результаты тренировок в разделе «Мои ошибки».</div>}
           </section>
 
           <section className="rounded-xl bg-[#2b2926] p-3">
