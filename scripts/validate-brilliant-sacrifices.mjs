@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Chess } from "chess.js";
-import { detectSacrifice, hangingLoss, qBalance } from "../src/lib/see.ts";
+import { detectSacrifice } from "../src/lib/see.ts";
 import { qualifiesAsBrilliant } from "../src/lib/brilliant.ts";
 
 const pgn = `[Event "Paris Opera"]
@@ -24,9 +24,9 @@ const history = game.history({ verbose: true });
 const replay = new Chess();
 
 const targets = new Map([
-  ["Nxb5", "10.Nxb5"],
-  ["Rxd7", "13.Rxd7"],
-  ["Qb8+", "16.Qb8+"],
+  ["Nxb5:w", "10.Nxb5"],
+  ["Rxd7:w", "13.Rxd7"],
+  ["Qb8+:w", "16.Qb8+"],
 ]);
 const found = new Set();
 
@@ -34,35 +34,21 @@ for (const move of history) {
   const before = replay.fen();
   const played = replay.move(move.san);
   assert.ok(played, `Could not replay ${move.san}`);
-  if (!targets.has(move.san)) continue;
+  const targetKey = `${move.san}:${move.color}`;
+  if (!targets.has(targetKey)) continue;
 
   const uci = move.from + move.to + (move.promotion ?? "");
   const sacrifice = detectSacrifice(before, uci, 2690);
-  if (!sacrifice.sacrifice && move.san === "Rxd7") {
-    const afterBoard = new Chess(before);
-    afterBoard.move(move.san);
-    const fields = before.split(" ");
-    fields[1] = fields[1] === "w" ? "b" : "w";
-    fields[3] = "-";
-    const passFen = fields.join(" ");
-    const captures = afterBoard.moves({ verbose: true }).filter((candidate) => candidate.to === move.to);
-    console.log("Rxd7 diagnostic", JSON.stringify({
-      before, after: afterBoard.fen(), captures,
-      defendedByUs: afterBoard.isAttacked(move.to, move.color),
-      qBefore: qBalance(before), qAfter: qBalance(afterBoard.fen()),
-      passThreat: hangingLoss(passFen), afterHanging: hangingLoss(afterBoard.fen()),
-    }));
-  }
   assert.equal(
     sacrifice.sacrifice,
     true,
-    `${targets.get(move.san)} must be detected as a sound piece/exchange sacrifice; got ${JSON.stringify(sacrifice)}`,
+    `${targets.get(targetKey)} must be detected as a sound piece/exchange sacrifice; got ${JSON.stringify(sacrifice)}`,
   );
-  found.add(move.san);
+  found.add(targetKey);
 }
 
-for (const san of targets.keys()) {
-  assert.ok(found.has(san), `The sample game is missing target move ${san}`);
+for (const [key, label] of targets) {
+  assert.ok(found.has(key), `The sample game is missing target move ${label}`);
 }
 
 // The shared Brilliant rule must accept a strong sacrifice that is nearly best,
