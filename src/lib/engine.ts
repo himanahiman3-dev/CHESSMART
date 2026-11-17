@@ -7,6 +7,7 @@ import type { EngineLine, Score } from "../types";
 import type { EngineBundle } from "./engineFiles";
 
 export interface SearchHandle {
+  /** Rejects when the worker crashes; partial info lines are never treated as a final result. */
   promise: Promise<EngineLine[]>;
   stop: () => void;
 }
@@ -45,6 +46,18 @@ export function buildPositionCommand(fen: string, history?: PositionHistory): st
 }
 
 const WATCHDOG_GRACE_MS = 1500;
+const ENGINE_ERROR_PREFIX = "\u0000stockfish-error:";
+
+function releaseBundleUrls(bundle: EngineBundle): void {
+  for (const url of [bundle.jsUrl, bundle.wasmUrl]) {
+    if (!url.startsWith("blob:")) continue;
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      // Revoking an already-released object URL is harmless.
+    }
+  }
+}
 
 export class StockfishEngine {
   readonly threaded: boolean;
@@ -55,8 +68,11 @@ export class StockfishEngine {
   private tail: Promise<void> = Promise.resolve();
   private lastMultiPv = 0;
   private dead = false;
+  private resourcesReleased = false;
+  private bundle: EngineBundle;
 
   private constructor(bundle: EngineBundle, threads: number) {
+    this.bundle = bundle;
     this.threaded = bundle.set.threaded;
     this.threads = threads;
     this.variant = bundle.set.variant;
@@ -66,50 +82,87 @@ export class StockfishEngine {
       if (typeof data !== "string") return;
       for (const listener of Array.from(this.listeners)) listener(data);
     };
-    const crash = () => this.failAll();
+    const crash = (event: Event) => {
+      const detail = "message" in event && typeof (event as ErrorEvent).message === "string"
+        ? (event as ErrorEvent).message
+        : "Неизвестная ошибка Worker Stockfish";
+      this.failAll(new Error(detail));
+    };
     this.worker.addEventListener("error", crash);
     this.worker.addEventListener("messageerror", crash);
   }
 
-  private failAll() {
+  private releaseResources() {
+    if (this.resourcesReleased) return;
+    this.resourcesReleased = true;
+    try {
+      this.worker.terminate();
+    } catch {
+      // The worker may already have crashed or been terminated.
+    }
+    releaseBundleUrls(this.bundle);
+  }
+
+  private failAll(reason: unknown) {
     if (this.dead) return;
     this.dead = true;
-    for (const listener of Array.from(this.listeners)) listener("bestmove (none)");
+    const detail = reason instanceof Error ? reason.message : String(reason);
+    const failure = ENGINE_ERROR_PREFIX + detail;
+    for (const listener of Array.from(this.listeners)) listener(failure);
+    this.releaseResources();
   }
 
   static async create(bundle: EngineBundle, hashMb = 128): Promise<StockfishEngine> {
     const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
     const threads = bundle.set.threaded ? Math.max(1, Math.min(8, hw - 1)) : 1;
-    const engine = new StockfishEngine(bundle, threads);
-    await engine.init(hashMb);
-    return engine;
+    let engine: StockfishEngine | null = null;
+    try {
+      engine = new StockfishEngine(bundle, threads);
+      await engine.init(hashMb);
+      return engine;
+    } catch (error) {
+      if (engine) engine.terminate();
+      else releaseBundleUrls(bundle);
+      throw error;
+    }
   }
 
   private send(command: string) {
-    if (!this.dead) this.worker.postMessage(command);
+    if (this.dead) return;
+    try {
+      this.worker.postMessage(command);
+    } catch (error) {
+      this.failAll(error);
+    }
   }
 
   private waitFor(predicate: (line: string) => boolean, timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
         this.listeners.delete(handler);
         this.worker.removeEventListener("error", errorHandler);
-        reject(new Error("Таймаут ожидания движка"));
-      }, timeoutMs);
+      };
       const errorHandler = (event: ErrorEvent) => {
-        clearTimeout(timer);
-        this.listeners.delete(handler);
-        this.worker.removeEventListener("error", errorHandler);
+        cleanup();
         reject(new Error(event.message || "Ошибка воркера движка"));
       };
       const handler = (line: string) => {
+        if (line.startsWith(ENGINE_ERROR_PREFIX)) {
+          cleanup();
+          reject(new Error(line.slice(ENGINE_ERROR_PREFIX.length) || "Ошибка воркера Stockfish"));
+          return;
+        }
         if (predicate(line)) {
-          clearTimeout(timer);
-          this.listeners.delete(handler);
-          this.worker.removeEventListener("error", errorHandler);
+          cleanup();
           resolve(line);
         }
       };
+      timer = setTimeout(() => {
+        cleanup();
+        reject(new Error("Таймаут ожидания движка"));
+      }, timeoutMs);
       this.worker.addEventListener("error", errorHandler);
       this.listeners.add(handler);
     });
@@ -148,12 +201,23 @@ export class StockfishEngine {
     const turn = options.fen.split(" ")[1] === "b" ? "b" : "w";
     const promise = this.tail.then(
       () =>
-        new Promise<EngineLine[]>((resolve) => {
-          if (cancelled || this.dead) return resolve([]);
+        new Promise<EngineLine[]>((resolve, reject) => {
+          if (cancelled) return resolve([]);
+          if (this.dead) return reject(new Error("Движок Stockfish завершён или недоступен"));
           active = true;
           const lines = new Map<number, EngineLine>();
           const sorted = () => Array.from(lines.values()).sort((a, b) => a.multipv - b.multipv);
+          const cleanup = () => {
+            this.listeners.delete(handler);
+            active = false;
+            if (watchdog) clearTimeout(watchdog);
+          };
           const handler = (line: string) => {
+            if (line.startsWith(ENGINE_ERROR_PREFIX)) {
+              cleanup();
+              reject(new Error(line.slice(ENGINE_ERROR_PREFIX.length) || "Ошибка воркера Stockfish"));
+              return;
+            }
             if (line.startsWith("info ")) {
               const parsed = parseInfo(line, turn);
               if (parsed) {
@@ -164,9 +228,7 @@ export class StockfishEngine {
                 if (bound && !lines.has(bound.multipv)) lines.set(bound.multipv, bound);
               }
             } else if (line.startsWith("bestmove")) {
-              this.listeners.delete(handler);
-              active = false;
-              if (watchdog) clearTimeout(watchdog);
+              cleanup();
               resolve(sorted());
             }
           };
@@ -179,6 +241,7 @@ export class StockfishEngine {
           this.send(buildPositionCommand(options.fen, options.history));
           const limit = options.movetimeMs && options.movetimeMs > 0 ? Math.round(options.movetimeMs) : 0;
           this.send(limit ? `go depth ${options.depth} movetime ${limit}` : `go depth ${options.depth}`);
+          if (this.dead) return;
           if (limit) {
             watchdog = setTimeout(() => {
               if (active) this.send("stop");
@@ -197,14 +260,8 @@ export class StockfishEngine {
   }
 
   terminate() {
-    this.failAll();
-    this.dead = true;
-    try {
-      this.worker.postMessage("quit");
-    } catch {
-      // ignore
-    }
-    this.worker.terminate();
+    if (!this.dead) this.failAll(new Error("Движок Stockfish остановлен"));
+    else this.releaseResources();
   }
 }
 
