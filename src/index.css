@@ -442,3 +442,28 @@ button:not(:disabled):hover {
 @media (max-width: 640px) {
   body { background-attachment: scroll; }
 }
+
+
+/* Harmonise legacy Tailwind gradient cards without flattening the board artwork. */
+[class*="from-[#303b2a]"],
+[class*="from-[#303b2a]"][class*="to-[#292a25]"],
+[class*="from-[#303b2a]"][class*="to-[#292a25]"] {
+  --tw-gradient-from: #2c3a2b var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(32 43 32 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), #202b20 var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+[class*="from-[#303b2a]"][class*="to-[#292a25]"] {
+  background-image: linear-gradient(145deg, #2b3929, #202a20) !important;
+}
+[class*="from-[#30342b]"][class*="to-[#292a25]"],
+[class*="from-[#2b3327]"][class*="to-[#22271f]"] {
+  background-image: linear-gradient(145deg, #2b3929, #202a20) !important;
+}
+[class~="bg-[#20241e]"],
+[class~="bg-[#202820]"],
+[class~="bg-[#20241e]"] {
+  background-color: #1b251c !important;
+}
+[class~="bg-[#32402b]/35"] {
+  background-color: rgba(74, 103, 57, 0.22) !important;
+}
