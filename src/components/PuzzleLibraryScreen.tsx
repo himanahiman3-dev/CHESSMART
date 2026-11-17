@@ -148,7 +148,6 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
   const [solutionIndex, setSolutionIndex] = useState(0);
   const [feedback, setFeedback] = useState<"idle" | "wrong" | "solved" | "revealed">("idle");
   const [hint, setHint] = useState(false);
-  const [dailyDone, setDailyDone] = useState(false);
   const [rushCount, setRushCount] = useState(0);
 
   useEffect(() => {
@@ -191,7 +190,10 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
     return items;
   }, [bank, mode, dailyId, theme, mission, difficulty, query]);
   const current = useMemo(() => filtered.find((p) => p.id === selectedId) ?? filtered[0] ?? null, [filtered, selectedId]);
-  const solved = stats.solved.includes(current?.id ?? "");
+  const today = localDateKey();
+  const dailyDone = stats.lastDaily === today;
+  // Ежедневная задача имеет собственный статус: решение той же позиции в обычной тренировке не должно блокировать daily streak.
+  const solved = mode === "daily" ? dailyDone : stats.solved.includes(current?.id ?? "");
   const playerMove = current?.moves[solutionIndex] ?? "";
   const currentThemes = current?.themes ?? [];
   const currentMission = MISSIONS.find((item) => item.id === mission) ?? MISSIONS[0];
@@ -200,17 +202,21 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
     if (!current) { setPosition(""); return; }
     setPosition(current.fen);
     setSolutionIndex(0);
-    setFeedback(stats.solved.includes(current.id) ? "solved" : "idle");
+    setFeedback(mode === "daily"
+      ? (stats.lastDaily === localDateKey() ? "solved" : "idle")
+      : (stats.solved.includes(current.id) ? "solved" : "idle"));
     setHint(false);
-  }, [current?.id, current?.fen]);
+  }, [current?.id, current?.fen, mode]);
 
   const selectPuzzle = useCallback((puzzle: Puzzle) => {
     setSelectedId(puzzle.id);
     setPosition(puzzle.fen);
     setSolutionIndex(0);
-    setFeedback(stats.solved.includes(puzzle.id) ? "solved" : "idle");
+    setFeedback(mode === "daily"
+      ? (stats.lastDaily === localDateKey() ? "solved" : "idle")
+      : (stats.solved.includes(puzzle.id) ? "solved" : "idle"));
     setHint(false);
-  }, [stats.solved]);
+  }, [mode, stats.lastDaily, stats.solved]);
 
   const finishPuzzle = useCallback((puzzle: Puzzle, wasRevealed: boolean) => {
     const alreadySolved = stats.solved.includes(puzzle.id);
@@ -233,7 +239,6 @@ export function PuzzleLibraryScreen({ onBack }: { onBack: () => void }) {
         lastDaily: completedDailyToday ? today : previous.lastDaily,
       };
     });
-    if (mode === "daily" && !wasRevealed && stats.lastDaily !== today) setDailyDone(true);
     if (mode === "rated" && !wasRevealed) setRushCount((value) => value + 1);
     setFeedback(wasRevealed ? "revealed" : "solved");
   }, [stats.solved, stats.rating, stats.lastDaily, mode]);
