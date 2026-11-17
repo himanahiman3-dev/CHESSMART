@@ -73,33 +73,8 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-/** Сколько миллисекунд на анализ всей партии приходится на один ход (10 ходов = 6 с). */
-export const TIME_PER_MOVE_MS = 600;
-/** Нижняя граница времени на одну позицию, чтобы движок успел выдать хоть какую-то оценку. */
-const MIN_POSITION_MS = 120;
-
-/** Общий бюджет времени на партию из `moveCount` ходов. */
-export function gameBudgetMs(moveCount: number): number {
-  const moves = Math.max(0, Math.floor(moveCount));
-  const positions = moves + 1;
-  // Reserve at least MIN_POSITION_MS for every evaluated position.
-  // A one-move game still needs both the initial and final positions.
-  return Math.max(moves * TIME_PER_MOVE_MS, positions * MIN_POSITION_MS);
-}
-
-/**
- * Время на текущую позицию: всё ещё не израсходованное время делится поровну между оставшимися позициями.
- * Недоиспользованное предыдущими позициями время автоматически переходит к следующим.
- */
-export function slotForPosition(budgetMs: number, elapsedMs: number, positionsLeft: number): number {
-  const remaining = Math.max(0, Math.floor(budgetMs - elapsedMs));
-  if (remaining <= 0) return 1;
-  const fairShare = Math.round(remaining / Math.max(1, positionsLeft));
-  // Never allocate more than the remaining game budget. The game budget itself
-  // reserves the normal minimum for each position, so this clamp is only a
-  // safeguard against scheduling/measurement overhead.
-  return Math.max(1, Math.min(remaining, Math.max(MIN_POSITION_MS, fairShare)));
-}
+import { gameBudgetMs, slotForPosition } from "./analysisBudget";
+export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
 export const FAST_MAX_DEPTH = 14;
