@@ -162,7 +162,7 @@ export function CoachCard({
               >
                 {voiceEnabled ? "Голос тренера: включён" : "Озвучивать комментарии"}
               </button>
-              <span className="text-[10px] text-[#77746f]">Используется системный голос ru-RU; качество зависит от установленных голосов</span>
+              <span className="text-[10px] text-[#77746f]">Тембр и скорость настраиваются во вкладке Personal Coach</span>
               {voiceError && <span className="text-[10px] text-[#f7c045]">Браузер не смог запустить озвучку; проверь русский голос в настройках системы.</span>}
             </div>
           )}
