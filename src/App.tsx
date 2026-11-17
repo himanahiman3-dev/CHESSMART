@@ -105,7 +105,8 @@ function Main() {
   useEffect(() => {
     let cancelled = false;
     const hydrateAccount = async () => {
-      const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\\/$/, "") ?? "";
+      const configuredUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
+      const url = configuredUrl.endsWith("/") ? configuredUrl.slice(0, -1) : configuredUrl;
       const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? "";
       if (!url || !key || readAccountProfile()) return;
       try {
