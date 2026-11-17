@@ -13,6 +13,7 @@ import { PuzzleLibraryScreen } from "./components/PuzzleLibraryScreen";
 import { EndgameTrainingScreen } from "./components/EndgameTrainingScreen";
 import { OpeningExplorerScreen } from "./components/OpeningExplorerScreen";
 import { PositionLabScreen } from "./components/PositionLabScreen";
+import { Grandmaster300Screen } from "./components/Grandmaster300Screen";
 import { PersonalCoachScreen } from "./components/PersonalCoachScreen";
 import { MotivationBanner } from "./components/MotivationBanner";
 import { reviewGame, type AnalyzeProgress } from "./lib/analyze";
@@ -26,8 +27,8 @@ import type { GameReview } from "./types";
 import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
 
 type Stage = "import" | "analyzing" | "review";
-type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "coach" | "endgame" | "openings" | "lab";
-type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "coach" | "endgame" | "openings" | "profile" | "lab";
+type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "coach" | "endgame" | "openings" | "lab" | "diagnostics";
+type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "coach" | "endgame" | "openings" | "profile" | "lab" | "diagnostics";
 
 const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconName }> = [
   { id: "review", label: "Анализ партий", group: "Играть", icon: "analysis" },
@@ -40,6 +41,7 @@ const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconN
   { id: "openings", label: "Дебютная база", group: "Изучать", icon: "openings" },
   { id: "profile", label: "Статистика", group: "Изучать", icon: "profile" },
   { id: "lab", label: "Лаборатория позиции", group: "Изучать", icon: "lab" },
+  { id: "diagnostics", label: "Диагностика 300", group: "Изучать", icon: "diagnostics" },
 ];
 
 function NavIcon({ name, active = false }: { name: IconName; active?: boolean }) {
@@ -57,6 +59,7 @@ function NavIcon({ name, active = false }: { name: IconName; active?: boolean })
       {name === "openings" && <><path {...common} d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" /></>}
       {name === "profile" && <><circle {...common} cx="12" cy="8" r="3.2" /><path {...common} d="M4.5 20a7.5 7.5 0 0 1 15 0" /></>}
       {name === "lab" && <><path {...common} d="m14.5 6.5 3-3 3 3-3 3" /><path {...common} d="m3 21 8-8M12 5a5 5 0 0 0 7 7L10 21l-7-7 4-4" /></>}
+      {name === "diagnostics" && <><circle {...common} cx="12" cy="12" r="8.5" /><path {...common} d="M12 7v5l3.5 2M5.8 5.8l2 2M18.2 5.8l-2 2" /></>}
     </svg>
   );
 }
@@ -216,6 +219,7 @@ function Main() {
   else if (mode === "endgame") page = <EndgameTrainingScreen engine={engine} profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "openings") page = <OpeningExplorerScreen onBack={() => changeMode("review")} />;
   else if (mode === "lab") page = <PositionLabScreen engine={engine} onBack={() => changeMode("review")} />;
+  else if (mode === "diagnostics") page = <Grandmaster300Screen onBack={() => changeMode("review")} />;
   else if (stage === "review" && review) page = (
     <ReviewScreen
       review={review}

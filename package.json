@@ -11,7 +11,8 @@
     "validate:brilliant-sacrifices": "node --experimental-strip-types scripts/validate-brilliant-sacrifices.mjs",
     "validate:analysis-core": "node --experimental-strip-types scripts/validate-analysis-core.mjs",
     "validate:profile-sync": "node --experimental-strip-types scripts/validate-profile-sync.mjs",
-    "validate:gameplay": "node --experimental-strip-types scripts/validate-gameplay.mjs"
+    "validate:gameplay": "node --experimental-strip-types scripts/validate-gameplay.mjs",
+    "validate:diagnostics": "node --experimental-strip-types scripts/validate-diagnostics.mjs"
   },
   "dependencies": {
     "chess.js": "^1.4.0",
