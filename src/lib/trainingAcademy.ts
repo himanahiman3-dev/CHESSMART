@@ -179,6 +179,11 @@ function collectActivity(profile: PlayerProfile): Map<string, MutableActivity> {
     const bucket = ensure(puzzle.solvedAt);
     if (bucket) bucket.solvedPuzzles += 1;
   }
+  for (const entry of safeArray(profile.puzzleRatingHistory)) {
+    if (!entry.solved) continue;
+    const bucket = ensure(entry.at);
+    if (bucket) bucket.solvedPuzzles += 1;
+  }
   for (const session of safeArray(profile.trainingSessions)) {
     const bucket = ensure(session.startedAt);
     if (bucket) bucket.sessions += 1;
@@ -542,9 +547,13 @@ export function buildAcademyDashboard(
   const weaknesses = analyzeTrainingWeaknesses(profile);
   const recommendations = buildTrainingRecommendations(profile, now, weaknesses);
   const tasks = buildDailyTasks(profile, normalized.dailyPuzzleTarget, weaknesses);
-  const solvedPuzzleCount = safeArray(profile.puzzles).filter((puzzle) => isFiniteNumber(puzzle.solvedAt)).length;
+  const solvedIds = new Set<string>(safeArray(profile.puzzles).filter((puzzle) => isFiniteNumber(puzzle.solvedAt)).map((puzzle) => "mistake:" + puzzle.id));
+  for (const entry of safeArray(profile.puzzleRatingHistory)) {
+    if (entry.solved) solvedIds.add("bank:" + entry.mode + ":" + entry.puzzleId);
+  }
+  const solvedPuzzleCount = solvedIds.size;
   const averageAccuracy = safeArray(profile.reviews).length
-    ? safeArray(profile.reviews).reduce((sum, review) => sum + (isFiniteNumber(review.accuracy?.average) ? review.accuracy.average : 0), 0) / safeArray(profile.reviews).length
+    ? safeArray(profile.reviews).reduce((sum, review) => sum + (isFiniteNumber(review.accuracy?.average) ? Math.max(0, Math.min(100, review.accuracy.average)) : 0), 0) / safeArray(profile.reviews).length
     : null;
 
   const reviewCount = safeArray(profile.reviews).length;
