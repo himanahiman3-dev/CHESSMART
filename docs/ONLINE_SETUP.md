@@ -16,7 +16,7 @@ Run these files in the Supabase SQL Editor, in this order:
 2. supabase/migrations/202611160002_accounts_matchmaking.sql
 3. supabase/migrations/202611170001_account_avatars.sql
 4. supabase/migrations/202611170002_player_progress_sync.sql
-5. supabase/migrations/20261117180000_fix_matchmaking_pgcrypto_search_path.sql
+5. supabase/migrations/20261117150407_fix_matchmaking_pgcrypto_search_path.sql
 
 The first migration creates online profiles, games and protected Elo updates. The second adds nickname-account matchmaking, the queue, direct invitations and rate limits for registration/login. The third adds avatar URLs to online profiles and creates the public avatar-storage bucket. The fourth enables protected cloud progress snapshots and version history. The fifth makes the matchmaking function resolve pgcrypto from Supabase's `extensions` schema. Apply all five migrations in order.
 
