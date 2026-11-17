@@ -119,9 +119,19 @@ export function GameBoard({
     const s: Record<string, CSSProperties> = {};
     const animated = badge && ANIMATED.includes(badge.cls) ? badge : null;
     if (lastMove) {
-      s[lastMove.from] = { background: "rgba(255, 235, 59, 0.45)" };
-      // у «блестящего»/«отличного» хода клетка назначения красится цветом класса, а не жёлтым
-      if (!(animated && animated.square === lastMove.to)) s[lastMove.to] = { background: "rgba(255, 235, 59, 0.55)" };
+      // Спокойные контрастные оттенки: откуда ушла фигура — холодный,
+      // куда пришла — мягкий зелёный. Без кислотного жёлтого.
+      s[lastMove.from] = {
+        background: "rgba(91, 153, 190, 0.38)",
+        boxShadow: "inset 0 0 0 2px rgba(70, 132, 174, 0.32)",
+      };
+      // Не перекрываем цвет значка brilliant/great на клетке назначения.
+      if (!(animated && animated.square === lastMove.to)) {
+        s[lastMove.to] = {
+          background: "rgba(145, 190, 91, 0.48)",
+          boxShadow: "inset 0 0 0 2px rgba(111, 157, 67, 0.38)",
+        };
+      }
     }
     if (animated) {
       // две одинаковые анимации (a/b) чередуются: так она перезапускается, даже если клетка та же, что и в прошлый раз
