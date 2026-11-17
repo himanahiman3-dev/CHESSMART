@@ -1,4 +1,4 @@
-import type { PlayerProfile, RatingEntry, TrainingPuzzle, TrainingSessionSummary } from "./playerProfile";
+import type { PlayerProfile, PuzzleRatingEntry, RatingEntry, TrainingPuzzle, TrainingSessionSummary } from "./playerProfile";
 import type { BrilliantMoveSummary, ReviewSummary } from "./learningStats";
 
 const FORMAT = "chess-review-profile";
@@ -62,6 +62,16 @@ function validRatingEntry(value: unknown): value is RatingEntry {
     && typeof value.result === "string"
     && RESULTS.has(value.result)
     && finite(value.botElo)
+    && finite(value.change)
+    && finite(value.ratingAfter);
+}
+
+function validPuzzleRatingEntry(value: unknown): value is PuzzleRatingEntry {
+  return isRecord(value)
+    && finite(value.at)
+    && typeof value.puzzleId === "string"
+    && (value.mode === "rated" || value.mode === "daily" || value.mode === "themes")
+    && typeof value.solved === "boolean"
     && finite(value.change)
     && finite(value.ratingAfter);
 }
@@ -138,6 +148,10 @@ export function parseProfileBackup(source: string): PlayerProfile {
   return {
     name: raw.name.trim().slice(0, 24) || "Игрок",
     rating: clamp(Math.round(raw.rating), 100, 3200),
+    puzzleRating: finite(raw.puzzleRating) ? clamp(Math.round(raw.puzzleRating), 400, 3200) : 1200,
+    puzzleRatingHistory: Array.isArray(raw.puzzleRatingHistory)
+      ? raw.puzzleRatingHistory.filter(validPuzzleRatingEntry).slice(-180)
+      : [],
     games: Math.max(0, Math.floor(raw.games)),
     wins: Math.max(0, Math.floor(raw.wins)),
     losses: Math.max(0, Math.floor(raw.losses)),
