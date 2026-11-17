@@ -80,7 +80,11 @@ const MIN_POSITION_MS = 120;
 
 /** Общий бюджет времени на партию из `moveCount` ходов. */
 export function gameBudgetMs(moveCount: number): number {
-  return Math.max(0, Math.round(moveCount * TIME_PER_MOVE_MS));
+  const moves = Math.max(0, Math.floor(moveCount));
+  const positions = moves + 1;
+  // Reserve at least MIN_POSITION_MS for every evaluated position.
+  // A one-move game still needs both the initial and final positions.
+  return Math.max(moves * TIME_PER_MOVE_MS, positions * MIN_POSITION_MS);
 }
 
 /**
@@ -88,8 +92,13 @@ export function gameBudgetMs(moveCount: number): number {
  * Недоиспользованное предыдущими позициями время автоматически переходит к следующим.
  */
 export function slotForPosition(budgetMs: number, elapsedMs: number, positionsLeft: number): number {
-  const remaining = Math.max(0, budgetMs - elapsedMs);
-  return Math.max(MIN_POSITION_MS, Math.round(remaining / Math.max(1, positionsLeft)));
+  const remaining = Math.max(0, Math.floor(budgetMs - elapsedMs));
+  if (remaining <= 0) return 1;
+  const fairShare = Math.round(remaining / Math.max(1, positionsLeft));
+  // Never allocate more than the remaining game budget. The game budget itself
+  // reserves the normal minimum for each position, so this clamp is only a
+  // safeguard against scheduling/measurement overhead.
+  return Math.max(1, Math.min(remaining, Math.max(MIN_POSITION_MS, fairShare)));
 }
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
@@ -240,7 +249,8 @@ export async function reviewGame(
   engine: StockfishEngine,
   onProgress: (p: AnalyzeProgress) => void,
   signal?: AbortSignal,
-  moveTimeMs?: number
+  moveTimeMs?: number,
+  onPartialReview?: (review: GameReview) => void
 ): Promise<GameReview> {
   const game = parseGame(pgn);
   const N = game.moves.length;
@@ -299,6 +309,13 @@ export async function reviewGame(
     budgetMs,
     elapsedMs: now() - startedAt,
   });
+
+  if (signal?.aborted) throw new Error("cancelled");
+  // Publish a complete, immediately usable review before the optional deep
+  // tactical passes. The same positions are refined below and the caller gets
+  // the final, higher-confidence result from the returned Promise.
+  onPartialReview?.(buildReview(game, positions, depth));
+
   await refineSacrifices(game, positions, depth, engine, onProgress, signal);
   const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, depth, engine, signal);
   return buildReview(game, positions, depth, deferredSacrifices);
