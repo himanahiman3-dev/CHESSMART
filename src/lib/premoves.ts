@@ -42,11 +42,17 @@ export function getPremoveMoves(fen: string, color: "w" | "b", from: string): Pr
 export function canSetPremove(fen: string, color: "w" | "b", from: string, to: string): boolean {
   return getPremoveMoves(fen, color, from).some((move) => move.to === to);
 }
-export function createPremove(fen: string, color: "w" | "b", from: string, to: string): Premove | null {
+export function createPremove(
+  fen: string,
+  color: "w" | "b",
+  from: string,
+  to: string,
+  promotion: "q" | "r" | "b" | "n" = "q",
+): Premove | null {
   if (!isChessSquare(from) || !isChessSquare(to) || from === to) return null;
   const candidate = getPremoveMoves(fen, color, from).find((move) => move.to === to);
   if (!candidate) return null;
-  return { from, to, ...(candidate.promotion ? { promotion: "q" } : {}) };
+  return { from, to, ...(candidate.promotion ? { promotion } : {}) };
 }
 /** Re-checks legality only after the opponent's real move has arrived. */
 export function resolvePremove(fen: string, color: "w" | "b", premove: Premove): ResolvedPremove | null {
