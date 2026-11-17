@@ -5,7 +5,7 @@
  */
 
 /** Base analysis budget per played half-move, in milliseconds. */
-export const TIME_PER_MOVE_MS = 600;
+export const TIME_PER_MOVE_MS = 400;
 
 /** Minimum search slot per evaluated position, in milliseconds. */
 const MIN_POSITION_MS = 120;
