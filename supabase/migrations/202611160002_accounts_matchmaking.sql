@@ -141,7 +141,7 @@ begin
     black_id := p_user_id;
   end if;
 
-  invite := upper(substr(encode(gen_random_bytes(8), 'hex'), 1, 8));
+  invite := upper(substr(encode(extensions.gen_random_bytes(8), 'hex'), 1, 8));
   initial_ms := greatest(1, p_minutes) * 60000;
 
   insert into public.online_games(
