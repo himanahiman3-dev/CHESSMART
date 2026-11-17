@@ -15,6 +15,8 @@ create role service_role nologin bypassrls;
 create schema auth;
 create table auth.users (id uuid primary key);
 create schema storage;
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 create table storage.buckets (
   id text primary key,
   name text not null,
@@ -33,6 +35,7 @@ psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611160001_online_chess.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611160002_accounts_matchmaking.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170001_account_avatars.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170002_player_progress_sync.sql
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261117180000_fix_matchmaking_pgcrypto_search_path.sql
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
 insert into auth.users(id) values
