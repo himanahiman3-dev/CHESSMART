@@ -20,8 +20,15 @@ export interface EngineStrength {
   elo?: number;
 }
 
+export interface PositionHistory {
+  startFen: string;
+  moves: readonly string[];
+}
+
 export interface SearchOptions {
   fen: string;
+  /** Original game path to preserve repetition and draw context. */
+  history?: PositionHistory;
   depth: number;
   multipv: number;
   /** Жёсткий лимит времени поиска (мс). */
@@ -29,6 +36,12 @@ export interface SearchOptions {
   onInfo?: (lines: EngineLine[]) => void;
   /** Если не задано, движок сбрасывается на максимальную силу. */
   strength?: EngineStrength;
+}
+
+export function buildPositionCommand(fen: string, history?: PositionHistory): string {
+  if (!history) return `position fen ${fen}`;
+  const moves = history.moves.length ? ` moves ${history.moves.join(" ")}` : "";
+  return `position fen ${history.startFen}${moves}`;
 }
 
 const WATCHDOG_GRACE_MS = 1500;
@@ -163,7 +176,7 @@ export class StockfishEngine {
             this.send(`setoption name MultiPV value ${options.multipv}`);
             this.lastMultiPv = options.multipv;
           }
-          this.send(`position fen ${options.fen}`);
+          this.send(buildPositionCommand(options.fen, options.history));
           const limit = options.movetimeMs && options.movetimeMs > 0 ? Math.round(options.movetimeMs) : 0;
           this.send(limit ? `go depth ${options.depth} movetime ${limit}` : `go depth ${options.depth}`);
           if (limit) {
