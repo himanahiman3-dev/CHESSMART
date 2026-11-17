@@ -52,6 +52,10 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     const next = updateGameplayPreferences(preferences, { [key]: value });
     setPreferences(next);
     setSoundEnabled(next.soundEnabled);
+    if (key === "premovesEnabled" && value === false) {
+      setPremove(null);
+      setPremoveMessage("Очередь premove очищена.");
+    }
   };
 
   useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
