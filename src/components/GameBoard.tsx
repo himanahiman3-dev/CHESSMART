@@ -149,7 +149,7 @@ export function GameBoard({
         const isPromo = piece.type === "p" && (to[1] === "8" || to[1] === "1");
         if (isPromo && !autoQueen) {
           setPromotionDraft({ from, to, kind: "move" });
-          return true;
+          return false;
         }
         const mv = chess.move({ from: from as Square, to: to as Square, promotion: isPromo ? "q" : undefined });
         const after = chess.fen();
@@ -269,7 +269,10 @@ export function GameBoard({
             if (!targetSquare || !chess) return false;
             setSelected(null);
             const piece = chess.get(sourceSquare as Square);
-            if (piece && canPremoveColor(piece.color)) return selectOrQueuePremove(sourceSquare, targetSquare);
+            if (piece && canPremoveColor(piece.color)) {
+              selectOrQueuePremove(sourceSquare, targetSquare);
+              return false; // Keep the live board unchanged; only draw the queued premove.
+            }
             return tryMove(sourceSquare, targetSquare);
           },
           onSquareClick: ({ square, piece }) => {
