@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Chess } from "chess.js";
-import { detectSacrifice } from "../src/lib/see.ts";
+import { detectSacrifice, hangingLoss, qBalance } from "../src/lib/see.ts";
 import { qualifiesAsBrilliant } from "../src/lib/brilliant.ts";
 
 const pgn = `[Event "Paris Opera"]
@@ -38,6 +38,21 @@ for (const move of history) {
 
   const uci = move.from + move.to + (move.promotion ?? "");
   const sacrifice = detectSacrifice(before, uci, 2690);
+  if (!sacrifice.sacrifice && move.san === "Rxd7") {
+    const afterBoard = new Chess(before);
+    afterBoard.move(move.san);
+    const fields = before.split(" ");
+    fields[1] = fields[1] === "w" ? "b" : "w";
+    fields[3] = "-";
+    const passFen = fields.join(" ");
+    const captures = afterBoard.moves({ verbose: true }).filter((candidate) => candidate.to === move.to);
+    console.log("Rxd7 diagnostic", JSON.stringify({
+      before, after: afterBoard.fen(), captures,
+      defendedByUs: afterBoard.isAttacked(move.to, move.color),
+      qBefore: qBalance(before), qAfter: qBalance(afterBoard.fen()),
+      passThreat: hangingLoss(passFen), afterHanging: hangingLoss(afterBoard.fen()),
+    }));
+  }
   assert.equal(
     sacrifice.sacrifice,
     true,
