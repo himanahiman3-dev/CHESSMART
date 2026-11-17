@@ -55,6 +55,8 @@ jobs:
         run: npm run validate:profile-sync
       - name: Validate premoves and gameplay features
         run: npm run validate:gameplay
+      - name: Validate Grandmaster 300 diagnostics
+        run: npm run validate:diagnostics
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
