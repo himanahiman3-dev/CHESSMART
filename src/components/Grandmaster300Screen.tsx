@@ -3,7 +3,6 @@ import { GameBoard } from "./GameBoard";
 import { copyText } from "../lib/clipboard";
 import {
   diagnosticCategories,
-  diagnosticCount,
   diagnosticsCsv,
   evaluatePositionDiagnostics,
   filterDiagnostics,
