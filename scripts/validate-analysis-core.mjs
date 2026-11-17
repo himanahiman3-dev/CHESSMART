@@ -37,7 +37,15 @@ assert.ok(
   checked.moves({ verbose: true }).some((move) => !move.captured),
   "Test position must have a quiet check evasion",
 );
+const evasions = checked.moves({ verbose: true });
+for (const evasion of evasions) {
+  const position = new Chess(checkedFen);
+  position.move({ from: evasion.from, to: evasion.to, promotion: evasion.promotion });
+  const captures = position.moves({ verbose: true }).filter((move) => move.to === "a2");
+  console.log("CHECK-EVASION", evasion.san, position.fen(), "CAPTURES-TO-A2", captures.map((move) => move.san));
+}
 const checkedEval = qBalance(checkedFen);
+console.log("QBALANCE", checkedEval);
 assert.ok(Number.isFinite(checkedEval), "Quiescence search must return a finite score while in check");
 assert.ok(
   checkedEval < -500,
