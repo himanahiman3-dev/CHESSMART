@@ -193,7 +193,7 @@ export function GameBoard({
         boxShadow: selectedIsPremove ? "inset 0 0 0 3px rgba(220,62,62,.9)" : undefined,
       };
       const destinations = selectedIsPremove
-        ? selectedPremoveMoves.map((move) => ({ to: move.to, captured: !!chess.get(move.to) }))
+        ? selectedPremoveMoves.map((move) => ({ to: move.to, captured: !!chess.get(move.to as Square) }))
         : showLegalMoves && canMoveColor(chess.get(selected as Square)?.color ?? "")
           ? chess.moves({ square: selected as Square, verbose: true })
           : [];
