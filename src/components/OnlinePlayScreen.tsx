@@ -183,6 +183,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const [copied, setCopied] = useState(false);
   const [lastSync, setLastSync] = useState(Date.now());
   const [premove, setPremove] = useState<Premove | null>(null);
+  const premoveGameIdRef = useRef<string | null>(null);
   const [boardFlipped, setBoardFlipped] = useState(false);
   const [preferences, setPreferences] = useState<GameplayPreferences>(() => loadGameplayPreferences());
   const [connectionOnline, setConnectionOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
@@ -214,33 +215,6 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     setAvatarPreview(null);
     setNotice("Аватар успешно обновлён.");
   };
-
-  useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
-
-  const updatePreference = <K extends keyof GameplayPreferences>(key: K, value: GameplayPreferences[K]) => {
-    const next = updateGameplayPreferences(preferences, { [key]: value });
-    setPreferences(next);
-    setSoundEnabled(next.soundEnabled);
-  };
-
-  useEffect(() => {
-    const setOnline = () => setConnectionOnline(true);
-    const setOffline = () => setConnectionOnline(false);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        setConnectionOnline(navigator.onLine);
-        void refreshGame();
-      }
-    };
-    window.addEventListener("online", setOnline);
-    window.addEventListener("offline", setOffline);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.removeEventListener("online", setOnline);
-      window.removeEventListener("offline", setOffline);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [refreshGame]);
 
   useEffect(() => {
     if (!configured) return;
@@ -345,6 +319,33 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     }
   }, [session, game?.id, url, key]);
 
+  useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
+
+  const updatePreference = <K extends keyof GameplayPreferences>(key: K, value: GameplayPreferences[K]) => {
+    const next = updateGameplayPreferences(preferences, { [key]: value });
+    setPreferences(next);
+    setSoundEnabled(next.soundEnabled);
+  };
+
+  useEffect(() => {
+    const setOnline = () => setConnectionOnline(true);
+    const setOffline = () => setConnectionOnline(false);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setConnectionOnline(navigator.onLine);
+        void refreshGame();
+      }
+    };
+    window.addEventListener("online", setOnline);
+    window.addEventListener("offline", setOffline);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", setOnline);
+      window.removeEventListener("offline", setOffline);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshGame]);
+
   const refreshInvitations = useCallback(async () => {
     if (!session || game) return;
     try {
@@ -425,11 +426,12 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     movePendingRef.current = false;
     setMovePending(false);
     setBoardFlipped(false);
+    premoveGameIdRef.current = null;
   }, [game?.id]);
 
   // Apply a premove only after the authoritative server FEN says it is our turn.
   useEffect(() => {
-    if (!premove || !game || game.status !== "active" || !myColor || turn !== myColor || movePending) return;
+    if (!premove || !game || premoveGameIdRef.current !== game.id || game.status !== "active" || !myColor || turn !== myColor || movePending) return;
     const resolved = resolvePremove(game.fen, myColor, premove);
     setPremove(null);
     if (!resolved) {
@@ -549,6 +551,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const resign = async () => {
     if (!session || !game) return;
     if (preferences.confirmResign && !window.confirm("Сдаться в этой партии?")) return;
+    premoveGameIdRef.current = null;
     setPremove(null);
     setBusy(true);
     try {
@@ -593,6 +596,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   };
 
   const clearGame = () => {
+    premoveGameIdRef.current = null;
     setPremove(null);
     localStorage.removeItem(GAME_KEY);
     setGame(null);
@@ -791,8 +795,8 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
                 onMove={(move) => sendMove(move, false)}
                 premoveEnabled={canQueuePremove}
                 premove={premove}
-                onPremove={(next) => { setPremove(next); setNotice(""); }}
-                onClearPremove={() => { setPremove(null); setNotice("Premove отменён."); }}
+                onPremove={(next) => { premoveGameIdRef.current = game.id; setPremove(next); setNotice(""); }}
+                onClearPremove={() => { premoveGameIdRef.current = null; setPremove(null); setNotice("Premove отменён."); }}
                 theme={preferences.boardTheme}
                 showLegalMoves={preferences.showLegalMoves}
                 highlightLastMove={preferences.highlightLastMove}
@@ -834,7 +838,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
                 {premove && (
                   <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-[#8b4444] bg-[#3c2928] px-3 py-2 text-xs text-[#ffd4d1]">
                     <span>Ожидающий premove: <b>{formatPremove(premove)}</b></span>
-                    <button type="button" onClick={() => { setPremove(null); setNotice("Premove отменён."); }} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Отменить</button>
+                    <button type="button" onClick={() => { premoveGameIdRef.current = null; setPremove(null); setNotice("Premove отменён."); }} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Отменить</button>
                   </div>
                 )}
                 {exportNotice && <p role="status" className="mt-2 text-xs text-[#a3d160]">{exportNotice}</p>}
