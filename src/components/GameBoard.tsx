@@ -102,6 +102,7 @@ export function GameBoard({
   autoQueen = true,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [promotionDraft, setPromotionDraft] = useState<{ from: string; to: string } | null>(null);
 
   useEffect(() => setSelected(null), [fen, interactive]);
 
@@ -127,11 +128,17 @@ export function GameBoard({
   );
   const selectOrQueuePremove = useCallback((from: string, to: string): boolean => {
     if (!allowedColor || !onPremove) return false;
-    const candidate = createPremove(fen, allowedColor, from, to);
+    const candidates = getPremoveMoves(fen, allowedColor, from).filter((move) => move.to === to);
+    if (!candidates.length) return false;
+    if (candidates.some((move) => move.promotion) && !autoQueen) {
+      setPromotionDraft({ from, to });
+      return true;
+    }
+    const candidate = createPremove(fen, allowedColor, from, to, "q");
     if (!candidate) return false;
     onPremove(candidate);
     return true;
-  }, [fen, allowedColor, onPremove]);
+  }, [fen, allowedColor, onPremove, autoQueen]);
 
   const tryMove = useCallback(
     (from: string, to: string): boolean => {
@@ -215,6 +222,7 @@ export function GameBoard({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        setPromotionDraft(null);
         onClearPremove();
         setSelected(null);
       }
@@ -230,6 +238,7 @@ export function GameBoard({
       onContextMenu={(event) => {
         if (!premove || !onClearPremove) return;
         event.preventDefault();
+        setPromotionDraft(null);
         onClearPremove();
         setSelected(null);
       }}
@@ -301,6 +310,32 @@ export function GameBoard({
         }}
       />
       {badge && <BadgeOverlay badge={badge} orientation={orientation} animKey={animKey} />}
+      {promotionDraft && allowedColor && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center rounded-md bg-black/55">
+          <div className="rounded-xl border border-white/15 bg-[#20231d] p-3 shadow-2xl">
+            <div className="mb-2 text-center text-xs font-bold text-white">Выбери превращение premove</div>
+            <div className="flex gap-2">
+              {(["q", "r", "b", "n"] as const).map((piece) => (
+                <button
+                  key={piece}
+                  type="button"
+                  aria-label={piece === "q" ? "Ферзь" : piece === "r" ? "Ладья" : piece === "b" ? "Слон" : "Конь"}
+                  onClick={() => {
+                    const chosen = createPremove(fen, allowedColor, promotionDraft.from, promotionDraft.to, piece);
+                    if (chosen) onPremove?.(chosen);
+                    setPromotionDraft(null);
+                    setSelected(null);
+                  }}
+                  className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#38432e] text-2xl text-white hover:bg-[#50643e]"
+                >
+                  {piece === "q" ? "♕" : piece === "r" ? "♖" : piece === "b" ? "♗" : "♘"}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setPromotionDraft(null)} className="mt-2 w-full rounded-md border border-white/15 px-3 py-1.5 text-[10px] font-bold text-[#bbb]">Отмена</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
