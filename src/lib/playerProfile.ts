@@ -25,8 +25,12 @@ export interface TrainingPuzzle {
   solvedAt?: number;
 }
 
+export type TrainingSessionCategory = "mistakes" | "endgame";
+
 export interface TrainingSessionSummary {
   id: string;
+  category?: TrainingSessionCategory;
+  label?: string;
   startedAt: number;
   durationMs: number;
   total: number;

@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import type { StockfishEngine } from "../lib/engine";
+import type { PlayerProfile, TrainingSessionSummary } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
 
 interface Props {
   engine: StockfishEngine;
+  profile: PlayerProfile;
+  onChange: (profile: PlayerProfile) => void;
   onBack: () => void;
 }
 
@@ -34,7 +37,7 @@ const ENDGAMES = [
 
 type Result = "success" | "failed" | null;
 
-export function EndgameTrainingScreen({ engine, onBack }: Props) {
+export function EndgameTrainingScreen({ engine, profile, onChange, onBack }: Props) {
   const [taskId, setTaskId] = useState(ENDGAMES[0].id);
   const task = ENDGAMES.find((item) => item.id === taskId) ?? ENDGAMES[0];
   const [fen, setFen] = useState(task.fen);
@@ -44,10 +47,46 @@ export function EndgameTrainingScreen({ engine, onBack }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const generation = useRef(0);
+  const resultRef = useRef<Result>(null);
+  const sessionRef = useRef<{ id: string; startedAt: number } | null>(null);
   const game = useMemo(() => new Chess(fen), [fen]);
+  const endgameSessions = (profile.trainingSessions ?? []).filter((session) => session.category === "endgame");
+  const endgameWins = endgameSessions.reduce((total, session) => total + session.solved, 0);
+  const endgameTotal = endgameSessions.reduce((total, session) => total + session.total, 0);
+  const endgameAccuracy = endgameTotal ? Math.round(endgameWins / endgameTotal * 100) : 0;
+
+  const completeTask = useCallback((outcome: Exclude<Result, null>) => {
+    if (resultRef.current) return;
+    resultRef.current = outcome;
+    setResult(outcome);
+    setStarted(false);
+    const active = sessionRef.current;
+    if (!active) return;
+    const completedAt = Date.now();
+    const summary: TrainingSessionSummary = {
+      id: active.id,
+      category: "endgame",
+      label: task.title,
+      startedAt: active.startedAt,
+      durationMs: Math.max(0, completedAt - active.startedAt),
+      total: 1,
+      solved: outcome === "success" ? 1 : 0,
+      attempts: 1,
+      correctMoves: outcome === "success" ? 1 : 0,
+      accuracy: outcome === "success" ? 100 : 0,
+    };
+    onChange({
+      ...profile,
+      trainingSessions: [...(profile.trainingSessions ?? []), summary].slice(-100),
+    });
+    sessionRef.current = null;
+  }, [onChange, profile, task.title]);
 
   const reset = () => {
     generation.current++;
+    const startedAt = Date.now();
+    sessionRef.current = { id: `endgame:${task.id}:${startedAt}`, startedAt };
+    resultRef.current = null;
     setFen(task.fen);
     setStarted(true);
     setThinking(false);
@@ -101,10 +140,9 @@ export function EndgameTrainingScreen({ engine, onBack }: Props) {
 
   useEffect(() => {
     if (!started || result || !game.isGameOver()) return;
-    if (game.isCheckmate() && game.turn() === "b") setResult("success");
-    else setResult("failed");
-    setStarted(false);
-  }, [fen, game, started, result]);
+    if (game.isCheckmate() && game.turn() === "b") completeTask("success");
+    else completeTask("failed");
+  }, [fen, game, started, result, completeTask]);
 
   const handlePlayerMove = (move: BoardMove): boolean => {
     if (!started || thinking || result || game.turn() !== "w") return false;
@@ -114,10 +152,7 @@ export function EndgameTrainingScreen({ engine, onBack }: Props) {
       if (!played) return false;
       setLastMove({ from: played.from, to: played.to });
       setFen(next.fen());
-      if (task.goal === "promotion" && played.promotion) {
-        setResult("success");
-        setStarted(false);
-      }
+      if (task.goal === "promotion" && played.promotion) completeTask("success");
       return true;
     } catch {
       return false;
@@ -127,6 +162,8 @@ export function EndgameTrainingScreen({ engine, onBack }: Props) {
   const changeTask = (id: string) => {
     const next = ENDGAMES.find((item) => item.id === id) ?? ENDGAMES[0];
     generation.current++;
+    sessionRef.current = null;
+    resultRef.current = null;
     setTaskId(id);
     setFen(next.fen);
     setStarted(false);
@@ -182,6 +219,14 @@ export function EndgameTrainingScreen({ engine, onBack }: Props) {
                 ))}
               </div>
               <button onClick={reset} disabled={thinking} className="mt-3 w-full rounded-xl bg-[#81b64c] py-3 text-sm font-extrabold text-[#17210f] shadow-[0_3px_0_#45753c] hover:bg-[#95c75f] disabled:opacity-40">{started ? "Повторить позицию" : "Начать упражнение"}</button>
+            </section>
+            <section className="rounded-xl bg-[#262421] p-4">
+              <div className="text-sm font-bold">Твой прогресс</div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-[#1f1d1b] p-2"><div className="text-xl font-black">{endgameSessions.length}</div><div className="text-[10px] text-[#a7a6a2]">Попыток</div></div>
+                <div className="rounded-lg bg-[#1f1d1b] p-2"><div className="text-xl font-black text-[#a3d160]">{endgameAccuracy}%</div><div className="text-[10px] text-[#a7a6a2]">Успешность</div></div>
+              </div>
+              <div className="mt-2 text-xs text-[#a7a6a2]">Успешно выполнено: {endgameWins} из {endgameTotal}</div>
             </section>
             <section className="rounded-xl bg-[#262421] p-4 text-sm">
               <div className="font-bold">Цель</div>

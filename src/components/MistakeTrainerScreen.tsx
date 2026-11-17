@@ -46,6 +46,8 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
     if (!session) return;
     const summary: TrainingSessionSummary = {
       id: session.id,
+      category: "mistakes",
+      label: "Повтор ошибок",
       startedAt: session.startedAt,
       durationMs: Math.max(0, Date.now() - session.startedAt),
       total: session.puzzleIds.length,

@@ -213,7 +213,7 @@ function Main() {
   else if (mode === "puzzles") page = <PuzzleLibraryScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "mistakes") page = <MistakeTrainerScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "coach") page = <PersonalCoachScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
-  else if (mode === "endgame") page = <EndgameTrainingScreen engine={engine} onBack={() => changeMode("review")} />;
+  else if (mode === "endgame") page = <EndgameTrainingScreen engine={engine} profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "openings") page = <OpeningExplorerScreen onBack={() => changeMode("review")} />;
   else if (mode === "lab") page = <PositionLabScreen engine={engine} onBack={() => changeMode("review")} />;
   else if (stage === "review" && review) page = (

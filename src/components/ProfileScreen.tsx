@@ -32,6 +32,11 @@ function downloadProfileReport(profile: PlayerProfile): void {
       "Тренировка задач", new Date(entry.at).toISOString(), profile.name, `Puzzle ${entry.puzzleId}`,
       entry.solved ? "Решена" : "Подсказка", "", "", "", "", "", "", "", "",
     ]),
+    ...(profile.trainingSessions ?? []).map((session) => [
+      "Тренировочная сессия", new Date(session.startedAt).toISOString(), profile.name,
+      session.label ?? (session.category === "endgame" ? "Эндшпиль" : "Повтор ошибок"),
+      `${session.solved}/${session.total}`, "", "", "", session.accuracy.toFixed(1), "", "", "", "",
+    ]),
   ];
   const csv = "\uFEFF" + rows.map((row) => row.map(csvCell).join(";")).join("\r\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -318,8 +323,8 @@ export function ProfileScreen({ profile, onChange, onBack }: Props) {
                 {recentTrainingSessions.map((session) => (
                   <div key={session.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-[#1f1d1b] px-3 py-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold">{new Date(session.startedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}</div>
-                      <div className="mt-0.5 text-[10px] text-[#77746f]">{session.solved}/{session.total} задач · {Math.round(session.durationMs / 60000)} мин.</div>
+                      <div className="text-xs font-bold">{session.label ?? (session.category === "endgame" ? "Эндшпиль" : "Повтор ошибок")}</div>
+                      <div className="mt-0.5 text-[10px] text-[#77746f]">{new Date(session.startedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", year: "numeric" })} · {session.solved}/{session.total} · {Math.round(session.durationMs / 60000)} мин.</div>
                     </div>
                     <div className="text-right"><div className="text-sm font-black text-[#a3d160]">{session.accuracy}%</div><div className="text-[9px] text-[#77746f]">точность</div></div>
                   </div>
