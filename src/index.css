@@ -259,3 +259,459 @@ select {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* ───────────────────── CHESSMART unified green studio ─────────────────────
+   A shared visual layer for every feature screen, including the live review.
+   Board squares and semantic move-class colors are intentionally untouched. */
+:root {
+  --cm-bg: #171c17;
+  --cm-surface: #202820;
+  --cm-surface-raised: #273227;
+  --cm-surface-soft: #303d2d;
+  --cm-border: rgba(151, 179, 126, 0.18);
+  --cm-border-strong: rgba(151, 179, 126, 0.3);
+  --cm-text: #eef3e8;
+  --cm-muted: #a5b09d;
+  --cm-subtle: #7f8c78;
+  --cm-accent: #a3d16f;
+  --cm-accent-strong: #81b64c;
+  --cm-accent-ink: #17210f;
+}
+
+body {
+  color: var(--cm-text);
+  background:
+    radial-gradient(ellipse at 50% -22%, rgba(129, 182, 76, 0.14), transparent 48%),
+    radial-gradient(ellipse at 100% 55%, rgba(90, 125, 67, 0.06), transparent 38%),
+    linear-gradient(180deg, #20291f 0%, #191f19 48%, #151a15 100%);
+  background-attachment: fixed;
+}
+
+/* Legacy page canvases now share the same graphite-green foundation. */
+[class~="bg-[#312e2b]"],
+[class~="bg-[#262522]"],
+[class~="bg-[#242522]"],
+[class~="bg-[#242520]"],
+[class~="bg-[#242421]"],
+[class~="bg-[#24231f]"] {
+  background-color: var(--cm-bg) !important;
+}
+[class~="bg-[#262421]"],
+[class~="bg-[#292824]"],
+[class~="bg-[#292a25]"],
+[class~="bg-[#2b2926]"],
+[class~="bg-[#2b2a25]"],
+[class~="bg-[#2b2925]"],
+[class~="bg-[#2b2924]"],
+[class~="bg-[#302e2b]"],
+[class~="bg-[#30302b]"],
+[class~="bg-[#30302a]"],
+[class~="bg-[#30312b]"],
+[class~="bg-[#30342b]"],
+[class~="bg-[#34352f]"] {
+  background-color: var(--cm-surface) !important;
+}
+[class~="bg-[#1f1d1b]"],
+[class~="bg-[#211f1d]"],
+[class~="bg-[#22231f]"],
+[class~="bg-[#22231e]"],
+[class~="bg-[#22241f]"] {
+  background-color: #192119 !important;
+}
+[class~="bg-[#3d3a37]"],
+[class~="bg-[#403d39]"],
+[class~="bg-[#41403a]"],
+[class~="bg-[#3d3b35]"],
+[class~="bg-[#3b3a34]"],
+[class~="bg-[#393831]"],
+[class~="bg-[#45433d]"],
+[class~="bg-[#45443c]"],
+[class~="bg-[#4b4844]"] {
+  background-color: var(--cm-surface-soft) !important;
+}
+
+/* Consistent card outlines and softer elevation on every tab. */
+[class~="border-[#41403a]"],
+[class~="border-[#41423b]"],
+[class~="border-[#41423b]"],
+[class~="border-[#46443e]"],
+[class~="border-[#46433c]"],
+[class~="border-[#47443d]"],
+[class~="border-[#4b4844]"],
+[class~="border-[#4b5940]"],
+[class~="border-[#4a4942]"],
+[class~="border-[#4b4844]/70"],
+[class~="border-[#3d3a37]"],
+[class~="border-[#3d3b35]"],
+[class~="border-[#4b4844]/70"] {
+  border-color: var(--cm-border) !important;
+}
+[class*="rounded-2xl"][class*="border"],
+[class*="rounded-xl"][class*="border"] {
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.14);
+}
+
+/* Warm brown text from older screens becomes the same cool muted scale. */
+[class~="text-[#a7a6a2]"],
+[class~="text-[#aaa9a2]"],
+[class~="text-[#a7a89e]"],
+[class~="text-[#aaa89f]"],
+[class~="text-[#96948c]"],
+[class~="text-[#8b8987]"],
+[class~="text-[#85827b]"],
+[class~="text-[#85837b]"],
+[class~="text-[#77746f]"],
+[class~="text-[#77786f]"],
+[class~="text-[#89877f]"],
+[class~="text-[#8b8987]"] {
+  color: var(--cm-muted) !important;
+}
+[class~="text-[#dcdbd7]"],
+[class~="text-[#d7d6cf]"],
+[class~="text-[#e2e1da]"],
+[class~="text-[#ded4c0]"],
+[class~="text-[#d5d3cf]"],
+[class~="text-[#cbc9c1]"] {
+  color: #e4ecdc !important;
+}
+
+/* Shared action color, including buttons in legacy learning screens. */
+[class~="bg-[#81b64c]"],
+[class~="bg-[#789c54]"],
+[class~="bg-[#81b64c]/"] {
+  background-color: var(--cm-accent-strong) !important;
+}
+[class~="text-[#17210f]"] {
+  color: var(--cm-accent-ink) !important;
+}
+[class~="hover:bg-[#95c75f]"]:hover,
+[class~="hover:bg-[#95c75f]"]:focus-visible {
+  background-color: #a3d16f !important;
+}
+[class~="focus:border-[#81b64c]"]:focus,
+[class~="focus:border-[#81b64c]"]:focus-visible {
+  border-color: var(--cm-accent) !important;
+}
+
+/* Inputs, selects and textareas feel like one coherent application. */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  color: var(--cm-text);
+  border-color: var(--cm-border-strong);
+  background-color: #192219;
+}
+input::placeholder,
+textarea::placeholder {
+  color: #83917c;
+}
+option {
+  color: var(--cm-text);
+  background: #202a20;
+}
+
+/* Review workspace: the board stays the hero, while surrounding chrome matches
+   the same studio language as import, training, profile and online play. */
+[class~="bg-[#302e2b]"][class*="rounded-2xl"],
+[class~="bg-[#292824]"][class*="rounded-xl"],
+[class~="bg-[#262421]"][class*="rounded-2xl"] {
+  background: linear-gradient(145deg, rgba(39, 50, 39, 0.98), rgba(29, 39, 30, 0.98)) !important;
+  border-color: var(--cm-border) !important;
+}
+[class*="shadow-black/"] {
+  --tw-shadow-color: rgba(0, 0, 0, 0.22);
+}
+
+/* Smooth, restrained interaction feedback across every feature. */
+button:not(:disabled) {
+  transition:
+    transform 140ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease;
+}
+button:not(:disabled):hover {
+  border-color: var(--cm-border-strong);
+}
+:focus-visible {
+  outline-color: var(--cm-accent);
+}
+
+@media (max-width: 640px) {
+  body { background-attachment: scroll; }
+}
+
+
+/* Harmonise legacy Tailwind gradient cards without flattening the board artwork. */
+[class*="from-[#303b2a]"],
+[class*="from-[#303b2a]"][class*="to-[#292a25]"],
+[class*="from-[#303b2a]"][class*="to-[#292a25]"] {
+  --tw-gradient-from: #2c3a2b var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(32 43 32 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), #202b20 var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+[class*="from-[#303b2a]"][class*="to-[#292a25]"] {
+  background-image: linear-gradient(145deg, #2b3929, #202a20) !important;
+}
+[class*="from-[#30342b]"][class*="to-[#292a25]"],
+[class*="from-[#2b3327]"][class*="to-[#22271f]"] {
+  background-image: linear-gradient(145deg, #2b3929, #202a20) !important;
+}
+[class~="bg-[#20241e]"],
+[class~="bg-[#202820]"],
+[class~="bg-[#20241e]"] {
+  background-color: #1b251c !important;
+}
+[class~="bg-[#32402b]/35"] {
+  background-color: rgba(74, 103, 57, 0.22) !important;
+}
+
+
+/* ─────────────────── Mobile-first compact workspace ─────────────────── */
+.mobile-bottom-nav { display: none; }
+@media (max-width: 1023px) {
+  .mobile-app-main { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+  .mobile-bottom-nav {
+    position: fixed;
+    z-index: 80;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(151,179,126,.2);
+    background: rgba(22,29,22,.96);
+    backdrop-filter: blur(22px);
+    box-shadow: 0 -12px 32px rgba(0,0,0,.22);
+  }
+  .mobile-nav-item {
+    min-width: 0;
+    min-height: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: #9da995;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .mobile-nav-item svg { width: 19px; height: 19px; }
+  .mobile-nav-item.active {
+    color: #dff0ce;
+    background: rgba(129,182,76,.16);
+  }
+  .mobile-more-wrap { position: relative; }
+  .mobile-more-wrap > .mobile-nav-item { width: 100%; }
+  .mobile-more-dots { height: 19px; font-size: 18px; line-height: 12px; letter-spacing: 1px; }
+  .mobile-more-menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 10px);
+    width: min(270px, calc(100vw - 24px));
+    max-height: min(62vh, 440px);
+    overflow-y: auto;
+    padding: 7px;
+    border: 1px solid rgba(151,179,126,.24);
+    border-radius: 17px;
+    background: rgba(29,39,29,.98);
+    box-shadow: 0 18px 50px rgba(0,0,0,.42);
+    backdrop-filter: blur(22px);
+  }
+  .mobile-more-option {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 12px;
+    border-radius: 11px;
+    background: transparent;
+    color: #dce6d5;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 750;
+  }
+  .mobile-more-option svg { width: 18px; height: 18px; }
+  .mobile-more-option:active { background: rgba(129,182,76,.16); }
+}
+@media (max-width: 640px) {
+  html { scrollbar-gutter: auto; }
+  body { background-attachment: scroll; }
+  .mobile-app-main { min-height: calc(100dvh - 54px); }
+  .mobile-app-main > * { min-width: 0; }
+  /* Compact spacing in older feature screens while keeping desktop untouched. */
+  .mobile-app-main [class*="p-6"] { padding: 1rem; }
+  .mobile-app-main [class*="p-5"] { padding: .85rem; }
+  .mobile-app-main [class*="gap-6"] { gap: .9rem; }
+  .mobile-app-main [class*="gap-5"] { gap: .75rem; }
+  .mobile-app-main [class*="mt-6"] { margin-top: .9rem; }
+  .mobile-app-main [class*="mb-6"] { margin-bottom: .9rem; }
+  .mobile-app-main input:not([type="checkbox"]):not([type="radio"]),
+  .mobile-app-main select { min-height: 40px; }
+  .mobile-app-main button { touch-action: manipulation; }
+  /* Import: keep the PGN editor useful but avoid a huge empty text area. */
+  .mobile-app-main textarea { min-height: 150px; }
+  /* Review screen: trim chrome and keep board controls thumb-sized. */
+  .review-workspace { gap: .55rem !important; padding: .5rem !important; }
+  .review-board-card { padding: .45rem !important; border-radius: 14px !important; }
+  .review-board-controls { margin-top: .45rem !important; gap: .35rem !important; }
+  .review-board-controls button { min-width: 0 !important; height: 38px !important; padding-left: .65rem !important; padding-right: .65rem !important; }
+  .review-extra-controls { margin-top: .45rem !important; padding: .5rem !important; gap: .4rem !important; }
+  .review-panel-card { padding: .65rem !important; }
+  .review-header { min-height: 48px !important; padding: .35rem .65rem !important; gap: .35rem !important; }
+  .review-header .review-header-title { font-size: 11px !important; }
+  .review-player-bar { padding-top: .2rem !important; padding-bottom: .2rem !important; font-size: 12px !important; }
+  .mobile-bottom-nav { grid-template-columns: repeat(5, minmax(0,1fr)); }
+}
+@media (max-width: 380px) {
+  .mobile-nav-item { font-size: 8px; }
+  .mobile-nav-item svg { width: 17px; height: 17px; }
+}
+
+
+@media (max-width: 640px) {
+  /* During engine work, show the live board and essential stats together. */
+  .analyzing-screen {
+    min-height: 100dvh !important;
+    align-items: flex-start !important;
+    padding: 8px !important;
+  }
+  .analyzing-screen > .relative.w-full {
+    max-width: 520px;
+  }
+  .analyzing-screen header { margin-bottom: 8px !important; gap: 8px !important; }
+  .analyzing-screen header > svg { width: 30px; height: 30px; }
+  .analyzing-screen section { border-radius: 17px !important; }
+  .analyzing-screen section > div:first-child { padding: 10px 12px !important; }
+  .analyzing-screen h1 { font-size: 18px !important; }
+  .analyzing-screen section > div:first-child p { font-size: 10px !important; }
+  .analyzing-grid {
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr) !important;
+    gap: 8px !important;
+    padding: 9px !important;
+  }
+  .analyzing-board { padding: 6px !important; border-radius: 12px !important; }
+  .analyzing-board > div:first-child { margin-bottom: 5px !important; }
+  .analyzing-board > div:nth-child(2) { max-width: 100% !important; }
+  .analyzing-board > div:last-child { margin-top: 5px !important; font-size: 7px !important; }
+  .analyzing-grid > div:last-child { min-width: 0; }
+  .analyzing-grid > div:last-child > div:first-child { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 5px !important; }
+  .analyzing-grid > div:last-child > div:first-child > div { padding: 7px !important; }
+  .analyzing-grid > div:last-child > div:first-child > div:last-child { grid-column: span 2 / span 2; }
+  .analyzing-grid > div:last-child > div:first-child > div > div:first-child { font-size: 7px !important; }
+  .analyzing-grid > div:last-child > div:first-child > div > div:last-child { margin-top: 2px !important; font-size: 14px !important; }
+  .analyzing-grid > div:last-child > div:nth-child(2) { margin-top: 9px !important; }
+  .analyzing-grid > div:last-child > div:nth-child(2) > div:first-child > div:first-child { font-size: 11px !important; }
+  .analyzing-grid > div:last-child > div:nth-child(2) > div:nth-child(3) { font-size: 7px !important; }
+  .analyzing-explanation, .analyzing-footer { display: none !important; }
+  .analyzing-grid button { margin-top: 10px !important; min-height: 38px; padding: 8px !important; font-size: 10px !important; }
+}
+@media (max-width: 380px) {
+  .analyzing-grid { grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr) !important; }
+  .analyzing-screen header > div:nth-child(2) > div:last-child { display: none; }
+}
+
+
+/* ───────────────── Chess Review: complete studio skin ─────────────────
+   Keep the board squares and move-class colors untouched; restyle only
+   the surrounding review workspace and its controls. */
+.review-screen {
+  min-height: 100vh;
+  color: #e7eee2;
+  background:
+    radial-gradient(ellipse at 18% 0%, rgba(112, 151, 82, .10), transparent 38%),
+    linear-gradient(145deg, #172119 0%, #1b261d 52%, #151e17 100%);
+}
+.review-screen .review-header {
+  border-color: rgba(151, 179, 126, .20) !important;
+  background: rgba(22, 31, 23, .94) !important;
+  box-shadow: 0 12px 34px rgba(0,0,0,.22) !important;
+}
+.review-screen .review-header button[title],
+.review-screen .review-board-controls button {
+  color: #e0ead8 !important;
+  border: 1px solid rgba(151, 179, 126, .18) !important;
+  background: linear-gradient(145deg, #2b392b, #202d22) !important;
+}
+.review-screen .review-header button[title]:hover,
+.review-screen .review-board-controls button:hover:not(:disabled) {
+  background: linear-gradient(145deg, #394b35, #293a2b) !important;
+  border-color: rgba(163, 209, 111, .48) !important;
+}
+.review-screen .review-header button[class*="bg-[#81b64c]"] {
+  color: #17210f !important;
+  border-color: transparent !important;
+  background: #8dbd5c !important;
+}
+.review-screen .review-board-card,
+.review-screen .review-panel-card {
+  border-color: rgba(151, 179, 126, .22) !important;
+  background: linear-gradient(145deg, rgba(39, 53, 40, .98), rgba(27, 40, 29, .98)) !important;
+  box-shadow: 0 18px 46px rgba(0,0,0,.22) !important;
+}
+.review-screen .review-extra-controls {
+  border-color: rgba(151, 179, 126, .20) !important;
+  background: rgba(23, 34, 25, .86) !important;
+}
+.review-screen .review-panel-card > div:first-child {
+  border: 1px solid rgba(151, 179, 126, .14);
+  background: rgba(20, 30, 22, .88) !important;
+}
+.review-screen .review-panel-card > div:first-child button {
+  border-radius: 8px;
+}
+.review-screen .review-panel-card > div:first-child button[class*="bg-[#3d3a37]"] {
+  color: #e9f3df !important;
+  background: linear-gradient(145deg, #3b5035, #2c402d) !important;
+  box-shadow: inset 0 0 0 1px rgba(163, 209, 111, .20);
+}
+.review-screen .review-panel-card > div:first-child button:not([class*="bg-[#3d3a37]"]) {
+  color: #aebca6 !important;
+}
+.review-screen .review-extra-controls select {
+  color: #e5efdf !important;
+  border-color: rgba(151, 179, 126, .28) !important;
+  background: #1b281d !important;
+}
+.review-screen .review-player-bar {
+  color: #e1eadb;
+}
+.review-screen .review-board-controls button:disabled {
+  opacity: .28 !important;
+}
+@media (max-width: 640px) {
+  .review-screen .review-header {
+    position: sticky;
+    top: 0;
+    padding: .4rem .6rem !important;
+  }
+  .review-screen .review-header > div:last-child {
+    gap: .3rem !important;
+  }
+  .review-screen .review-header > div:last-child button {
+    min-height: 34px;
+    padding: .35rem .55rem !important;
+    font-size: 10px;
+  }
+  .review-screen .review-board-controls button {
+    flex: 1 1 0;
+    max-width: 62px;
+    font-size: 15px !important;
+  }
+  .review-screen .review-extra-controls button,
+  .review-screen .review-extra-controls select {
+    min-height: 36px;
+    font-size: 10px !important;
+  }
+  .review-screen .review-panel-card {
+    border-radius: 14px !important;
+  }
+}

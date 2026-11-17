@@ -366,8 +366,8 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
   const ctrl = "flex h-10 min-w-12 items-center justify-center rounded-lg bg-[#3d3a37] px-3 text-lg font-bold hover:bg-[#4b4844] active:translate-y-px disabled:opacity-30";
 
   return (
-    <div className="min-h-screen bg-[#262522] text-white">
-      <header className="sticky top-0 z-40 flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-[#46433c] bg-[#211f1d]/95 px-3 py-2 shadow-xl shadow-black/20 backdrop-blur-xl sm:px-5">
+    <div className="review-screen min-h-screen text-white">
+      <header className="review-header sticky top-0 z-40 flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-[#46433c] bg-[#211f1d]/95 px-3 py-2 shadow-xl shadow-black/20 backdrop-blur-xl sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
           <Logo size={32} />
           <div className="min-w-0">
@@ -414,10 +414,10 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
         </div>
       </header>
 
-      <div className={`mx-auto flex ${focusMode ? "max-w-[1500px]" : "max-w-[1240px]"} flex-col gap-4 p-2 sm:p-4 lg:flex-row lg:items-start lg:justify-center`}>
+      <div className={`review-workspace mx-auto flex ${focusMode ? "max-w-[1500px]" : "max-w-[1240px]"} flex-col gap-4 p-2 sm:p-4 lg:flex-row lg:items-start lg:justify-center`}>
         {/* ------------------------- доска ------------------------- */}
         <div className={`w-full lg:shrink-0 ${focusMode ? "lg:w-[min(calc(100vh-170px),calc(100vw-40px),900px)]" : "lg:w-[min(calc(100vh-190px),calc(100vw-500px),760px)]"}`}>
-          <section className="rounded-2xl border border-[#47443d] bg-[#302e2b] p-2 shadow-2xl shadow-black/25 sm:p-3">
+          <section className="review-board-card rounded-2xl border border-[#47443d] bg-[#302e2b] p-2 shadow-2xl shadow-black/25 sm:p-3">
           <PlayerBar {...top} />
           <div className="flex items-stretch gap-2">
             <EvalBar score={score} flipped={flipped} />
@@ -439,7 +439,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
           </div>
           <PlayerBar {...bottom} />
           </section>
-          <div className="mt-2 flex items-center justify-center gap-2">
+          <div className="review-board-controls mt-2 flex items-center justify-center gap-2">
             <button className={ctrl} onClick={() => seek(0)} disabled={!!retry} title="В начало (↑)">
               ⏮
             </button>
@@ -459,7 +459,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
           <div className="mt-1.5 text-center text-xs text-[#8b8987]">
             {retry ? "Режим «Попробовать снова»" : explore ? "Свой вариант" : ply === 0 ? "Начальная позиция" : `Ход ${ply} из ${N}`}
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl border border-[#4b4844]/70 bg-[#262421] p-2.5">
+          <div className="review-extra-controls mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl border border-[#4b4844]/70 bg-[#262421] p-2.5">
             <button
               onClick={() => {
                 if (autoPlay) {
@@ -557,7 +557,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
             exploring={!!explore}
           />
 
-          <div className="rounded-2xl border border-[#47443d] bg-[#302e2b] p-3 shadow-xl shadow-black/20">
+          <div className="review-panel-card rounded-2xl border border-[#47443d] bg-[#302e2b] p-3 shadow-xl shadow-black/20">
             <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-[#1f1d1b] p-1 text-sm font-bold">
               {(
                 [
