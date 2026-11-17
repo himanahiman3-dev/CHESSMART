@@ -2,7 +2,7 @@
  * Конвейер обзора партии: разбор PGN → анализ Stockfish 19 (MultiPV 2, с кэшем и историей ходов)
  * → рейтинговый Expected Points (приближение) → классификация → собственная точность Chessmart → комментарии.
  *
- * Бюджет времени: на всю партию отводится 0.6 с на каждый ход (10 ходов → 6 с, 20 → 12 с, 30 → 18 с…).
+ * Бюджет времени: на основную часть партии отводится 0.4 с на каждый полуход (10 ходов → 6 с, 20 → 12 с, 30 → 18 с…).
  * Бюджет делится динамически: если позиция посчитана быстрее (достигнута целевая глубина, ход единственный,
  * позиция взята из кэша), сэкономленное время достаётся следующим позициям, а общий анализ
  * завершается раньше. Время зря не тратится — Stockfish останавливается, как только достиг глубины.
@@ -294,13 +294,14 @@ export async function reviewGame(
   onPartialReview?.(buildReview(game, positions, depth));
 
   const tacticalDeadline = now() + TACTICAL_EXTRA_BUDGET_MS;
-  await refineSacrifices(game, positions, depth, engine, onProgress, signal, tacticalDeadline);
+  const refineDeadline = Math.min(tacticalDeadline, now() + REFINE_TOTAL_BUDGET_MS);
+  await refineSacrifices(game, positions, depth, engine, onProgress, signal, refineDeadline);
   const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, depth, engine, signal, tacticalDeadline);
   return buildReview(game, positions, depth, deferredSacrifices);
 }
 
 /**
- * Быстрый анализ (0.6 с на ход) на малой глубине часто «не видит» компенсации за жертву, и жертвенный ход
+ * Быстрый анализ (ограниченный бюджет на полуход) на малой глубине часто «не видит» компенсации за жертву, и жертвенный ход
  * выглядит как потеря нескольких процентов. Поэтому ходы-жертвы перепроверяем глубже:
  * перезаписываем оценки позиций «до» и «после» хода, если новый результат глубже прежнего.
  * Перепроверка ограничена общей тактической квотой и не может бесконечно продлевать обзор.
