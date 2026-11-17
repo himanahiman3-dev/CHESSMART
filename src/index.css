@@ -646,7 +646,7 @@ button:not(:disabled):hover {
   background: linear-gradient(145deg, #394b35, #293a2b) !important;
   border-color: rgba(163, 209, 111, .48) !important;
 }
-.review-screen .review-header button.bg-\\[\\#81b64c\\] {
+.review-screen .review-header button[class*="bg-[#81b64c]"] {
   color: #17210f !important;
   border-color: transparent !important;
   background: #8dbd5c !important;
