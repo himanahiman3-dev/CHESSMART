@@ -158,6 +158,43 @@ Deno.serve(async (req: Request) => {
     }
 
     const user = await authUser(req);
+    if (action === "update_avatar") {
+      const encoded = String(body.avatarData ?? "");
+      const contentType = String(body.contentType ?? "").toLowerCase();
+      const allowedTypes = new Set(["image/webp", "image/png", "image/jpeg"]);
+      if (!allowedTypes.has(contentType) || !encoded || encoded.length > 1_500_000) {
+        return fail("Выбери изображение WebP, PNG или JPEG размером до 1 МБ.");
+      }
+      let binary: string;
+      try { binary = atob(encoded); } catch { return fail("Файл аватара повреждён."); }
+      if (!binary.length || binary.length > 1_048_576) return fail("Аватар должен быть меньше 1 МБ после обработки.");
+      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      const isPng = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+      const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+      const isWebp = bytes.length >= 12
+        && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+        && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+      if ((contentType === "image/png" && !isPng)
+        || (contentType === "image/jpeg" && !isJpeg)
+        || (contentType === "image/webp" && !isWebp)) {
+        return fail("Формат изображения не совпадает с содержимым файла.");
+      }
+      const extension = contentType === "image/png" ? "png" : contentType === "image/jpeg" ? "jpg" : "webp";
+      const path = user.id + "/avatar." + extension;
+      const { error: uploadError } = await admin.storage.from("chessmart-avatars").upload(path, bytes, {
+        contentType,
+        cacheControl: "3600",
+        upsert: true,
+      });
+      if (uploadError) throw new Error("Не удалось сохранить аватар. Проверь, что миграция хранилища применена.");
+      const { data: publicData } = admin.storage.from("chessmart-avatars").getPublicUrl(path);
+      const avatarUrl = publicData.publicUrl + "?v=" + Date.now();
+      const { data: profile, error: profileError } = await admin.from("online_profiles")
+        .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+        .eq("user_id", user.id).select("*").single();
+      if (profileError || !profile) throw new Error("Аватар загружен, но профиль не удалось обновить.");
+      return json({ profile });
+    }
     if (action === "profile") {
       const { data: profile, error } = await admin.from("online_profiles").select("*").eq("user_id", user.id).maybeSingle();
       if (error || !profile) return fail("Профиль игрока не найден.", 404);
