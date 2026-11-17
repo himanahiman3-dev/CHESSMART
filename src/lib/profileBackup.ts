@@ -1,4 +1,4 @@
-import type { PlayerProfile, RatingEntry, TrainingPuzzle } from "./playerProfile";
+import type { PlayerProfile, RatingEntry, TrainingPuzzle, TrainingSessionSummary } from "./playerProfile";
 import type { BrilliantMoveSummary, ReviewSummary } from "./learningStats";
 
 const FORMAT = "chess-review-profile";
@@ -83,6 +83,26 @@ function validPuzzle(value: unknown): value is TrainingPuzzle {
     && (value.solvedAt === undefined || finite(value.solvedAt));
 }
 
+function validTrainingSession(value: unknown): value is TrainingSessionSummary {
+  return isRecord(value)
+    && typeof value.id === "string"
+    && finite(value.startedAt)
+    && finite(value.durationMs)
+    && finite(value.total)
+    && finite(value.solved)
+    && finite(value.attempts)
+    && finite(value.correctMoves)
+    && finite(value.accuracy)
+    && value.total >= 0
+    && value.solved >= 0
+    && value.solved <= value.total
+    && value.attempts >= 0
+    && value.correctMoves >= 0
+    && value.correctMoves <= value.attempts
+    && value.accuracy >= 0
+    && value.accuracy <= 100;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -126,6 +146,7 @@ export function parseProfileBackup(source: string): PlayerProfile {
     history: raw.history.filter(validRatingEntry).slice(-100),
     reviews: raw.reviews.filter(validReview).slice(-100),
     puzzles: raw.puzzles.filter(validPuzzle).slice(-300),
+    trainingSessions: Array.isArray(raw.trainingSessions) ? raw.trainingSessions.filter(validTrainingSession).slice(-100) : [],
   };
 }
 
