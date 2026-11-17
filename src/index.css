@@ -793,3 +793,12 @@ button:not(:disabled):hover {
     transition-duration: .01ms !important;
   }
 }
+
+.chessmart-large-text .systems-hub {
+  font-size: 1.0625rem;
+}
+.chessmart-large-text .systems-hub .text-\[9px\],
+.chessmart-large-text .systems-hub .text-\[10px\],
+.chessmart-large-text .systems-hub .text-\[11px\] {
+  font-size: .75rem !important;
+}
