@@ -6,6 +6,10 @@ import type { BoardMove } from "./GameBoard";
 import { GameBoard } from "./GameBoard";
 import type { PlayerProfile } from "../lib/playerProfile";
 import { chooseBotMove, botMistakeLabel } from "../lib/botBrain";
+import { resolvePremove, type Premove, formatPremove } from "../lib/premoves";
+import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation, type GameplayPreferences } from "../lib/gameplayPreferences";
+import { playSound, setSoundEnabled, soundForSan } from "../lib/sound";
+import { buildPgnFromSan, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -32,17 +36,33 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
   const [resultMessage, setResultMessage] = useState("");
   const [engineError, setEngineError] = useState<string | null>(null);
   const [lastSan, setLastSan] = useState<string[]>([]);
+  const [premove, setPremove] = useState<Premove | null>(null);
+  const [premoveMessage, setPremoveMessage] = useState("");
+  const [preferences, setPreferences] = useState<GameplayPreferences>(() => loadGameplayPreferences());
+  const [boardFlipped, setBoardFlipped] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
   const finishedRef = useRef(false);
   const game = useMemo(() => new Chess(fen), [fen]);
   const botColor = playerColor === "w" ? "b" : "w";
   const strength = useMemo(() => botStrengthForElo(botElo), [botElo]);
   const disabled = !started || thinking || !!finished || game.isGameOver() || game.turn() !== playerColor;
+  const updatePreference = <K extends keyof GameplayPreferences>(key: K, value: GameplayPreferences[K]) => {
+    const next = updateGameplayPreferences(preferences, { [key]: value });
+    setPreferences(next);
+    setSoundEnabled(next.soundEnabled);
+  };
+
+  useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
 
   const begin = () => {
     engine.newGame();
     finishedRef.current = false;
     setFen(START_FEN);
     setLastSan([]);
+    setPremove(null);
+    setPremoveMessage("");
+    setExportNotice("");
+    setBoardFlipped(false);
     setFinished(null);
     setResultMessage("");
     setEngineError(null);
@@ -100,6 +120,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
         }
         setLastSan((items) => [...items, moved.san]);
         setFen(next.fen());
+        playSound(soundForSan(moved.san, next.isGameOver()));
         setThinking(false);
       })
       .catch((error: unknown) => {
@@ -113,6 +134,31 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
       handle.stop();
     };
   }, [started, finished, fen, botColor, engine, strength, game, botElo]);
+
+  // Premove исполняется только после реального хода бота и повторной проверки новой FEN.
+  useEffect(() => {
+    if (!premove || !started || thinking || finished || game.isGameOver() || game.turn() !== playerColor) return;
+    const resolved = resolvePremove(fen, playerColor, premove);
+    setPremove(null);
+    if (!resolved) {
+      setPremoveMessage("Premove отменён: после хода Stockfish он стал нелегальным.");
+      return;
+    }
+    const next = new Chess(fen);
+    const moved = next.move({
+      from: resolved.from as Square,
+      to: resolved.to as Square,
+      ...(resolved.promotion ? { promotion: resolved.promotion } : {}),
+    });
+    if (!moved) {
+      setPremoveMessage("Premove отменён: позиция изменилась.");
+      return;
+    }
+    setPremoveMessage("Premove сыгран автоматически: " + moved.san);
+    setLastSan((items) => [...items, moved.san]);
+    setFen(next.fen());
+    playSound(soundForSan(moved.san, next.isGameOver()));
+  }, [premove, started, thinking, finished, game, fen, playerColor]);
 
   // Фиксируем результат только один раз — в том числе если мат поставил бот.
   useEffect(() => {
@@ -130,15 +176,47 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
       const next = new Chess(fen);
       const played = next.move({ from: move.from as Square, to: move.to as Square, promotion: move.uci.length > 4 ? move.uci[4] : undefined });
       if (!played) return false;
+      setPremove(null);
+      setPremoveMessage("");
       setLastSan((items) => [...items, played.san]);
       setFen(next.fen());
+      playSound(soundForSan(played.san, next.isGameOver()));
       return true;
     } catch {
       return false;
     }
   };
 
-  const resign = () => finish("loss");
+  const resign = () => {
+    if (preferences.confirmResign && !window.confirm("Сдаться в текущей партии?")) return;
+    setPremove(null);
+    finish("loss");
+  };
+  const copyFen = async () => {
+    const copied = await copyText(fen);
+    setExportNotice(copied ? "FEN скопирован." : "Не удалось скопировать FEN.");
+  };
+  const exportPgn = () => {
+    try {
+      const pgn = buildPgnFromSan(lastSan, {
+        Event: "CHESSMART vs Stockfish",
+        White: playerColor === "w" ? profile.name : "Stockfish",
+        Black: playerColor === "b" ? profile.name : "Stockfish",
+        Result: finished === "win" ? (playerColor === "w" ? "1-0" : "0-1") : finished === "loss" ? (playerColor === "w" ? "0-1" : "1-0") : finished === "draw" ? "1/2-1/2" : "*",
+      });
+      downloadTextFile(pgn, pgnFilename("chessmart-stockfish"));
+      setExportNotice("PGN скачан.");
+    } catch (reason) { setEngineError(reason instanceof Error ? reason.message : String(reason)); }
+  };
+  const copyPgn = async () => {
+    try {
+      const pgn = buildPgnFromSan(lastSan, { Event: "CHESSMART vs Stockfish", White: playerColor === "w" ? profile.name : "Stockfish", Black: playerColor === "b" ? profile.name : "Stockfish" });
+      setExportNotice(await copyText(pgn) ? "PGN скопирован." : "Не удалось скопировать PGN.");
+    } catch (reason) { setEngineError(reason instanceof Error ? reason.message : String(reason)); }
+  };
+  const copyMoves = async () => {
+    setExportNotice(await copyText(formatSanMoveList(lastSan)) ? "Список ходов скопирован." : "Не удалось скопировать ходы.");
+  };
   const difficulty = BOT_DIFFICULTIES.find((item) => item.elo === botElo);
   const fullMove = Math.ceil(game.history().length / 2);
 
@@ -161,7 +239,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
             </div>
             <GameBoard
               fen={fen}
-              orientation={playerColor === "w" ? "white" : "black"}
+              orientation={getBoardOrientation(playerColor, boardFlipped)}
               lastMove={lastSan.length ? (() => {
                 const history = game.history({ verbose: true });
                 const move = history[history.length - 1];
@@ -171,14 +249,50 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
               interactive={!disabled}
               allowedColor={playerColor}
               onMove={handlePlayerMove}
+              premoveEnabled={preferences.premovesEnabled && started && !finished && game.turn() === botColor && !game.isGameOver()}
+              premove={premove}
+              onPremove={(next) => { setPremove(next); setPremoveMessage(""); }}
+              onClearPremove={() => { setPremove(null); setPremoveMessage("Premove отменён."); }}
+              theme={preferences.boardTheme}
+              showLegalMoves={preferences.showLegalMoves}
+              highlightLastMove={preferences.highlightLastMove}
+              animations={preferences.boardAnimations}
+              autoQueen={preferences.autoQueen}
             />
             <div className="mt-2 flex items-center justify-between text-sm">
               <span className="font-bold">{playerColor === "w" ? profile.name : "Stockfish"} · снизу</span>
               <span className="text-xs text-[#a7a6a2]">{thinking ? "Движок думает…" : game.isCheck() ? "Шах" : ""}</span>
             </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button onClick={() => setBoardFlipped((value) => !value)} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold">Перевернуть доску</button>
+              <button onClick={() => void copyFen()} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold">Копировать FEN</button>
+              <button onClick={() => void copyPgn()} disabled={!lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Копировать PGN</button>
+              <button onClick={exportPgn} disabled={!lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Скачать PGN</button>
+            </div>
+            {premove && (
+              <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-[#8b4444] bg-[#3c2928] px-3 py-2 text-xs text-[#ffd4d1]">
+                <span>Ожидающий premove: <b>{formatPremove(premove)}</b></span>
+                <button type="button" onClick={() => { setPremove(null); setPremoveMessage("Premove отменён."); }} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Отменить</button>
+              </div>
+            )}
+            {premoveMessage && <p role="status" className="mt-2 text-xs text-[#d8c2a0]">{premoveMessage}</p>}
+            {exportNotice && <p role="status" className="mt-2 text-xs text-[#a3d160]">{exportNotice}</p>}
           </div>
 
           <aside className="space-y-3">
+            <div className="rounded-2xl bg-[#262421] p-4">
+              <div className="mb-2 text-sm font-extrabold">Настройки партии</div>
+              <div className="space-y-2 text-xs text-[#c2c0b8]">
+                <label className="flex items-center justify-between gap-2"><span>Разрешить premove</span><input type="checkbox" checked={preferences.premovesEnabled} onChange={(e) => updatePreference("premovesEnabled", e.target.checked)} className="accent-[#81b64c]" /></label>
+                <label className="flex items-center justify-between gap-2"><span>Звук ходов</span><input type="checkbox" checked={preferences.soundEnabled} onChange={(e) => updatePreference("soundEnabled", e.target.checked)} className="accent-[#81b64c]" /></label>
+                <label className="flex items-center justify-between gap-2"><span>Подсветка возможных ходов</span><input type="checkbox" checked={preferences.showLegalMoves} onChange={(e) => updatePreference("showLegalMoves", e.target.checked)} className="accent-[#81b64c]" /></label>
+                <label className="flex items-center justify-between gap-2"><span>Подсветка последнего хода</span><input type="checkbox" checked={preferences.highlightLastMove} onChange={(e) => updatePreference("highlightLastMove", e.target.checked)} className="accent-[#81b64c]" /></label>
+                <label className="flex items-center justify-between gap-2"><span>Анимации фигур</span><input type="checkbox" checked={preferences.boardAnimations} onChange={(e) => updatePreference("boardAnimations", e.target.checked)} className="accent-[#81b64c]" /></label>
+                <label className="flex items-center justify-between gap-2"><span>Подтверждать сдачу</span><input type="checkbox" checked={preferences.confirmResign} onChange={(e) => updatePreference("confirmResign", e.target.checked)} className="accent-[#81b64c]" /></label>
+                <label className="flex items-center justify-between gap-2"><span>Цвет доски</span><select value={preferences.boardTheme} onChange={(e) => updatePreference("boardTheme", e.target.value as GameplayPreferences["boardTheme"])} className="rounded-md bg-[#1f1d1b] px-2 py-1"><option value="classic">Классическая</option><option value="blue">Синяя</option><option value="walnut">Ореховая</option><option value="violet">Фиолетовая</option></select></label>
+              </div>
+            </div>
+
             <div className="rounded-2xl bg-[#262421] p-4">
               <div className="mb-2 text-sm font-extrabold">Сложность соперника</div>
               <select
@@ -215,6 +329,10 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
             <div className="rounded-xl bg-[#262421] p-3">
               <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[#a7a6a2]">Партия</div>
               <div className="max-h-56 overflow-y-auto text-sm leading-relaxed text-[#dcdbd7]">{lastSan.length ? lastSan.map((san, i) => <span key={i} className="mr-2 inline-block">{i % 2 === 0 ? `${Math.floor(i / 2) + 1}.` : ""} {san}</span>) : <span className="text-[#77746f]">Ходы появятся здесь.</span>}</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button onClick={() => void copyMoves()} disabled={!lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Копировать ходы</button>
+                <button onClick={() => downloadTextFile(formatSanMoveList(lastSan), "chessmart-moves.txt")} disabled={!lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Скачать ходы TXT</button>
+              </div>
             </div>
           </aside>
         </div>
