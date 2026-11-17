@@ -32,6 +32,7 @@ export interface TrainingSessionSummary {
   total: number;
   solved: number;
   attempts: number;
+  correctMoves: number;
   accuracy: number;
 }
 
