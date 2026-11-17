@@ -174,11 +174,11 @@ function computeHangingLoss(
   const clearlyLosing = !defendedByUs || cheapestAttackerValue < movedValue;
   if (!clearlyLosing) return none;
 
-  // Если мы взяли сопоставимую по стоимости фигуру — это размен, а не жертва
-  // (Qxd5 при ферзях, Rxd5 при ладьях). Требуем, чтобы захваченное было
-  // меньше половины стоимости нашей фигуры.
-  if (capturedValue * 2 >= movedValue) return none;
-
+  // Важна чистая материальная цена размена, а не то, было ли взято что-то
+  // до потери нашей фигуры. Например, Rxd7! в партии Морфи — ладья берёт коня,
+  // затем погибает сама: это жертва качества (500 - 300 = 200 сп), а не обычный
+  // равноценный размен. Ранее проверка capturedValue * 2 >= movedValue ошибочно
+  // отсекала такие жертвы.
   return { sacrifice: true, amount: netLoss };
 }
 
