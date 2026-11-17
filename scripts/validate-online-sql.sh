@@ -32,6 +32,7 @@ SQL
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611160001_online_chess.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611160002_accounts_matchmaking.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170001_account_avatars.sql
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170002_player_progress_sync.sql
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
 insert into auth.users(id) values
@@ -170,5 +171,66 @@ begin
 end;
 $test$;
 
-select 'Online SQL migrations and matchmaking tests passed.' as result;
+-- Cloud progress is service-role-only, revisioned, and retains the latest five historical snapshots.
+do $progress_sync_test$
+declare
+  revision_value integer;
+  version_count integer;
+  oldest_version integer;
+  i integer;
+begin
+  if not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'player_progress' and c.relrowsecurity
+  ) then raise exception 'player_progress must have RLS enabled'; end if;
+  if not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'player_progress_versions' and c.relrowsecurity
+  ) then raise exception 'player_progress_versions must have RLS enabled'; end if;
+  if has_table_privilege('anon', 'public.player_progress', 'SELECT')
+    or has_table_privilege('authenticated', 'public.player_progress', 'SELECT')
+    or has_table_privilege('anon', 'public.player_progress_versions', 'SELECT')
+    or has_table_privilege('authenticated', 'public.player_progress_versions', 'SELECT') then
+    raise exception 'Browser roles must not have direct access to cloud progress tables';
+  end if;
+  if not has_table_privilege('service_role', 'public.player_progress', 'SELECT')
+    or not has_table_privilege('service_role', 'public.player_progress', 'INSERT')
+    or not has_table_privilege('service_role', 'public.player_progress', 'UPDATE')
+    or not has_table_privilege('service_role', 'public.player_progress_versions', 'SELECT')
+    or not has_table_privilege('service_role', 'public.player_progress_versions', 'INSERT')
+    or not has_table_privilege('service_role', 'public.player_progress_versions', 'DELETE') then
+    raise exception 'service_role must have the privileges required by the Edge Function';
+  end if;
+
+  insert into public.player_progress(user_id, revision, payload)
+  values ('00000000-0000-0000-0000-000000000001', 1, '{"format":"chess-review-profile","version":1,"profile":{"name":"alpha"}}'::jsonb);
+
+  update public.player_progress
+    set revision = 2, payload = '{"format":"test","revision":2}'::jsonb
+    where user_id = '00000000-0000-0000-0000-000000000001';
+
+  if not exists (
+    select 1 from public.player_progress_versions
+    where user_id = '00000000-0000-0000-0000-000000000001' and revision = 1
+  ) then raise exception 'The previous cloud snapshot was not archived'; end if;
+
+  for i in 3..9 loop
+    update public.player_progress
+      set revision = i, payload = jsonb_build_object('revision', i)
+      where user_id = '00000000-0000-0000-0000-000000000001';
+  end loop;
+
+  select count(*), min(revision) into version_count, oldest_version
+    from public.player_progress_versions
+    where user_id = '00000000-0000-0000-0000-000000000001';
+  select revision into revision_value from public.player_progress
+    where user_id = '00000000-0000-0000-0000-000000000001';
+
+  if version_count <> 5 or oldest_version <> 4 or revision_value <> 9 then
+    raise exception 'Cloud history retention failed: count %, oldest %, current %', version_count, oldest_version, revision_value;
+  end if;
+end;
+$progress_sync_test$;
+
+select 'Online SQL migrations, matchmaking, and cloud progress tests passed.' as result;
 SQL

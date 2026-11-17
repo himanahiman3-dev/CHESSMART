@@ -51,6 +51,8 @@ jobs:
         run: npm run validate:brilliant-sacrifices
       - name: Validate analysis core regressions
         run: npm run validate:analysis-core
+      - name: Validate cloud profile sync core
+        run: npm run validate:profile-sync
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:

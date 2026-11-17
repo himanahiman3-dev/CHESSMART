@@ -84,6 +84,37 @@ function gameResult(chess: Chess): { result: string; reason: string } | null {
   return null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validProgressBackup(value: unknown): boolean {
+  if (!isRecord(value) || value.format !== "chess-review-profile" || value.version !== 1) return false;
+  if (typeof value.exportedAt !== "string" || !Number.isFinite(Date.parse(value.exportedAt))) return false;
+  if (!isRecord(value.profile)) return false;
+  const profile = value.profile;
+  if (
+    typeof profile.name !== "string" || profile.name.length > 24
+    || typeof profile.rating !== "number" || !Number.isFinite(profile.rating) || profile.rating < 100 || profile.rating > 3200
+    || typeof profile.games !== "number" || !Number.isSafeInteger(profile.games) || profile.games < 0
+    || typeof profile.wins !== "number" || !Number.isSafeInteger(profile.wins) || profile.wins < 0
+    || typeof profile.losses !== "number" || !Number.isSafeInteger(profile.losses) || profile.losses < 0
+    || typeof profile.draws !== "number" || !Number.isSafeInteger(profile.draws) || profile.draws < 0
+    || typeof profile.qualifyingBotGames !== "number" || !Number.isSafeInteger(profile.qualifyingBotGames) || profile.qualifyingBotGames < 0
+    || !Array.isArray(profile.history) || profile.history.length > 100
+    || !Array.isArray(profile.reviews) || profile.reviews.length > 100
+    || !Array.isArray(profile.puzzles) || profile.puzzles.length > 300
+    || (profile.trainingSessions !== undefined && (!Array.isArray(profile.trainingSessions) || profile.trainingSessions.length > 100))
+    || (profile.puzzleRatingHistory !== undefined && (!Array.isArray(profile.puzzleRatingHistory) || profile.puzzleRatingHistory.length > 180))
+    || (profile.puzzleRating !== undefined && (typeof profile.puzzleRating !== "number" || !Number.isFinite(profile.puzzleRating) || profile.puzzleRating < 400 || profile.puzzleRating > 3200))
+  ) return false;
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength <= 1_400_000;
+  } catch {
+    return false;
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return fail("Используй POST.", 405);
@@ -158,6 +189,81 @@ Deno.serve(async (req: Request) => {
     }
 
     const user = await authUser(req);
+
+    if (action === "load_progress") {
+      const { data: progress, error: progressError } = await admin.from("player_progress")
+        .select("revision,payload,updated_at").eq("user_id", user.id).maybeSingle();
+      if (progressError) throw new Error("Не удалось прочитать облачный профиль.");
+      const { data: versions, error: versionsError } = await admin.from("player_progress_versions")
+        .select("revision,saved_at").eq("user_id", user.id)
+        .order("revision", { ascending: false }).limit(5);
+      if (versionsError) throw new Error("Не удалось прочитать историю версий.");
+      return json({ progress: progress ?? null, versions: versions ?? [] });
+    }
+
+    if (action === "save_progress") {
+      const expectedRevision = Number(body.expectedRevision);
+      if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || expectedRevision >= 2_000_000_000) {
+        return fail("Некорректный номер облачной версии.");
+      }
+      if (!validProgressBackup(body.backup)) {
+        return fail("Резервная копия повреждена, слишком велика или имеет неподдерживаемый формат.", 413);
+      }
+      const updatedAt = new Date().toISOString();
+      if (expectedRevision === 0) {
+        const { data: inserted, error: insertError } = await admin.from("player_progress")
+          .insert({ user_id: user.id, revision: 1, payload: body.backup, updated_at: updatedAt })
+          .select("revision,updated_at").maybeSingle();
+        if (insertError?.code === "23505") {
+          const { data: current } = await admin.from("player_progress").select("revision,updated_at")
+            .eq("user_id", user.id).maybeSingle();
+          return json({ error: "Облачная копия уже создана на другом устройстве.", conflict: true, revision: current?.revision ?? 0, updatedAt: current?.updated_at ?? null }, 409);
+        }
+        if (insertError || !inserted) throw new Error("Не удалось создать облачную копию.");
+        return json({ revision: inserted.revision, updatedAt: inserted.updated_at });
+      }
+
+      const { data: updated, error: updateError } = await admin.from("player_progress")
+        .update({ revision: expectedRevision + 1, payload: body.backup, updated_at: updatedAt })
+        .eq("user_id", user.id).eq("revision", expectedRevision)
+        .select("revision,updated_at").maybeSingle();
+      if (updateError) throw new Error("Не удалось обновить облачную копию.");
+      if (!updated) {
+        const { data: current } = await admin.from("player_progress").select("revision,updated_at")
+          .eq("user_id", user.id).maybeSingle();
+        return json({ error: "Облачная копия изменилась на другом устройстве.", conflict: true, revision: current?.revision ?? 0, updatedAt: current?.updated_at ?? null }, 409);
+      }
+      return json({ revision: updated.revision, updatedAt: updated.updated_at });
+    }
+
+    if (action === "restore_progress") {
+      const targetRevision = Number(body.targetRevision);
+      const expectedRevision = Number(body.expectedRevision);
+      if (!Number.isSafeInteger(targetRevision) || targetRevision < 1
+        || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1 || expectedRevision >= 2_000_000_000) {
+        return fail("Некорректная версия для восстановления.");
+      }
+      const { data: current, error: currentError } = await admin.from("player_progress")
+        .select("revision").eq("user_id", user.id).maybeSingle();
+      if (currentError) throw new Error("Не удалось проверить текущую облачную версию.");
+      if (!current) return fail("Облачная копия ещё не создана.", 404);
+      if (current.revision !== expectedRevision) {
+        return json({ error: "Облачная версия изменилась на другом устройстве.", conflict: true, revision: current.revision }, 409);
+      }
+      const { data: historical, error: historyError } = await admin.from("player_progress_versions")
+        .select("payload").eq("user_id", user.id).eq("revision", targetRevision).maybeSingle();
+      if (historyError) throw new Error("Не удалось прочитать выбранную версию.");
+      if (!historical || !validProgressBackup(historical.payload)) return fail("Выбранная версия больше недоступна.", 404);
+      const updatedAt = new Date().toISOString();
+      const { data: restored, error: restoreError } = await admin.from("player_progress")
+        .update({ revision: expectedRevision + 1, payload: historical.payload, updated_at: updatedAt })
+        .eq("user_id", user.id).eq("revision", expectedRevision)
+        .select("revision,updated_at").maybeSingle();
+      if (restoreError) throw new Error("Не удалось восстановить облачную версию.");
+      if (!restored) return json({ error: "Облачная версия изменилась на другом устройстве.", conflict: true }, 409);
+      return json({ revision: restored.revision, updatedAt: restored.updated_at, payload: historical.payload });
+    }
+
     if (action === "update_avatar") {
       const encoded = String(body.avatarData ?? "");
       const contentType = String(body.contentType ?? "").toLowerCase();

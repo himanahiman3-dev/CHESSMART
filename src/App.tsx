@@ -209,7 +209,7 @@ function Main() {
   let page = null;
   if (mode === "play") page = <PlayScreen engine={engine} profile={profile} onFinished={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "online") page = <OnlinePlayScreen onBack={() => changeMode("review")} />;
-  else if (mode === "profile") page = <ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
+  else if (mode === "profile") page = <ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} onOpenAccount={() => changeMode("online")} />;
   else if (mode === "puzzles") page = <PuzzleLibraryScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "mistakes") page = <MistakeTrainerScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "coach") page = <PersonalCoachScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
