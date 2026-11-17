@@ -52,6 +52,7 @@ export const PIECE_NAME_RU_GEN: Record<string, string> = {
 
 export const PIECE_VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 
+/** Position identity for evaluation: keep the 50-move counter, ignore only fullmove number. */
 export function fenKey(fen: string): string {
-  return fen.split(" ").slice(0, 4).join(" ");
+  return fen.trim().split(/\\s+/).slice(0, 5).join(" ");
 }
