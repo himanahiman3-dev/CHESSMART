@@ -1,7 +1,7 @@
 /**
  * Синтезированные звуки (Web Audio API) — без внешних файлов.
  */
-export type SoundKind = "move" | "capture" | "check" | "mate" | "castle" | "promote" | "end" | "notify" | "wrong" | "correct";
+export type SoundKind = "move" | "capture" | "check" | "mate" | "castle" | "promote" | "end" | "notify" | "wrong" | "correct" | "brilliant";
 
 let ctx: AudioContext | null = null;
 let enabled = true;
@@ -220,6 +220,13 @@ export function playSound(kind: SoundKind) {
       tone(c, t + 0.12, 392, 0.55, 0.12, "triangle");
       tone(c, t + 0.24, 262, 0.8, 0.14, "triangle");
       break;
+    case "brilliant":
+      // Original short glassy reward chime for a brilliant move (not copied from another site).
+      tone(c, t, 1318.51, 0.30, 0.075, "sine");
+      tone(c, t + 0.045, 1760, 0.34, 0.060, "sine");
+      tone(c, t + 0.095, 2349.32, 0.38, 0.038, "sine");
+      tone(c, t + 0.055, 880, 0.26, 0.022, "triangle");
+      break;
     case "correct":
       tone(c, t, 660, 0.15, 0.12);
       tone(c, t + 0.09, 990, 0.25, 0.12);
@@ -234,10 +241,11 @@ export function playSound(kind: SoundKind) {
   }
 }
 
-/** Выбор звука по SAN. */
-export function soundForSan(san: string, gameOver = false): SoundKind {
+/** Выбор звука по SAN и оценке хода. */
+export function soundForSan(san: string, gameOver = false, moveClass?: string): SoundKind {
   if (san.includes("#")) return "mate";
   if (gameOver) return "end";
+  if (moveClass === "brilliant") return "brilliant";
   if (san.includes("+")) return "check";
   if (san.startsWith("O-O")) return "castle";
   if (san.includes("=")) return "promote";
