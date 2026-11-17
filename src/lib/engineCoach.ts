@@ -1,6 +1,6 @@
 import { Chess, type Square } from "chess.js";
 import type { Color } from "../types";
-import { evaluatePositionDiagnostics, type DiagnosticResult } from "./grandmasterDiagnostics";
+import { evaluatePositionDiagnostics, type DiagnosticResult } from "./grandmasterDiagnostics.ts";
 
 export interface EngineCoachChange {
   title: string;
@@ -29,7 +29,8 @@ const PIECE_NAMES: Record<string, string> = {
 };
 
 const DANGER_METRIC = /висящ|атакован|слабые пешки|изолирован|сдвоен|отстал|давление вокруг|атаки на короля|ферзь .* под атакой/i;
-const ACTIVITY_METRIC = /контроль центра|расширенный центр|развитые лёгкие фигуры|активность (белых|чёрных)|проходные пешки|пешечные цепи|пешечный щит|защищённые фигуры|ладьи .* открытых линиях|подвижность (ладей|слонов|коней|ферзя)|центральность коней|коневые форпосты/i;\nconst PSEUDO_ATTACK_METRIC = /висящ|атакован|давление вокруг|атаки на короля|под атакой|контроль центра|расширенный центр|контролируемые поля|подвижность|псевдоподвижность|защищённые фигуры|коневые форпосты|отсталые пешки|слабые пешки|активность (белых|чёрных)|король .* под шахом/i;
+const ACTIVITY_METRIC = /контроль центра|расширенный центр|развитые лёгкие фигуры|активность (белых|чёрных)|проходные пешки|пешечные цепи|пешечный щит|защищённые фигуры|ладьи .* открытых линиях|подвижность (ладей|слонов|коней|ферзя)|центральность коней|коневые форпосты/i;
+const PSEUDO_ATTACK_METRIC = /висящ|атакован|давление вокруг|атаки на короля|под атакой|контроль центра|расширенный центр|контролируемые поля|подвижность|псевдоподвижность|защищённые фигуры|коневые форпосты|отсталые пешки|слабые пешки|активность (белых|чёрных)|король .* под шахом/i;
 
 function mentionsColor(title: string, color: Color): boolean {
   const variants = color === "w"
@@ -88,7 +89,6 @@ export function explainStockfishMove(fen: string, uci: string): EngineMoveExplan
     if (!move) return null;
 
     const fenAfter = board.fen();
-    const beforeDiagnostics = evaluatePositionDiagnostics(fen);
     const afterDiagnostics = evaluatePositionDiagnostics(fenAfter);
     const beforeByTitle = new Map<string, DiagnosticResult>();
     for (const item of beforeDiagnostics.results) {
@@ -119,7 +119,7 @@ export function explainStockfishMove(fen: string, uci: string): EngineMoveExplan
 
       // Pseudo-legal attack-map metrics are deliberately excluded from the coaching
       // summary: pinned pieces can make geometric attack counts misleading.
-      if (/псевдо|до строгой проверки|геометрическ/i.test(after.description)) continue;
+      if (PSEUDO_ATTACK_METRIC.test(after.title) || /псевдо|до строгой проверки|геометрическ/i.test(after.description)) continue;
       candidates.push(explainMetricChange(after, before, after, forMover, isDanger));
     }
 
@@ -129,7 +129,6 @@ export function explainStockfishMove(fen: string, uci: string): EngineMoveExplan
     );
 
     const tactical: string[] = [];
-    if (move.san.includes("#")) tactical.push("Мат: этот ход завершает партию.");
     if (move.captured) tactical.push(`Забирает ${PIECE_NAMES[move.captured] ?? "фигуру"} соперника.`);
     if (move.san === "O-O") tactical.push("Делает короткую рокировку: король уходит с центра, ладья подключается.");
     if (move.san === "O-O-O") tactical.push("Делает длинную рокировку: король уходит с центра, ладья подключается.");
