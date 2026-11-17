@@ -37,6 +37,14 @@ assert.equal(
   `position fen ${rootFen} moves e2e4 e7e5 g1f3`,
   "Stockfish must receive the full path from the original PGN root",
 );
+assert.equal(
+  buildPositionCommand("branch-fen-is-not-used", {
+    startFen: rootFen,
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6"],
+  }),
+  `position fen ${rootFen} moves e2e4 e7e5 g1f3 b8c6 f1b5 a7a6`,
+  "Stockfish must receive the original game path plus every move in an explored variation",
+);
 
 const checkedFen = "4r2k/8/8/8/2b5/8/RP6/4K3 w - - 0 1";
 const checked = new Chess(checkedFen);

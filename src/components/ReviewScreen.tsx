@@ -8,6 +8,7 @@ import { loadSoundEnabled, playSound, preloadSounds, setSoundEnabled, soundForSa
 import { createAnnotatedPgn, downloadAnnotatedPgn } from "../lib/pgnExport";
 import { copyText } from "../lib/clipboard";
 import { winFor } from "../lib/winprob";
+import type { PositionHistory } from "../lib/engine";
 import { GameBoard, type BoardArrow, type BoardMove, type BoardTheme } from "./GameBoard";
 import { EvalBar } from "./EvalBar";
 import { CoachCard, type RetryState } from "./CoachCard";
@@ -81,6 +82,20 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
   const move = ply > 0 ? review.moves[ply - 1] : null;
   const exploreFen = explore ? (explore.idx > 0 ? explore.moves[explore.idx - 1].fenAfter : explore.base) : null;
   const displayFen = retry ? (retryFen ?? review.moves[retry.idx].fenBefore) : (exploreFen ?? review.fens[ply]);
+
+  // Free analysis must use the exact game path, not only the current FEN:
+  // repetition and draw rules depend on positions played before this point.
+  const liveHistory = useMemo<PositionHistory>(() => ({
+    startFen: review.startFen,
+    moves: [
+      ...review.moves.slice(0, ply).map((played) => played.uci),
+      ...(explore ? explore.moves.slice(0, explore.idx).map((played) => played.uci) : []),
+    ],
+  }), [review.startFen, review.moves, ply, explore]);
+  const liveHistoryKey = useMemo(
+    () => `${liveHistory.startFen}|${liveHistory.moves.join(" ")}`,
+    [liveHistory],
+  );
 
   useEffect(() => {
     try {
@@ -265,42 +280,51 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
     let stopFn: (() => void) | null = null;
     const fen = displayFen;
     setLive(!explore && review.positions[ply] ? review.positions[ply].lines : []);
-    (async () => {
-      const cached = await getCachedPosition(fen, LIVE_DEPTH, 3);
-      if (stale) return;
-      if (cached) {
-        setLive(cached.lines);
-        return;
-      }
-      let over = false;
+    void (async () => {
       try {
-        over = new Chess(fen).isGameOver();
-      } catch {
-        over = true;
+        const cached = await getCachedPosition(fen, LIVE_DEPTH, 3, liveHistoryKey);
+        if (stale) return;
+        if (cached) {
+          setLive(cached.lines);
+          return;
+        }
+        let over = false;
+        try {
+          over = new Chess(fen).isGameOver();
+        } catch {
+          over = true;
+        }
+        if (over) {
+          setLive([]);
+          return;
+        }
+        const handle = engine.search({
+          fen,
+          history: liveHistory,
+          depth: LIVE_DEPTH,
+          multipv: 3,
+          onInfo: (lines) => {
+            if (!stale) setLive(lines);
+          },
+        });
+        stopFn = handle.stop;
+        const lines = await handle.promise;
+        if (!stale && lines.length && Math.min(...lines.map((l) => l.depth)) >= LIVE_DEPTH) {
+          await putCachedPosition(fen, LIVE_DEPTH, 3, lines, Math.min(...lines.map((l) => l.depth)), liveHistoryKey);
+        }
+      } catch (reason) {
+        // A worker failure is surfaced as an error, never cached as a successful evaluation.
+        if (!stale) {
+          setLive([]);
+          console.error("Ошибка свободного анализа Stockfish:", reason);
+        }
       }
-      if (over) {
-        setLive([]);
-        return;
-      }
-      const handle = engine.search({
-        fen,
-        depth: LIVE_DEPTH,
-        multipv: 3,
-        onInfo: (lines) => {
-          if (!stale) setLive(lines);
-        },
-      });
-      stopFn = handle.stop;
-      const lines = await handle.promise;
-      if (!stale && lines.length && Math.min(...lines.map((l) => l.depth)) >= LIVE_DEPTH)
-        await putCachedPosition(fen, LIVE_DEPTH, 3, lines, Math.min(...lines.map((l) => l.depth)));
     })();
     return () => {
       stale = true;
       stopFn?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysisOn, displayFen, engine, !!retry]);
+  }, [analysisOn, displayFen, engine, !!retry, liveHistory, liveHistoryKey, explore, ply, review.positions]);
 
   /* --------------------------- отображение --------------------------- */
   const score = retry

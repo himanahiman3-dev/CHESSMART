@@ -14,6 +14,7 @@
     "validate:gameplay": "node --experimental-strip-types scripts/validate-gameplay.mjs",
     "validate:diagnostics": "node --experimental-strip-types scripts/validate-diagnostics.mjs",
     "validate:engine-coach": "node --experimental-strip-types scripts/validate-engine-coach.mjs",
+    "validate:engine-worker": "node --experimental-strip-types scripts/validate-engine-worker.mjs",
     "validate:training-academy": "node --experimental-strip-types scripts/validate-training-academy.mjs"
   },
   "dependencies": {
