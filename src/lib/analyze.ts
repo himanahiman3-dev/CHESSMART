@@ -144,7 +144,6 @@ const REFINE_MOVETIME_MS = 3000;
 const REFINE_MAX_MOVES = 8;
 /** Общий потолок времени на перепроверку, мс. */
 const REFINE_TOTAL_BUDGET_MS = 30000;
-/** Кандидат на перепроверку: потеря по «быстрому» анализу меньше этого значения (п.п.). */
 
 function playerElo(headers: Record<string, string>, c: Color): number | undefined {
   const v = parseInt(headers[c === "w" ? "WhiteElo" : "BlackElo"] ?? "", 10);
@@ -579,7 +578,6 @@ export function buildReview(
 
     const cpBefore = cpFor(scoreBefore, color);
     const cpAfter = cpFor(scoreAfter, color);
-    const cpLoss = Math.max(0, cpBefore - cpAfter);
     const prevLoss = i > 0 ? reviews[i - 1].winLoss : 0;
     const prevSan = i > 0 ? reviews[i - 1].san : undefined;
 
