@@ -249,12 +249,14 @@ export async function prepareEngineFiles(
     /* ignore */
   }
   emit("", "ready", allCached);
-  return {
-    set,
-    jsUrl: URL.createObjectURL(blobs[0]),
-    wasmUrl: URL.createObjectURL(blobs[1]),
-    fromCache: allCached,
-  };
+  const jsUrl = URL.createObjectURL(blobs[0]);
+  try {
+    const wasmUrl = URL.createObjectURL(blobs[1]);
+    return { set, jsUrl, wasmUrl, fromCache: allCached };
+  } catch (error) {
+    URL.revokeObjectURL(jsUrl);
+    throw error;
+  }
 }
 
 export async function clearEngineCache(): Promise<void> {
