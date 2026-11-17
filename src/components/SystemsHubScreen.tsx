@@ -463,7 +463,7 @@ export function SystemsHubScreen({ profile, onBack, onNavigate }: {
                 {([
                   ["compactMode", "Компактный режим", "Уплотняет отступы и карточки на панели Systems Hub."],
                   ["reducedMotion", "Уменьшить анимацию", "Сокращает анимационные эффекты интерфейса."],
-                  ["soundsEnabled", "Звуки", "Включает или выключает звуковые эффекты партий и тренировок."],
+                  ["largeText", "Увеличенный текст", "Увеличивает читаемость текста в центре систем."],
                 ] as Array<[SuitePreferenceKey, string, string]>).map(([key, title, detail]) => (
                   <label key={key} className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.06] bg-black/10 p-3.5">
                     <input type="checkbox" checked={settings[key]} onChange={(event) => updatePreference(key, event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#91bd69]" />
