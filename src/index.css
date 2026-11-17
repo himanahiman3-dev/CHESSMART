@@ -259,3 +259,186 @@ select {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* ───────────────────── CHESSMART unified green studio ─────────────────────
+   A shared visual layer for every feature screen, including the live review.
+   Board squares and semantic move-class colors are intentionally untouched. */
+:root {
+  --cm-bg: #171c17;
+  --cm-surface: #202820;
+  --cm-surface-raised: #273227;
+  --cm-surface-soft: #303d2d;
+  --cm-border: rgba(151, 179, 126, 0.18);
+  --cm-border-strong: rgba(151, 179, 126, 0.3);
+  --cm-text: #eef3e8;
+  --cm-muted: #a5b09d;
+  --cm-subtle: #7f8c78;
+  --cm-accent: #a3d16f;
+  --cm-accent-strong: #81b64c;
+  --cm-accent-ink: #17210f;
+}
+
+body {
+  color: var(--cm-text);
+  background:
+    radial-gradient(ellipse at 50% -22%, rgba(129, 182, 76, 0.14), transparent 48%),
+    radial-gradient(ellipse at 100% 55%, rgba(90, 125, 67, 0.06), transparent 38%),
+    linear-gradient(180deg, #20291f 0%, #191f19 48%, #151a15 100%);
+  background-attachment: fixed;
+}
+
+/* Legacy page canvases now share the same graphite-green foundation. */
+[class~="bg-[#312e2b]"],
+[class~="bg-[#262522]"],
+[class~="bg-[#242522]"],
+[class~="bg-[#242520]"],
+[class~="bg-[#242421]"],
+[class~="bg-[#24231f]"] {
+  background-color: var(--cm-bg) !important;
+}
+[class~="bg-[#262421]"],
+[class~="bg-[#292824]"],
+[class~="bg-[#292a25]"],
+[class~="bg-[#2b2926]"],
+[class~="bg-[#2b2a25]"],
+[class~="bg-[#2b2925]"],
+[class~="bg-[#2b2924]"],
+[class~="bg-[#302e2b]"],
+[class~="bg-[#30302b]"],
+[class~="bg-[#30302a]"],
+[class~="bg-[#30312b]"],
+[class~="bg-[#30342b]"],
+[class~="bg-[#34352f]"] {
+  background-color: var(--cm-surface) !important;
+}
+[class~="bg-[#1f1d1b]"],
+[class~="bg-[#211f1d]"],
+[class~="bg-[#22231f]"],
+[class~="bg-[#22231e]"],
+[class~="bg-[#22241f]"] {
+  background-color: #192119 !important;
+}
+[class~="bg-[#3d3a37]"],
+[class~="bg-[#403d39]"],
+[class~="bg-[#41403a]"],
+[class~="bg-[#3d3b35]"],
+[class~="bg-[#3b3a34]"],
+[class~="bg-[#393831]"],
+[class~="bg-[#45433d]"],
+[class~="bg-[#45443c]"],
+[class~="bg-[#4b4844]"] {
+  background-color: var(--cm-surface-soft) !important;
+}
+
+/* Consistent card outlines and softer elevation on every tab. */
+[class~="border-[#41403a]"],
+[class~="border-[#41423b]"],
+[class~="border-[#41423b]"],
+[class~="border-[#46443e]"],
+[class~="border-[#46433c]"],
+[class~="border-[#47443d]"],
+[class~="border-[#4b4844]"],
+[class~="border-[#4b5940]"],
+[class~="border-[#4a4942]"],
+[class~="border-[#4b4844]/70"],
+[class~="border-[#3d3a37]"],
+[class~="border-[#3d3b35]"],
+[class~="border-[#4b4844]/70"] {
+  border-color: var(--cm-border) !important;
+}
+[class*="rounded-2xl"][class*="border"],
+[class*="rounded-xl"][class*="border"] {
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.14);
+}
+
+/* Warm brown text from older screens becomes the same cool muted scale. */
+[class~="text-[#a7a6a2]"],
+[class~="text-[#aaa9a2]"],
+[class~="text-[#a7a89e]"],
+[class~="text-[#aaa89f]"],
+[class~="text-[#96948c]"],
+[class~="text-[#8b8987]"],
+[class~="text-[#85827b]"],
+[class~="text-[#85837b]"],
+[class~="text-[#77746f]"],
+[class~="text-[#77786f]"],
+[class~="text-[#89877f]"],
+[class~="text-[#8b8987]"] {
+  color: var(--cm-muted) !important;
+}
+[class~="text-[#dcdbd7]"],
+[class~="text-[#d7d6cf]"],
+[class~="text-[#e2e1da]"],
+[class~="text-[#ded4c0]"],
+[class~="text-[#d5d3cf]"],
+[class~="text-[#cbc9c1]"] {
+  color: #e4ecdc !important;
+}
+
+/* Shared action color, including buttons in legacy learning screens. */
+[class~="bg-[#81b64c]"],
+[class~="bg-[#789c54]"],
+[class~="bg-[#81b64c]/"] {
+  background-color: var(--cm-accent-strong) !important;
+}
+[class~="text-[#17210f]"] {
+  color: var(--cm-accent-ink) !important;
+}
+[class~="hover:bg-[#95c75f]"]:hover,
+[class~="hover:bg-[#95c75f]"]:focus-visible {
+  background-color: #a3d16f !important;
+}
+[class~="focus:border-[#81b64c]"]:focus,
+[class~="focus:border-[#81b64c]"]:focus-visible {
+  border-color: var(--cm-accent) !important;
+}
+
+/* Inputs, selects and textareas feel like one coherent application. */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  color: var(--cm-text);
+  border-color: var(--cm-border-strong);
+  background-color: #192219;
+}
+input::placeholder,
+textarea::placeholder {
+  color: #83917c;
+}
+option {
+  color: var(--cm-text);
+  background: #202a20;
+}
+
+/* Review workspace: the board stays the hero, while surrounding chrome matches
+   the same studio language as import, training, profile and online play. */
+[class~="bg-[#302e2b]"][class*="rounded-2xl"],
+[class~="bg-[#292824]"][class*="rounded-xl"],
+[class~="bg-[#262421]"][class*="rounded-2xl"] {
+  background: linear-gradient(145deg, rgba(39, 50, 39, 0.98), rgba(29, 39, 30, 0.98)) !important;
+  border-color: var(--cm-border) !important;
+}
+[class*="shadow-black/"] {
+  --tw-shadow-color: rgba(0, 0, 0, 0.22);
+}
+
+/* Smooth, restrained interaction feedback across every feature. */
+button:not(:disabled) {
+  transition:
+    transform 140ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease;
+}
+button:not(:disabled):hover {
+  border-color: var(--cm-border-strong);
+}
+:focus-visible {
+  outline-color: var(--cm-accent);
+}
+
+@media (max-width: 640px) {
+  body { background-attachment: scroll; }
+}
