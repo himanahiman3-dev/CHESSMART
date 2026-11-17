@@ -240,6 +240,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
         }
       } catch {
         localStorage.removeItem(SESSION_KEY);
+        clearAccountProfile();
       } finally {
         if (!cancelled) setAuthBusy(false);
       }
