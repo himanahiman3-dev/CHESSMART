@@ -67,32 +67,56 @@ function staticBalance(chess: Chess): number {
  * Корректно обрабатывает мат: если сторона на ходу получила мат, возвращает -MATE + ε,
  * где ε тем меньше, чем ближе к корню найден мат (форсированный мат предпочтительнее).
  */
-function qsearch(chess: Chess, alpha: number, beta: number, depth: number): number {
-  // Мат — приоритет над любой материальной оценкой.
+const MAX_QPLY = MAX_QDEPTH + 12;
+
+/**
+ * Quiescence search. A checked side cannot stand pat: all legal evasions,
+ * including quiet king moves and blocks, must be searched before captures resume.
+ */
+function qsearch(chess: Chess, alpha: number, beta: number, depth: number, ply = 0): number {
   if (chess.isCheckmate()) {
     return -MATE + (MAX_QDEPTH - depth) * 100;
   }
 
+  const inCheck = chess.isCheck();
   const stand = staticBalance(chess);
-  if (depth <= 0) return stand;
-  if (stand >= beta) return stand;
-  if (stand > alpha) alpha = stand;
 
-  // Только взятия и превращения — как и раньше. Полный перебор защит от шаха
-  // сделал бы qsearch недопустимо медленным; детектор «висящей фигуры» ниже
-  // компенсирует этот пробел.
-  const caps = chess
-    .moves({ verbose: true })
-    .filter((m) => m.captured || m.promotion)
-    .sort(
-      (a, b) =>
-        (VAL[b.captured ?? "p"] ?? 0) * 10 - VAL[b.piece] -
-        ((VAL[a.captured ?? "p"] ?? 0) * 10 - VAL[a.piece])
-    );
+  // Bound long checking sequences. At the cap, still make one legal evasion
+  // and evaluate the resulting position instead of pretending to pass in check.
+  if (ply >= MAX_QPLY) {
+    if (!inCheck) return stand;
+    let best = -Infinity;
+    for (const move of chess.moves({ verbose: true })) {
+      chess.move({ from: move.from, to: move.to, promotion: move.promotion });
+      const score = -staticBalance(chess);
+      chess.undo();
+      best = Math.max(best, score);
+    }
+    return Number.isFinite(best) ? best : -MATE;
+  }
 
-  for (const m of caps) {
-    chess.move({ from: m.from, to: m.to, promotion: m.promotion });
-    const score = -qsearch(chess, -beta, -alpha, depth - 1);
+  // Stand-pat is legal only when the side to move is not in check.
+  if (!inCheck) {
+    if (depth <= 0) return stand;
+    if (stand >= beta) return stand;
+    if (stand > alpha) alpha = stand;
+  }
+
+  const legalMoves = chess.moves({ verbose: true });
+  const candidates = inCheck
+    ? legalMoves
+    : legalMoves.filter((move) => move.captured || move.promotion);
+
+  candidates.sort((a, b) => {
+    const score = (move: (typeof candidates)[number]) =>
+      (move.captured ? 10000 + (VAL[move.captured] ?? 0) * 10 - VAL[move.piece] : 0) +
+      (move.promotion ? 8000 : 0);
+    return score(b) - score(a);
+  });
+
+  for (const move of candidates) {
+    chess.move({ from: move.from, to: move.to, promotion: move.promotion });
+    const score = -qsearch(chess, -beta, -alpha, depth - 1, ply + 1);
     chess.undo();
     if (score >= beta) return score;
     if (score > alpha) alpha = score;

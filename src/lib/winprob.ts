@@ -12,11 +12,10 @@ export function winPercent(score: Score): number {
 }
 
 /**
- * Chess.com (Classification V2) оценивает ходы в «ожидаемых очках», которые зависят от РЕЙТИНГА игрока:
- * у новичка одна и та же оценка движка даёт менее решающий шанс на победу, чем у мастера.
- * Точная модель закрытая. Здесь используется эмпирическое приближение (подогнанное сторонним проектом
- * к ~6000 меток Chess.com): кривая Lichess, у которой наклон уменьшен до 0.35× при рейтинге 500
- * и 0.8× при 2000 (линейно между, постоянен за границами, 1500 — если рейтинг неизвестен).
+ * Chess.com (Classification V2) uses rating-aware Expected Points, but its mapping is not public.
+ * Chessmart uses a deliberately approximate rating adjustment: the Lichess-style evaluation curve
+ * is scaled from 0.35× at 500 Elo to 0.8× at 2000 Elo, with a default of 1500 when rating is absent.
+ * These scale factors are project heuristics, not a verified reconstruction of Chess.com's model.
  */
 export function slopeFactor(elo?: number): number {
   const r = elo !== undefined && Number.isFinite(elo) ? Math.max(500, Math.min(2000, elo)) : 1500;
@@ -54,7 +53,7 @@ export function cpFor(score: Score, color: Color): number {
   return color === "w" ? v : -v;
 }
 
-/** Точность одного хода по потере Win% (формула chess.com / Lichess). */
+/** Точность одного хода по потере Win% (формула Lichess; не формула CAPS2 Chess.com). */
 export function moveAccuracy(winLoss: number): number {
   const a = 103.1668 * Math.exp(-0.04354 * winLoss) - 3.1669;
   return Math.max(0, Math.min(100, a));
@@ -67,7 +66,7 @@ function stdDev(arr: number[]): number {
 }
 
 /**
- * CAPS2-подобная итоговая точность.
+ * Собственная агрегация Chessmart, а не закрытый алгоритм Chess.com CAPS2.
  * Берётся среднее из: (1) средневзвешенной точности, где вес хода — волатильность
  * позиции (σ Win% в скользящем окне), (2) гармонического среднего.
  */

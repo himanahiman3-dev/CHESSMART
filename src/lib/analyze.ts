@@ -1,6 +1,6 @@
 /**
- * Конвейер обзора партии: разбор PGN → анализ каждой позиции Stockfish 19 (MultiPV 2, с кэшем
- * в IndexedDB) → Win% → точность (CAPS2) → классификация 10 типов ходов → комментарии тренера.
+ * Конвейер обзора партии: разбор PGN → анализ Stockfish 19 (MultiPV 2, с кэшем и историей ходов)
+ * → рейтинговый Expected Points (приближение) → классификация → собственная точность Chessmart → комментарии.
  *
  * Бюджет времени: на всю партию отводится 0.6 с на каждый ход (10 ходов → 6 с, 20 → 12 с, 30 → 18 с…).
  * Бюджет делится динамически: если позиция посчитана быстрее (достигнута целевая глубина, ход единственный,
@@ -10,7 +10,7 @@
 import { Chess, type Square } from "chess.js";
 import type { Cls, Color, EngineLine, GameReview, MoveReview, PositionEval, Score } from "../types";
 import { emptyCounts } from "../types";
-import type { StockfishEngine } from "./engine";
+import type { PositionHistory, StockfishEngine } from "./engine";
 import { getCachedPosition, putCachedPosition } from "./db";
 import { analyzeBook, openingForCode } from "./openings";
 import { detectSacrifice } from "./see";
@@ -124,8 +124,6 @@ const CACHE_ACCEPT_DEPTH = 16;
 /** Числовые приближения критериев Brilliant вынесены в ./brilliant. */
 
 /** Best: лучший ход движка либо ход, теряющий пренебрежимо мало (п.п. ожидаемых очков). */
-const BEST_EPS = 0.1;
-
 /** Great: на сколько п.п. ожидаемых очков вторая линия хуже лучшей (для новичков щедрее; приближение). */
 function greatGapFor(elo?: number): number {
   if (elo === undefined) return 14;
@@ -144,8 +142,6 @@ const REFINE_MOVETIME_MS = 3000;
 const REFINE_MAX_MOVES = 8;
 /** Общий потолок времени на перепроверку, мс. */
 const REFINE_TOTAL_BUDGET_MS = 30000;
-/** Кандидат на перепроверку: потеря по «быстрому» анализу меньше этого значения (п.п.). */
-const REFINE_CANDIDATE_LOSS = 12;
 
 function playerElo(headers: Record<string, string>, c: Color): number | undefined {
   const v = parseInt(headers[c === "w" ? "WhiteElo" : "BlackElo"] ?? "", 10);
@@ -181,15 +177,17 @@ export async function evaluatePosition(
   multipv: number,
   signal?: AbortSignal,
   onInfo?: (lines: EngineLine[]) => void,
-  movetimeMs?: number
+  movetimeMs?: number,
+  history?: PositionHistory
 ): Promise<{ evalResult: PositionEval; fromCache: boolean }> {
   const term = terminalEval(fen);
   if (term) return { evalResult: term, fromCache: true };
-  const cached = await getCachedPosition(fen, depth, multipv);
+  const historyKey = history ? `${history.startFen}|${history.moves.join(" ")}` : undefined;
+  const cached = await getCachedPosition(fen, depth, multipv, historyKey);
   // Раньше любой кэш (даже глубины 8, посчитанный за 120 мс) навсегда подменял анализ на заданную глубину.
   // Теперь кэш принимается, только если он достаточно глубок; иначе позиция пересчитывается.
   if (cached && cached.depth >= Math.min(depth, CACHE_ACCEPT_DEPTH)) return { evalResult: cached, fromCache: true };
-  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo });
+  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
   let lines: EngineLine[];
@@ -206,7 +204,7 @@ export async function evaluatePosition(
   // Недосчитанный по глубине (из-за лимита времени) результат кэшируем, только если он не слишком слабый.
   // В кэше хранится реально достигнутая глубина (reached), а ключ — запрошенная.
   if (reached >= Math.min(depth, MIN_CACHEABLE_DEPTH)) {
-    await putCachedPosition(fen, depth, multipv, lines, reached);
+    await putCachedPosition(fen, depth, multipv, lines, reached, historyKey);
   }
   return { evalResult: { fen, depth: reached, lines }, fromCache: false };
 }
@@ -285,7 +283,8 @@ export async function reviewGame(
           elapsedMs: now() - startedAt,
         });
       },
-      slot
+      slot,
+      { startFen: game.startFen, moves: game.moves.slice(0, i).map((move) => move.uci) }
     );
     if (fromCache) cachedHits++;
     positions.push(evalResult);
@@ -329,9 +328,8 @@ async function refineSacrifices(
     const after = positions[i + 1].lines[0];
     if (!top || !after || positions[i + 1].depth === 0) continue; // терминальные позиции не трогаем
     const elo = playerElo(game.headers, m.color);
-    const quickLoss =
-      top.pv[0] === m.uci ? 0 : Math.max(0, winForRated(top.score, m.color, elo) - winForRated(after.score, m.color, elo));
-    if (quickLoss >= REFINE_CANDIDATE_LOSS) continue;
+    // Не отбрасываем кандидата из-за большой потери в быстром поиске: именно сложные жертвы
+    // чаще всего выглядят плохо до углублённого расчёта компенсации.
     const sac = detectSacrifice(m.fenBefore, m.uci, elo);
     if (sac.sacrifice) candidates.push({ i, amount: sac.amount });
   }
@@ -351,7 +349,10 @@ async function refineSacrifices(
         fen: game.fens[idx],
       });
       try {
-        const { evalResult } = await evaluatePosition(engine, game.fens[idx], targetDepth, 2, signal, undefined, REFINE_MOVETIME_MS);
+        const { evalResult } = await evaluatePosition(
+          engine, game.fens[idx], targetDepth, 2, signal, undefined, REFINE_MOVETIME_MS,
+          { startFen: game.startFen, moves: game.moves.slice(0, idx).map((move) => move.uci) }
+        );
         if (evalResult.depth > positions[idx].depth) positions[idx] = evalResult;
       } catch (e) {
         if (e instanceof Error && e.message === "cancelled") throw e;
@@ -383,7 +384,10 @@ async function findDeferredBrilliantContinuations(
   const maxContinuations = 16;
   const captureEvaluations = new Map<string, number>();
 
-  const captureStillLoses = async (fen: string, square: string, piece: string, sacrificeColor: Color, elo?: number): Promise<boolean> => {
+  const captureStillLoses = async (
+    fen: string, square: string, piece: string, sacrificeColor: Color, elo: number | undefined,
+    historyMoves: string[]
+  ): Promise<boolean> => {
     let chess: Chess;
     try {
       chess = new Chess(fen);
@@ -400,7 +404,8 @@ async function findDeferredBrilliantContinuations(
       const afterCapture = new Chess(fen);
       const played = afterCapture.move({ from: capture.from, to: capture.to, promotion: capture.promotion });
       if (!played) return false;
-      const cacheKey = `${afterCapture.fen()}|${sacrificeColor}`;
+      const captureUci = capture.from + capture.to + (capture.promotion ?? "");
+      const cacheKey = `${afterCapture.fen()}|${sacrificeColor}|${historyMoves.join(" ")}`;
       let chance = captureEvaluations.get(cacheKey);
       if (chance === undefined) {
         // evaluatePosition использует общий кэш FEN; локальный кэш убирает повторные проверки той же позиции.
@@ -411,7 +416,8 @@ async function findDeferredBrilliantContinuations(
           1,
           signal,
           undefined,
-          900
+          900,
+          { startFen: game.startFen, moves: [...historyMoves, captureUci] }
         );
         chance = winForRated(evaluated.evalResult.lines[0].score, sacrificeColor, elo);
         captureEvaluations.set(cacheKey, chance);
@@ -464,7 +470,10 @@ async function findDeferredBrilliantContinuations(
     const targetSquare = sacrificeMove.to;
     const targetPiece = sacrificeMove.piece;
     // Сначала проверяем, что принять саму жертву уже было бы плохим решением.
-    const canTakeAndPunish = await captureStillLoses(sacrificeMove.fenAfter, targetSquare, targetPiece, sacrificeMove.color, elo);
+    const canTakeAndPunish = await captureStillLoses(
+      sacrificeMove.fenAfter, targetSquare, targetPiece, sacrificeMove.color, elo,
+      game.moves.slice(0, i + 1).map((move) => move.uci)
+    );
     if (!canTakeAndPunish) continue;
 
     // Первый ответ соперника должен отказаться от взятия. После него очередь снова за нами.
@@ -487,7 +496,10 @@ async function findDeferredBrilliantContinuations(
       if (!hangingPiece || hangingPiece.color !== sacrificeMove.color || hangingPiece.type !== targetPiece) break;
 
       // Если наш ход уводит фигуру или позволяет сопернику успешно принять жертву — цепочка заканчивается.
-      const stillPunishesTake = await captureStillLoses(continuation.fenAfter, targetSquare, targetPiece, sacrificeMove.color, elo);
+      const stillPunishesTake = await captureStillLoses(
+        continuation.fenAfter, targetSquare, targetPiece, sacrificeMove.color, elo,
+        game.moves.slice(0, continuationIndex + 1).map((move) => move.uci)
+      );
       if (!stillPunishesTake) break;
 
       const continuationBefore = positions[continuationIndex]?.lines[0];
@@ -553,7 +565,7 @@ export function buildReview(
     const preferSecond = playedSecond && after.depth > 0 && after.depth < second!.depth;
     const scoreAfter: Score = playedIsBest ? top.score : preferSecond ? second!.score : after.lines[0].score;
     const elo = eloOf(color);
-    // Ожидаемые очки с учётом рейтинга игрока (как в Chess.com Classification V2) — для классификации.
+    // Приближение рейтинговых Expected Points для порогов Classification V2; модель Chess.com закрыта.
     const winBefore = winForRated(scoreBefore, color, elo);
     const winAfter = playedIsBest ? winBefore : winForRated(scoreAfter, color, elo);
     const winLoss = Math.max(0, winBefore - winAfter);
@@ -564,7 +576,6 @@ export function buildReview(
 
     const cpBefore = cpFor(scoreBefore, color);
     const cpAfter = cpFor(scoreAfter, color);
-    const cpLoss = Math.max(0, cpBefore - cpAfter);
     const prevLoss = i > 0 ? reviews[i - 1].winLoss : 0;
     const prevSan = i > 0 ? reviews[i - 1].san : undefined;
 
@@ -593,7 +604,6 @@ export function buildReview(
     }
 
     let cls: Cls;
-    let exceptionPawn = false;
 
     // Brilliant (Chess.com): хорошая жертва фигуры, ход лучший или почти лучший,
     // после него позиция не плохая, и без него вы не были бы полностью выигрывающим.
@@ -615,7 +625,7 @@ export function buildReview(
       cls = "book";
     } else if (isBrilliant) {
       cls = "brilliant";
-    } else if (playedIsBest || winLoss < BEST_EPS) {
+    } else if (playedIsBest) {
       cls = "best";
       // Great (Chess.com): критичный ход — единственный хороший ход (вторая линия заметно хуже)
       // либо ход, сохраняющий/переводящий позицию в более высокую категорию, чем любая альтернатива.
@@ -641,17 +651,10 @@ export function buildReview(
       if (lostMate && winLoss >= 5) cls = "blunder";
       if (allowedMate) cls = "blunder";
 
-      // Исключение: потеря пешки при огромном перевесе — только неточность
-      if ((cls === "mistake" || cls === "blunder") && !allowedMate && !lostMate && cpAfter >= 300 && cpLoss <= 300) {
-        cls = "inaccuracy";
-        exceptionPawn = true;
-      }
-
       // Miss (Chess.com): соперник ошибся, а ход не использовал это и вернул большую часть (от половины до
       // двойного размера ошибки) выигрышных шансов → позиция стала равной или хуже. Пороги — приближение.
       if (
         (cls === "inaccuracy" || cls === "mistake" || cls === "blunder") &&
-        !exceptionPawn &&
         !allowedMate &&
         prevLoss >= 10 &&
         winLoss >= Math.max(8, prevLoss * 0.5) &&
@@ -699,7 +702,6 @@ export function buildReview(
       legalMoves: legal,
       isCheck,
       isMate: isMateMove,
-      exceptionPawn,
       bestSecondGapCp: gapCp,
       bestSecondSan: secondSan,
     });

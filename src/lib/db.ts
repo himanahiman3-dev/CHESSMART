@@ -6,7 +6,7 @@
  *   meta      — манифест закэшированных файлов движка и настройки
  */
 import type { EngineLine, PositionEval } from "../types";
-import { fenKey } from "./format";
+import { fenKey } from "./format.ts";
 
 const DB_NAME = "chess-review-db";
 const DB_VERSION = 1;
@@ -127,16 +127,17 @@ interface StoredPosition {
 
 const memory = new Map<string, StoredPosition>();
 
-export function positionKey(fen: string, depth: number, multipv: number): string {
-  return `${fenKey(fen)}|d${depth}|pv${multipv}`;
+export function positionKey(fen: string, depth: number, multipv: number, historyKey?: string): string {
+  return `${fenKey(fen)}|d${depth}|pv${multipv}${historyKey ? `|h${historyKey}` : ""}`;
 }
 
 export async function getCachedPosition(
   fen: string,
   depth: number,
-  multipv: number
+  multipv: number,
+  historyKey?: string
 ): Promise<PositionEval | undefined> {
-  const key = positionKey(fen, depth, multipv);
+  const key = positionKey(fen, depth, multipv, historyKey);
   let rec = memory.get(key);
   if (!rec) {
     rec = await idbGet<StoredPosition>("positions", key);
@@ -151,10 +152,11 @@ export async function putCachedPosition(
   depth: number,
   multipv: number,
   lines: EngineLine[],
-  reachedDepth: number
+  reachedDepth: number,
+  historyKey?: string
 ): Promise<void> {
   if (!lines.length) return;
-  const key = positionKey(fen, depth, multipv);
+  const key = positionKey(fen, depth, multipv, historyKey);
   // не затираем более глубокую оценку менее глубокой
   const prev = memory.get(key) ?? (await idbGet<StoredPosition>("positions", key));
   if (prev && prev.depth >= reachedDepth) return;

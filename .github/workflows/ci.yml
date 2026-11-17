@@ -49,6 +49,8 @@ jobs:
         run: npm run validate:openings
       - name: Validate Brilliant sacrifice classification
         run: npm run validate:brilliant-sacrifices
+      - name: Validate analysis core regressions
+        run: npm run validate:analysis-core
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
