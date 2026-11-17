@@ -634,6 +634,18 @@ export function shouldRetryNetworkStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
+export function getOnlinePollDelay(policy: {
+  online: boolean;
+  visible: boolean;
+  consecutiveFailures: number;
+  urgent?: boolean;
+}): number {
+  if (!policy.online || !policy.visible) return 5000;
+  const failures = clampSuiteNumber(policy.consecutiveFailures, 0, 12, 0);
+  if (failures > 0) return getRetryDelay(failures - 1, 800, 12_000);
+  return policy.urgent ? 250 : 1000;
+}
+
 export function getConnectionQuality(latencyMs: number | null, online: boolean): "offline" | "good" | "fair" | "poor" | "unknown" {
   if (!online) return "offline";
   if (latencyMs === null) return "unknown";
