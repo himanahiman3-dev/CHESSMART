@@ -10,6 +10,7 @@ import { resolvePremove, type Premove, formatPremove } from "../lib/premoves";
 import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation, type GameplayPreferences } from "../lib/gameplayPreferences";
 import { playSound, setSoundEnabled, soundForSan } from "../lib/sound";
 import { buildPgnFromSan, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
+import { replaySanHistory, getPositionInsights, formatMaterialBalance, gamePhaseLabel, terminalStateLabel, isNearFiftyMoveRule } from "../lib/gameInsights";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -36,6 +37,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
   const [resultMessage, setResultMessage] = useState("");
   const [engineError, setEngineError] = useState<string | null>(null);
   const [lastSan, setLastSan] = useState<string[]>([]);
+  const [redoSan, setRedoSan] = useState<string[]>([]);
   const [premove, setPremove] = useState<Premove | null>(null);
   const [premoveMessage, setPremoveMessage] = useState("");
   const [preferences, setPreferences] = useState<GameplayPreferences>(() => loadGameplayPreferences());
@@ -59,6 +61,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     finishedRef.current = false;
     setFen(START_FEN);
     setLastSan([]);
+    setRedoSan([]);
     setPremove(null);
     setPremoveMessage("");
     setExportNotice("");
@@ -118,6 +121,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
           setThinking(false);
           return;
         }
+        setRedoSan([]);
         setLastSan((items) => [...items, moved.san]);
         setFen(next.fen());
         playSound(soundForSan(moved.san, next.isGameOver()));
@@ -155,6 +159,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
       return;
     }
     setPremoveMessage("Premove сыгран автоматически: " + moved.san);
+    setRedoSan([]);
     setLastSan((items) => [...items, moved.san]);
     setFen(next.fen());
     playSound(soundForSan(moved.san, next.isGameOver()));
@@ -178,6 +183,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
       if (!played) return false;
       setPremove(null);
       setPremoveMessage("");
+      setRedoSan([]);
       setLastSan((items) => [...items, played.san]);
       setFen(next.fen());
       playSound(soundForSan(played.san, next.isGameOver()));
@@ -217,6 +223,46 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
   const copyMoves = async () => {
     setExportNotice(await copyText(formatSanMoveList(lastSan)) ? "Список ходов скопирован." : "Не удалось скопировать ходы.");
   };
+  const undoTurn = () => {
+    if (!started || thinking || finished || !lastSan.length) return;
+    try {
+      const replay = replaySanHistory(lastSan);
+      const count = Math.min(2, lastSan.length);
+      const removed = lastSan.slice(-count);
+      for (let i = 0; i < count; i++) replay.undo();
+      setRedoSan((current) => [...removed, ...current]);
+      setLastSan(lastSan.slice(0, -count));
+      setFen(replay.fen());
+      setPremove(null);
+      setPremoveMessage("Отменён последний ход и ответ Stockfish.");
+    } catch (reason) {
+      setEngineError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
+  const redoTurn = () => {
+    if (!started || thinking || finished || !redoSan.length) return;
+    try {
+      const replay = replaySanHistory(lastSan);
+      const restored: string[] = [];
+      for (const san of redoSan.slice(0, 2)) {
+        const move = replay.move(san);
+        if (!move) break;
+        restored.push(move.san);
+      }
+      if (!restored.length) return;
+      setLastSan((current) => [...current, ...restored]);
+      setRedoSan(redoSan.slice(restored.length));
+      setFen(replay.fen());
+      setPremove(null);
+      setPremoveMessage("Ходы восстановлены.");
+    } catch (reason) {
+      setEngineError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
+  const positionInsights = useMemo(() => {
+    try { return getPositionInsights(fen, replaySanHistory(lastSan)); }
+    catch { return getPositionInsights(fen); }
+  }, [fen, lastSan]);
   const difficulty = BOT_DIFFICULTIES.find((item) => item.elo === botElo);
   const fullMove = Math.ceil(game.history().length / 2);
 
@@ -264,6 +310,8 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
               <span className="text-xs text-[#a7a6a2]">{thinking ? "Движок думает…" : game.isCheck() ? "Шах" : ""}</span>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button onClick={undoTurn} disabled={!started || thinking || !lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Отменить ход</button>
+              <button onClick={redoTurn} disabled={!started || thinking || !redoSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Повторить</button>
               <button onClick={() => setBoardFlipped((value) => !value)} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold">Перевернуть доску</button>
               <button onClick={() => void copyFen()} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold">Копировать FEN</button>
               <button onClick={() => void copyPgn()} disabled={!lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Копировать PGN</button>
@@ -280,6 +328,17 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
           </div>
 
           <aside className="space-y-3">
+            <div className="rounded-2xl bg-[#262421] p-4">
+              <div className="mb-2 flex items-center justify-between text-sm font-extrabold"><span>Позиция сейчас</span><span className="text-[10px] font-semibold text-[#91ad76]">{gamePhaseLabel(positionInsights.phase)}</span></div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg bg-[#1f1d1b] p-2"><div className="text-[#89877f]">Материал белых</div><b className="mt-1 block text-base">{positionInsights.whiteMaterial}</b></div>
+                <div className="rounded-lg bg-[#1f1d1b] p-2"><div className="text-[#89877f]">Материал чёрных</div><b className="mt-1 block text-base">{positionInsights.blackMaterial}</b></div>
+                <div className="rounded-lg bg-[#1f1d1b] p-2"><div className="text-[#89877f]">Легальных ходов</div><b className="mt-1 block text-base">{positionInsights.legalMoves}</b></div>
+                <div className="rounded-lg bg-[#1f1d1b] p-2"><div className="text-[#89877f]">Счётчик 50 ходов</div><b className="mt-1 block text-base">{positionInsights.halfmoveClock}/100</b></div>
+              </div>
+              <div className="mt-2 rounded-lg bg-[#1f1d1b] p-2 text-xs text-[#b7b4aa]">{formatMaterialBalance(positionInsights.materialBalance)} · {terminalStateLabel(positionInsights.terminal)} · {positionInsights.castling}</div>
+              {isNearFiftyMoveRule(fen) && <p className="mt-2 text-[10px] text-[#e7bd73]">При 100 полуходах без взятия или движения пешкой можно заявить ничью.</p>}
+            </div>
             <div className="rounded-2xl bg-[#262421] p-4">
               <div className="mb-2 text-sm font-extrabold">Настройки партии</div>
               <div className="space-y-2 text-xs text-[#c2c0b8]">
