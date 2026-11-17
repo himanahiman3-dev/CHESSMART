@@ -47,6 +47,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Validate opening book SAN
         run: npm run validate:openings
+      - name: Validate Brilliant sacrifice classification
+        run: npm run validate:brilliant-sacrifices
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
