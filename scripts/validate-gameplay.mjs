@@ -28,6 +28,13 @@ assert.equal(premoveToUci(premove),"e7e5"); assert.equal(formatPremove(premove),
 assert.equal(premoveClockPenaltyMs(true),100); assert.equal(premoveClockPenaltyMs(false),0);
 const castle="r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1";
 assert.ok(getPremoveMoves(castle,"w","e1").some(m=>m.to==="g1"));
+const checkPosition = "4k3/8/8/8/8/8/8/4R1K1 b - - 0 1";
+assert.ok(new Chess(checkPosition).isCheck());
+assert.ok(getPremoveMoves(checkPosition, "w", "g1").length > 0);
+assert.equal(canSetPremove(checkPosition, "w", "g1", "f1"), true);
+const afterKingEscape = new Chess(checkPosition);
+afterKingEscape.move("Kd7");
+assert.equal(resolvePremove(afterKingEscape.fen(), "w", { from: "g1", to: "f1" })?.uci, "g1f1");
 const promo="4k3/P7/8/8/8/8/8/4K3 b - - 0 1";
 assert.ok(getPremoveMoves(promo,"w","a7").some(m=>m.to==="a8" && m.promotion));
 assert.equal(resolvePremove("4k3/P7/8/8/8/8/8/4K3 w - - 0 1","w",{from:"a7",to:"a8",promotion:"n"})?.uci,"a7a8n");
