@@ -59,6 +59,8 @@ jobs:
         run: npm run validate:diagnostics
       - name: Validate Stockfish diagnostic coach
         run: npm run validate:engine-coach
+      - name: Validate Stockfish worker lifecycle and failure handling
+        run: npm run validate:engine-worker
       - name: Validate Training Academy and 15,000 scenarios
         run: npm run validate:training-academy
       - name: Setup Deno
