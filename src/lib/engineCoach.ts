@@ -78,15 +78,16 @@ export function explainStockfishMove(fen: string, uci: string): EngineMoveExplan
   if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(uci)) return null;
 
   try {
-    const beforeBoard = new Chess(fen);
-    const color = beforeBoard.turn();
+    const board = new Chess(fen);
+    const color = board.turn();
+    const wasInCheck = board.isCheck();
     const from = uci.slice(0, 2) as Square;
     const to = uci.slice(2, 4) as Square;
     const promotion = uci.length > 4 ? uci[4].toLowerCase() : undefined;
-    const move = beforeBoard.move({ from, to, promotion });
+    const move = board.move({ from, to, promotion });
     if (!move) return null;
 
-    const fenAfter = beforeBoard.fen();
+    const fenAfter = board.fen();
     const beforeDiagnostics = evaluatePositionDiagnostics(fen);
     const afterDiagnostics = evaluatePositionDiagnostics(fenAfter);
     const beforeByTitle = new Map<string, DiagnosticResult>();
@@ -129,19 +130,14 @@ export function explainStockfishMove(fen: string, uci: string): EngineMoveExplan
 
     const tactical: string[] = [];
     if (move.san.includes("#")) tactical.push("Мат: этот ход завершает партию.");
-    else if (beforeDiagnostics.status === "Шах" && !beforeBoard.isCheck()) {
-      // The board has already advanced; this branch is intentionally unused.
-    }
     if (move.captured) tactical.push(`Забирает ${PIECE_NAMES[move.captured] ?? "фигуру"} соперника.`);
     if (move.san === "O-O") tactical.push("Делает короткую рокировку: король уходит с центра, ладья подключается.");
     if (move.san === "O-O-O") tactical.push("Делает длинную рокировку: король уходит с центра, ладья подключается.");
     if (move.promotion) tactical.push(`Проводит пешку в ${PIECE_NAMES[move.promotion] ?? "фигуру"}.`);
 
-    const afterBoard = new Chess(fenAfter);
-    const wasInCheck = new Chess(fen).isCheck();
-    if (wasInCheck && !afterBoard.isCheck()) tactical.push("Снимает шах с вашего короля.");
-    if (afterBoard.isCheckmate()) tactical.push("Ставит мат.");
-    else if (afterBoard.isCheck()) tactical.push("Объявляет шах королю соперника.");
+    if (wasInCheck && !board.isCheck()) tactical.push("Снимает шах с вашего короля.");
+    if (board.isCheckmate()) tactical.push("Ставит мат.");
+    else if (board.isCheck()) tactical.push("Объявляет шах королю соперника.");
 
     return {
       uci,
