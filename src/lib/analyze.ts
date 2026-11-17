@@ -124,8 +124,6 @@ const CACHE_ACCEPT_DEPTH = 16;
 /** Числовые приближения критериев Brilliant вынесены в ./brilliant. */
 
 /** Best: лучший ход движка либо ход, теряющий пренебрежимо мало (п.п. ожидаемых очков). */
-const BEST_EPS = 0.1;
-
 /** Great: на сколько п.п. ожидаемых очков вторая линия хуже лучшей (для новичков щедрее; приближение). */
 function greatGapFor(elo?: number): number {
   if (elo === undefined) return 14;
@@ -567,7 +565,7 @@ export function buildReview(
     const preferSecond = playedSecond && after.depth > 0 && after.depth < second!.depth;
     const scoreAfter: Score = playedIsBest ? top.score : preferSecond ? second!.score : after.lines[0].score;
     const elo = eloOf(color);
-    // Ожидаемые очки с учётом рейтинга игрока (как в Chess.com Classification V2) — для классификации.
+    // Приближение рейтинговых Expected Points для порогов Classification V2; модель Chess.com закрыта.
     const winBefore = winForRated(scoreBefore, color, elo);
     const winAfter = playedIsBest ? winBefore : winForRated(scoreAfter, color, elo);
     const winLoss = Math.max(0, winBefore - winAfter);
@@ -606,7 +604,6 @@ export function buildReview(
     }
 
     let cls: Cls;
-    let exceptionPawn = false;
 
     // Brilliant (Chess.com): хорошая жертва фигуры, ход лучший или почти лучший,
     // после него позиция не плохая, и без него вы не были бы полностью выигрывающим.
@@ -628,7 +625,7 @@ export function buildReview(
       cls = "book";
     } else if (isBrilliant) {
       cls = "brilliant";
-    } else if (playedIsBest || winLoss < BEST_EPS) {
+    } else if (playedIsBest) {
       cls = "best";
       // Great (Chess.com): критичный ход — единственный хороший ход (вторая линия заметно хуже)
       // либо ход, сохраняющий/переводящий позицию в более высокую категорию, чем любая альтернатива.
@@ -658,7 +655,6 @@ export function buildReview(
       // двойного размера ошибки) выигрышных шансов → позиция стала равной или хуже. Пороги — приближение.
       if (
         (cls === "inaccuracy" || cls === "mistake" || cls === "blunder") &&
-        !exceptionPawn &&
         !allowedMate &&
         prevLoss >= 10 &&
         winLoss >= Math.max(8, prevLoss * 0.5) &&
@@ -706,7 +702,6 @@ export function buildReview(
       legalMoves: legal,
       isCheck,
       isMate: isMateMove,
-      exceptionPawn,
       bestSecondGapCp: gapCp,
       bestSecondSan: secondSan,
     });
