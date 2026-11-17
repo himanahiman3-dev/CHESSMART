@@ -181,7 +181,7 @@ export function formatSuiteBytes(bytes: number | null): string {
     value /= 1024;
     index += 1;
   }
-  return value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2) + " " + units[index];
+  return value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 0) + " " + units[index];
 }
 
 export function normalizeSuiteSettings(value: unknown): SuiteSettings {
