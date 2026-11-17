@@ -101,6 +101,47 @@ function Main() {
     };
   }, []);
 
+  // Hydrate the signed-in identity even for accounts created before avatar/profile caching existed.
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateAccount = async () => {
+      const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\\/$/, "") ?? "";
+      const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? "";
+      if (!url || !key || readAccountProfile()) return;
+      try {
+        const raw = localStorage.getItem("chessmart:account-session:v2");
+        if (!raw) return;
+        let saved = JSON.parse(raw) as { access_token: string; refresh_token: string; expires_at: number };
+        if (!saved.access_token) return;
+        if (saved.expires_at <= Date.now() + 60_000 && saved.refresh_token) {
+          const refreshedResponse = await fetch(url + "/auth/v1/token?grant_type=refresh_token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: key },
+            body: JSON.stringify({ refresh_token: saved.refresh_token }),
+          });
+          const refreshed = await refreshedResponse.json();
+          if (!refreshedResponse.ok || !refreshed.access_token) return;
+          saved = { ...refreshed, expires_at: Date.now() + (refreshed.expires_in ?? 3600) * 1000 };
+          localStorage.setItem("chessmart:account-session:v2", JSON.stringify(saved));
+        }
+        const response = await fetch(url + "/functions/v1/game-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: key, Authorization: "Bearer " + saved.access_token },
+          body: JSON.stringify({ action: "profile" }),
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled && data.profile?.user_id && data.profile?.username) {
+          const profile = data.profile as AccountProfile;
+          try { localStorage.setItem("chessmart:account-profile:v1", JSON.stringify(profile)); } catch { /* storage may be unavailable */ }
+          setAccountProfile(profile);
+        }
+      } catch { /* offline or an expired session; OnlinePlayScreen handles its own reconnect flow */ }
+    };
+    void hydrateAccount();
+    return () => { cancelled = true; };
+  }, []);
+
   const start = useCallback(async (pgn: string, depth: number) => {
     if (!engine) return;
     abortRef.current?.abort();
