@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { PlayerProfile } from "../lib/playerProfile";
 import {
   applySuitePreferences,
@@ -44,7 +44,7 @@ const TABS: Array<{ id: HubTab; label: string }> = [
   { id: "settings", label: "Интерфейс" },
 ];
 
-function Panel({ title, eyebrow, children, className = "" }: { title: string; eyebrow?: string; children: React.ReactNode; className?: string }) {
+function Panel({ title, eyebrow, children, className = "" }: { title: string; eyebrow?: string; children: ReactNode; className?: string }) {
   return (
     <section className={"rounded-2xl border border-[#3d4937] bg-[#252b23] p-4 sm:p-5 " + className}>
       {eyebrow && <div className="mb-1 text-[9px] font-black uppercase tracking-[0.18em] text-[#8ca27b]">{eyebrow}</div>}
@@ -265,7 +265,7 @@ export function SystemsHubScreen({ profile, onBack, onNavigate }: {
             <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Локальный рейтинг" value={profile.rating + " Elo"} detail={"Пик: " + dashboard.metrics.peakRating + " Elo"} />
               <Metric label="Точность разборов" value={dashboard.metrics.averageAccuracy === null ? "—" : dashboard.metrics.averageAccuracy.toFixed(1) + "%"} detail={dashboard.metrics.recentAccuracy === null ? "Нужно больше разборов" : "Последние партии: " + dashboard.metrics.recentAccuracy.toFixed(1) + "%"} />
-              <Metric label="Победы против бота" value={dashboard.metrics.winRate.toFixed(1) + "%"} detail={dashboard.metrics.games + " партий · " + dashboard.metrics.currentForm.join(" ") || "Нет сыгранных партий"} tone="text-[#c5dfaa]" />
+              <Metric label="Победы против бота" value={dashboard.metrics.winRate.toFixed(1) + "%"} detail={dashboard.metrics.games + " партий · " + (dashboard.metrics.currentForm.join(" ") || "нет истории") } tone="text-[#c5dfaa]" />
               <Metric label="Учебные задачи" value={String(dashboard.metrics.solvedPuzzleCount)} detail={dashboard.metrics.puzzleBacklog + " сохранённых ошибок ждут повтора"} tone="text-[#a6d6d0]" />
             </section>
 
