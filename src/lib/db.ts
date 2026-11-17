@@ -6,7 +6,7 @@
  *   meta      — манифест закэшированных файлов движка и настройки
  */
 import type { EngineLine, PositionEval } from "../types";
-import { fenKey } from "./format";
+import { fenKey } from "./format.ts";
 
 const DB_NAME = "chess-review-db";
 const DB_VERSION = 1;
