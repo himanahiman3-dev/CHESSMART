@@ -78,7 +78,11 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     setThinking(true);
     setEngineError(null);
     handle.promise
-      .then((lines) => {
+      .then(async (lines) => {
+        if (stale) return;
+        // Небольшая пауза после расчёта делает ответ бота визуально естественнее
+        // и даёт игроку время заметить свой последний ход.
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
         if (stale) return;
         const legalUci = game.moves({ verbose: true }).map((move) => move.from + move.to + (move.promotion ?? ""));
         const uci = chooseBotMove(lines, legalUci, botElo);
