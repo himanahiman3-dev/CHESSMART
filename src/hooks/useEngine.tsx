@@ -29,6 +29,7 @@ interface EngineCtx {
   start: (v?: EngineVariant) => Promise<void>;
   isolated: boolean;
   cachedVariants: Record<EngineVariant, boolean>;
+  createVerifier: (signal?: AbortSignal) => Promise<StockfishEngine | null>;
 }
 
 const Ctx = createContext<EngineCtx | null>(null);
@@ -59,6 +60,29 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => {
     engine?.terminate();
   }, [engine]);
+
+  const createVerifier = useCallback(async (signal?: AbortSignal): Promise<StockfishEngine | null> => {
+    const selectedVariant = info?.variant ?? variant;
+    const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
+    const memory = typeof navigator !== "undefined"
+      ? (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+      : undefined;
+    // A second WASM instance is optional: avoid doubling pressure on low-end devices.
+    if (cores < 4 || (selectedVariant === "full" && memory !== undefined && memory < 8)) return null;
+
+    const bundle = await prepareEngineFiles(getFileSet(selectedVariant, false), () => undefined, signal);
+    if (signal?.aborted) {
+      URL.revokeObjectURL(bundle.jsUrl);
+      URL.revokeObjectURL(bundle.wasmUrl);
+      throw new Error("cancelled");
+    }
+    const verifier = await StockfishEngine.create(bundle, 64);
+    if (signal?.aborted) {
+      verifier.terminate();
+      throw new Error("cancelled");
+    }
+    return verifier;
+  }, [info?.variant, variant]);
 
   const setVariant = useCallback((v: EngineVariant) => {
     setVariantState(v);
@@ -121,8 +145,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<EngineCtx>(
-    () => ({ engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants }),
-    [engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants]
+    () => ({ engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier }),
+    [engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
