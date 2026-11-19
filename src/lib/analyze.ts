@@ -74,7 +74,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /* ------------------------------------------------------------------ */
 
 import { gameBudgetMs, slotForPosition, TIME_PER_MOVE_MS } from "./analysisBudget";
-import { rankCriticalPositions } from "./criticalPositionRanking";
+import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
@@ -278,10 +278,7 @@ export function selectCriticalPositions(
     const tactical = !!move.captured || move.san.includes("+") || move.san.includes("#")
       || move.uci.length > 4 || sacrifice;
 
-    const deservesReview = estimatedLoss >= 2.5
-      || (legal >= 18 && secondLineGap >= 6)
-      || (tactical && estimatedLoss >= 1.5);
-    if (!deservesReview) continue;
+    if (!shouldRecheckCriticalPosition(estimatedLoss, secondLineGap, legal, tactical)) continue;
 
     const priority = estimatedLoss * 2
       + Math.min(secondLineGap, 30) * 0.55
