@@ -44,10 +44,10 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
       depthBonus: 0,
       mainMultiPv: 2,
       verifierEnabled,
-      verifierMaxMoves: 2,
+      verifierMaxMoves: 1,
       verifierBudgetMs: 900,
-      verifierMoveTimeMs: 180,
-      tacticalExtraBudgetMs: 2400,
+      verifierMoveTimeMs: 800,
+      tacticalExtraBudgetMs: 2600,
     };
   }
 
@@ -65,9 +65,9 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
     depthBonus: highEndPc ? 5 : lowResourcePc ? 2 : 3,
     mainMultiPv: highEndPc ? 4 : lowResourcePc ? 2 : 3,
     verifierEnabled,
-    verifierMaxMoves: highEndPc ? 5 : 3,
-    verifierBudgetMs: highEndPc ? 2600 : 1800,
-    verifierMoveTimeMs: highEndPc ? 320 : 240,
-    tacticalExtraBudgetMs: highEndPc ? 5000 : 3600,
+    verifierMaxMoves: 2,
+    verifierBudgetMs: highEndPc ? 5000 : 3600,
+    verifierMoveTimeMs: highEndPc ? 2400 : 1800,
+    tacticalExtraBudgetMs: highEndPc ? 6500 : 5000,
   };
 }
