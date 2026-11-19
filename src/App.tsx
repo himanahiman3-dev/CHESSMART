@@ -83,7 +83,7 @@ function BrandMark() {
 }
 
 function Main() {
-  const { engine, status, createVerifier } = useEngine();
+  const { engine, status, createVerifier, computeProfile } = useEngine();
   const [stage, setStage] = useState<Stage>("import");
   const [mode, setMode] = useState<MainMode>("review");
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null);
@@ -187,7 +187,8 @@ function Main() {
           setIsRefining(true);
           setStage("review");
         },
-        createVerifier
+        createVerifier,
+        computeProfile
       );
       if (controller.signal.aborted || abortRef.current !== controller) return;
       setReview(result);
@@ -210,7 +211,7 @@ function Main() {
         setStage("import");
       }
     }
-  }, [engine, createVerifier]);
+  }, [engine, createVerifier, computeProfile]);
 
   const changeMode = useCallback((next: MainMode) => {
     abortRef.current?.abort();
