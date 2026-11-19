@@ -52,7 +52,8 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
   }
 
   const lowResourcePc = cores <= 4 || (memory !== undefined && memory <= 4);
-  const highEndPc = cores >= 12 && (memory === undefined || memory >= 16);
+  // Chromium reports deviceMemory in coarse buckets capped at 8 GB, so 8 is the top observable value.
+  const highEndPc = cores >= 12 && (memory === undefined || memory >= 8);
   const maxThreads = Math.min(16, Math.max(1, cores - 1));
   const verifierEnabled = cores >= 6 && (memory === undefined || memory >= 8);
 
