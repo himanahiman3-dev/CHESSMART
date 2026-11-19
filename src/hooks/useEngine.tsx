@@ -157,7 +157,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       const lite = await isEngineCached(getFileSet("lite", threadedCache));
       if (!alive) return;
       setCachedVariants({ full, lite });
-      const preferred = full && variant === "full" ? "full" : lite && variant === "lite" ? "lite" : full ? "full" : lite ? "lite" : null;
+      const preferred = variant === "full" ? (full ? "full" : null) : (lite ? "lite" : null);
       if (preferred) void start(preferred);
       else setStatus("idle");
     })();
