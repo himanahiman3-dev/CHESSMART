@@ -38,7 +38,7 @@ interface EngineCtx {
 
 const Ctx = createContext<EngineCtx | null>(null);
 
-const LS_KEY = "chess-review:engine-variant";
+const LS_KEY = "chess-review:engine-variant:v2";
 
 export function EngineProvider({ children }: { children: ReactNode }) {
   const computeProfile = useMemo(() => {
