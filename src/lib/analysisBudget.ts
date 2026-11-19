@@ -11,12 +11,13 @@ export const TIME_PER_MOVE_MS = 400;
 const MIN_POSITION_MS = 120;
 
 /** Total main-pass search budget for a game with the given number of played plies. */
-export function gameBudgetMs(moveCount: number): number {
+export function gameBudgetMs(moveCount: number, timePerMoveMs = TIME_PER_MOVE_MS): number {
   const moves = Math.max(0, Math.floor(moveCount));
   const positions = moves + 1;
+  const perMove = Math.max(MIN_POSITION_MS, Math.floor(timePerMoveMs));
   // Reserve at least MIN_POSITION_MS for every evaluated position.
   // A one-ply game still needs both its initial and final positions.
-  return Math.max(moves * TIME_PER_MOVE_MS, positions * MIN_POSITION_MS);
+  return Math.max(moves * perMove, positions * MIN_POSITION_MS);
 }
 
 /**
