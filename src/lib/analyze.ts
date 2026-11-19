@@ -304,6 +304,7 @@ async function refineCriticalPositions(
   createVerifier?: (signal?: AbortSignal) => Promise<StockfishEngine | null>,
   maxCandidates = MULTI_ENGINE_MAX_MOVES,
   maxMoveTimeMs = MULTI_ENGINE_MOVETIME_MS,
+  beforeMultiPv = 5,
   enabled = true
 ): Promise<void> {
   if (!enabled || !createVerifier || now() >= deadlineAt) return;
@@ -343,7 +344,8 @@ async function refineCriticalPositions(
         );
         searchesLeft--;
         const fen = game.fens[index];
-        const multipv = index === candidate.index ? 4 : 2;
+        // Use distinct MultiPV keys so a shallow main-pass cache cannot short-circuit verification.
+        const multipv = index === candidate.index ? beforeMultiPv : 1;
         onProgress({
           done: game.moves.length,
           total: game.moves.length + 1,
@@ -479,6 +481,7 @@ export async function reviewGame(
     createVerifier,
     computeProfile?.verifierMaxMoves ?? MULTI_ENGINE_MAX_MOVES,
     computeProfile?.verifierMoveTimeMs ?? MULTI_ENGINE_MOVETIME_MS,
+    Math.min(5, mainMultiPv + 1),
     computeProfile?.verifierEnabled ?? true
   );
   const refineDeadline = Math.min(tacticalDeadline, now() + REFINE_TOTAL_BUDGET_MS);
