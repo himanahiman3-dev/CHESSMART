@@ -73,7 +73,8 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { gameBudgetMs, slotForPosition } from "./analysisBudget";
+import { gameBudgetMs, slotForPosition, TIME_PER_MOVE_MS } from "./analysisBudget";
+import { rankCriticalPositions } from "./criticalPositionRanking";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
@@ -136,6 +137,17 @@ const MULTI_ENGINE_MOVETIME_MS = 220;
 function playerElo(headers: Record<string, string>, c: Color): number | undefined {
   const v = parseInt(headers[c === "w" ? "WhiteElo" : "BlackElo"] ?? "", 10);
   return Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
+export interface ReviewComputeProfile {
+  timePerMoveMs: number;
+  depthBonus: number;
+  mainMultiPv: number;
+  verifierEnabled: boolean;
+  verifierMaxMoves: number;
+  verifierBudgetMs: number;
+  verifierMoveTimeMs: number;
+  tacticalExtraBudgetMs: number;
 }
 
 export interface AnalyzeProgress {
@@ -278,9 +290,7 @@ export function selectCriticalPositions(
     candidates.push({ index: i, priority, estimatedLoss, secondLineGap });
   }
 
-  return candidates
-    .sort((a, b) => b.priority - a.priority || a.index - b.index)
-    .slice(0, Math.max(0, Math.floor(maxCandidates)));
+  return rankCriticalPositions(candidates, maxCandidates);
 }
 
 /**
@@ -294,10 +304,13 @@ async function refineCriticalPositions(
   onProgress: (p: AnalyzeProgress) => void,
   signal: AbortSignal | undefined,
   deadlineAt: number,
-  createVerifier?: (signal?: AbortSignal) => Promise<StockfishEngine | null>
+  createVerifier?: (signal?: AbortSignal) => Promise<StockfishEngine | null>,
+  maxCandidates = MULTI_ENGINE_MAX_MOVES,
+  maxMoveTimeMs = MULTI_ENGINE_MOVETIME_MS,
+  enabled = true
 ): Promise<void> {
-  if (!createVerifier || now() >= deadlineAt) return;
-  const candidates = selectCriticalPositions(game, positions);
+  if (!enabled || !createVerifier || now() >= deadlineAt) return;
+  const candidates = selectCriticalPositions(game, positions, maxCandidates);
   if (!candidates.length) return;
 
   let verifier: StockfishEngine | null = null;
@@ -328,7 +341,7 @@ async function refineCriticalPositions(
         if (remainingMs < 90) return;
 
         const movetimeMs = Math.min(
-          MULTI_ENGINE_MOVETIME_MS,
+          maxMoveTimeMs,
           Math.max(80, Math.floor(remainingMs / Math.max(1, searchesLeft)))
         );
         searchesLeft--;
@@ -385,12 +398,18 @@ export async function reviewGame(
   signal?: AbortSignal,
   moveTimeMs?: number,
   onPartialReview?: (review: GameReview) => void,
-  createVerifier?: (signal?: AbortSignal) => Promise<StockfishEngine | null>
+  createVerifier?: (signal?: AbortSignal) => Promise<StockfishEngine | null>,
+  computeProfile?: ReviewComputeProfile
 ): Promise<GameReview> {
   const game = parseGame(pgn);
   const N = game.moves.length;
   const total = N + 1;
-  const budgetMs = gameBudgetMs(N);
+  const timePerMoveMs = computeProfile?.timePerMoveMs ?? TIME_PER_MOVE_MS;
+  const effectiveDepth = Math.min(32, Math.max(1, depth + (computeProfile?.depthBonus ?? 0)));
+  const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
+  const tacticalExtraBudgetMs = computeProfile?.tacticalExtraBudgetMs ?? TACTICAL_EXTRA_BUDGET_MS;
+  const verifierBudgetMs = computeProfile?.verifierBudgetMs ?? MULTI_ENGINE_RECHECK_BUDGET_MS;
+  const budgetMs = gameBudgetMs(N, timePerMoveMs);
   const startedAt = now();
   engine.newGame();
   const positions: PositionEval[] = [];
@@ -413,15 +432,15 @@ export async function reviewGame(
     const { evalResult, fromCache } = await evaluatePosition(
       engine,
       fen,
-      depth,
-      2,
+      effectiveDepth,
+      mainMultiPv,
       signal,
       (lines) => {
         onProgress({
           done: i,
           total,
           depth: Math.min(...lines.map((l) => l.depth)),
-          targetDepth: depth,
+          targetDepth: effectiveDepth,
           cached: cachedHits,
           fen,
           budgetMs,
@@ -437,8 +456,8 @@ export async function reviewGame(
   onProgress({
     done: total,
     total,
-    depth,
-    targetDepth: depth,
+    depth: effectiveDepth,
+    targetDepth: effectiveDepth,
     cached: cachedHits,
     fen: game.fens[N],
     budgetMs,
@@ -449,15 +468,26 @@ export async function reviewGame(
   // Publish a complete, immediately usable review before the optional deep
   // tactical passes. The same positions are refined below and the caller gets
   // the final, higher-confidence result from the returned Promise.
-  onPartialReview?.(buildReview(game, positions, depth));
+  onPartialReview?.(buildReview(game, positions, effectiveDepth));
 
-  const tacticalDeadline = now() + TACTICAL_EXTRA_BUDGET_MS;
-  const multiEngineDeadline = Math.min(tacticalDeadline, now() + MULTI_ENGINE_RECHECK_BUDGET_MS);
-  await refineCriticalPositions(game, positions, depth, onProgress, signal, multiEngineDeadline, createVerifier);
+  const tacticalDeadline = now() + tacticalExtraBudgetMs;
+  const multiEngineDeadline = Math.min(tacticalDeadline, now() + verifierBudgetMs);
+  await refineCriticalPositions(
+    game,
+    positions,
+    effectiveDepth,
+    onProgress,
+    signal,
+    multiEngineDeadline,
+    createVerifier,
+    computeProfile?.verifierMaxMoves ?? MULTI_ENGINE_MAX_MOVES,
+    computeProfile?.verifierMoveTimeMs ?? MULTI_ENGINE_MOVETIME_MS,
+    computeProfile?.verifierEnabled ?? true
+  );
   const refineDeadline = Math.min(tacticalDeadline, now() + REFINE_TOTAL_BUDGET_MS);
-  await refineSacrifices(game, positions, depth, engine, onProgress, signal, refineDeadline);
-  const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, depth, engine, signal, tacticalDeadline);
-  return buildReview(game, positions, depth, deferredSacrifices);
+  await refineSacrifices(game, positions, effectiveDepth, engine, onProgress, signal, refineDeadline);
+  const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, effectiveDepth, engine, signal, tacticalDeadline);
+  return buildReview(game, positions, effectiveDepth, deferredSacrifices);
 }
 
 /**
