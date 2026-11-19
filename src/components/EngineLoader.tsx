@@ -161,7 +161,7 @@ export function EngineLoader() {
                 <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#839078]">Многопоточность</span>
-                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold ${isolated ? "bg-[#8eb86b]/15 text-[#bce09a]" : "bg-[#c49c56]/15 text-[#e1c184]"}`}>{threadedMode ? "Используется" : "Однопоточный режим"}</span>
+                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold ${threadedMode ? "bg-[#8eb86b]/15 text-[#bce09a]" : "bg-[#c49c56]/15 text-[#e1c184]"}`}>{threadedMode ? "Используется" : "Однопоточный режим"}</span>
                   </div>
                   <p className="mt-2 text-xs leading-relaxed text-[#a1ab98]">
                     {threadedMode ? `ПК использует до ${computeProfile.maxThreads} потоков Stockfish.` : computeProfile.device === "mobile" ? "Телефон использует один поток, чтобы не перегревать устройство и не расходовать батарею." : "Для этого браузера используется однопоточная сборка Stockfish."}
