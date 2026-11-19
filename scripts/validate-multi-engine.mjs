@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { getDeviceAnalysisProfile } from "../src/lib/computeProfile.ts";
-import { rankCriticalPositions } from "../src/lib/criticalPositionRanking.ts";
+import { rankCriticalPositions, shouldRecheckCriticalPosition } from "../src/lib/criticalPositionRanking.ts";
 
 const powerfulDesktop = getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0",
@@ -66,5 +66,14 @@ assert.deepEqual(rankCriticalPositions(ranked, 0), [],
   "A zero candidate limit disables secondary searches");
 assert.deepEqual(rankCriticalPositions(ranked, 10), ranked,
   "A candidate limit larger than the shortlist must retain all candidates");
+
+assert.equal(shouldRecheckCriticalPosition(2.5, 0, 20, false), true,
+  "A meaningful evaluation loss must trigger a second search");
+assert.equal(shouldRecheckCriticalPosition(0.5, 6, 18, false), true,
+  "A position with a sharply superior alternative should be re-checked");
+assert.equal(shouldRecheckCriticalPosition(1.5, 0, 10, true), true,
+  "A tactical position with a measurable swing should be re-checked");
+assert.equal(shouldRecheckCriticalPosition(1.4, 0, 10, false), false,
+  "Quiet, stable positions should not use a second engine");
 
 console.log("Adaptive analysis validated: desktop-max, mobile-balanced, strong-phone verification, and critical-position ranking.");
