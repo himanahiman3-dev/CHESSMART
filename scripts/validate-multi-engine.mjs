@@ -15,8 +15,9 @@ assert.equal(powerfulDesktop.hashMb, 512);
 assert.equal(powerfulDesktop.timePerMoveMs, 1400);
 assert.equal(powerfulDesktop.depthBonus, 5);
 assert.equal(powerfulDesktop.mainMultiPv, 4);
-assert.equal(powerfulDesktop.verifierMaxMoves, 5);
-assert.equal(powerfulDesktop.verifierBudgetMs, 2600);
+assert.equal(powerfulDesktop.verifierMaxMoves, 2);
+assert.equal(powerfulDesktop.verifierBudgetMs, 5000);
+assert.equal(powerfulDesktop.verifierMoveTimeMs, 2400);
 
 const ordinaryDesktop = getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (X11; Linux x86_64) Firefox/130.0",
@@ -51,7 +52,8 @@ const powerfulPhone = getDeviceAnalysisProfile({
 });
 assert.equal(powerfulPhone.device, "mobile");
 assert.equal(powerfulPhone.verifierEnabled, true);
-assert.equal(powerfulPhone.verifierMaxMoves, 2);
+assert.equal(powerfulPhone.verifierMaxMoves, 1);
+assert.equal(powerfulPhone.verifierMoveTimeMs, 800);
 assert.ok(powerfulPhone.verifierBudgetMs < ordinaryDesktop.verifierBudgetMs,
   "A phone gets a smaller secondary-search budget than a PC");
 
