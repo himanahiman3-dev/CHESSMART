@@ -120,7 +120,10 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       const attempt = async (threaded: boolean) => {
         const set = getFileSet(chosen, threaded);
         const bundle = await prepareEngineFiles(set, (p) => setProgress(p));
-        const eng = await StockfishEngine.create(bundle, computeProfile.hashMb, computeProfile.maxThreads);
+        const configuredHashMb = threaded
+          ? computeProfile.hashMb
+          : Math.min(computeProfile.hashMb, chosen === "full" ? 512 : 64);
+        const eng = await StockfishEngine.create(bundle, configuredHashMb, computeProfile.maxThreads);
         setEngine(eng);
         setInfo({
           variant: chosen,
@@ -128,7 +131,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
           threads: eng.threads,
           fromCache: bundle.fromCache,
           device: computeProfile.device,
-          hashMb: computeProfile.hashMb,
+          hashMb: configuredHashMb,
         });
         setStatus("ready");
       };
