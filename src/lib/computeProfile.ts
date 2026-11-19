@@ -27,9 +27,9 @@ export interface DeviceAnalysisProfile {
 export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysisProfile {
   const ua = signals.userAgent ?? "";
   const touchMac = /Macintosh/i.test(ua) && (signals.maxTouchPoints ?? 0) > 1;
-  const detectedMobile = signals.mobile ?? (
-    /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(ua) || touchMac
-  );
+  const detectedMobile = signals.mobile === true
+    || /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(ua)
+    || touchMac;
   const cores = Math.max(1, Math.floor(signals.hardwareConcurrency || 2));
   const memory = Number.isFinite(signals.deviceMemory) ? signals.deviceMemory! : undefined;
 
