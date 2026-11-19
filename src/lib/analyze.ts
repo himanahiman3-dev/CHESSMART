@@ -423,7 +423,7 @@ export async function reviewGame(
       done: i,
       total,
       depth: 0,
-      targetDepth: depth,
+      targetDepth: effectiveDepth,
       cached: cachedHits,
       fen,
       budgetMs,
