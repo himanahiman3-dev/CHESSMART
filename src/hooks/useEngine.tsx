@@ -84,7 +84,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     // Secondary verification is enabled only on devices with enough spare compute and memory.
     if (!computeProfile.verifierEnabled) return null;
 
-    const bundle = await prepareEngineFiles(getFileSet(selectedVariant, false), () => undefined, signal);
+    const verifierThreaded = isolated && computeProfile.device === "desktop" && computeProfile.maxThreads > 1;
+    const bundle = await prepareEngineFiles(getFileSet(selectedVariant, verifierThreaded), () => undefined, signal);
     if (signal?.aborted) {
       URL.revokeObjectURL(bundle.jsUrl);
       URL.revokeObjectURL(bundle.wasmUrl);
@@ -96,7 +97,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       throw new Error("cancelled");
     }
     return verifier;
-  }, [info?.variant, variant, computeProfile]);
+  }, [info?.variant, variant, computeProfile, isolated]);
 
   const setVariant = useCallback((v: EngineVariant) => {
     setVariantState(v);
