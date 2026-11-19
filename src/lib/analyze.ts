@@ -330,53 +330,52 @@ async function refineCriticalPositions(
   try {
     verifier.newGame();
     const targetDepth = Math.min(32, Math.max(16, depth + 4));
-    let searchesLeft = candidates.length * 2;
+    let searchesLeft = candidates.length;
 
     for (const candidate of candidates) {
-      for (const index of [candidate.index, candidate.index + 1]) {
-        if (signal?.aborted) throw new Error("cancelled");
-        const remainingMs = Math.floor(deadlineAt - now());
-        if (remainingMs < 90) return;
+      if (signal?.aborted) throw new Error("cancelled");
+      const index = candidate.index;
+      const remainingMs = Math.floor(deadlineAt - now());
+      if (remainingMs < 90) return;
 
-        const movetimeMs = Math.min(
-          maxMoveTimeMs,
-          Math.max(80, Math.floor(remainingMs / Math.max(1, searchesLeft)))
-        );
-        searchesLeft--;
-        const fen = game.fens[index];
-        // Use distinct MultiPV keys so a shallow main-pass cache cannot short-circuit verification.
-        const multipv = index === candidate.index ? beforeMultiPv : 1;
-        onProgress({
-          done: game.moves.length,
-          total: game.moves.length + 1,
-          depth: 0,
-          targetDepth,
-          cached: 0,
+      const movetimeMs = Math.min(
+        maxMoveTimeMs,
+        Math.max(80, Math.floor(remainingMs / Math.max(1, searchesLeft)))
+      );
+      searchesLeft--;
+      const fen = game.fens[index];
+      // Use a MultiPV count distinct from the main pass, forcing a fresh, deeper root search.
+      onProgress({
+        done: game.moves.length,
+        total: game.moves.length + 1,
+        depth: 0,
+        targetDepth,
+        cached: 0,
+        fen,
+      });
+
+      try {
+        const { evalResult } = await evaluatePosition(
+          verifier,
           fen,
-        });
-
-        try {
-          const { evalResult } = await evaluatePosition(
-            verifier,
-            fen,
-            targetDepth,
-            multipv,
-            signal,
-            undefined,
-            movetimeMs,
-            {
-              startFen: game.startFen,
-              moves: game.moves.slice(0, index).map((move) => move.uci),
-            }
-          );
-          if (evalResult.depth > positions[index].depth) positions[index] = evalResult;
-        } catch (error) {
-          if (signal?.aborted || (error instanceof Error && error.message === "cancelled")) {
-            throw new Error("cancelled");
+          targetDepth,
+          beforeMultiPv,
+          signal,
+          undefined,
+          movetimeMs,
+          {
+            startFen: game.startFen,
+            moves: game.moves.slice(0, index).map((move) => move.uci),
           }
-          // Do not spend the remaining budget repeatedly on a worker that stopped responding.
-          return;
+        );
+        // Equal-depth independent searches can still surface a better root line.
+        if (evalResult.depth >= positions[index].depth) positions[index] = evalResult;
+      } catch (error) {
+        if (signal?.aborted || (error instanceof Error && error.message === "cancelled")) {
+          throw new Error("cancelled");
         }
+        // Do not spend the remaining budget repeatedly on a worker that stopped responding.
+        return;
       }
     }
   } finally {
