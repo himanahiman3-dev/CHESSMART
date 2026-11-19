@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StockfishEngine } from "../lib/engine";
+import { getDeviceAnalysisProfile, type DeviceAnalysisProfile } from "../lib/computeProfile";
 import {
   canUseThreads,
   getFileSet,
@@ -16,6 +17,8 @@ export interface EngineInfo {
   threaded: boolean;
   threads: number;
   fromCache: boolean;
+  device: DeviceAnalysisProfile["device"];
+  hashMb: number;
 }
 
 interface EngineCtx {
@@ -30,6 +33,7 @@ interface EngineCtx {
   isolated: boolean;
   cachedVariants: Record<EngineVariant, boolean>;
   createVerifier: (signal?: AbortSignal) => Promise<StockfishEngine | null>;
+  computeProfile: DeviceAnalysisProfile;
 }
 
 const Ctx = createContext<EngineCtx | null>(null);
@@ -37,6 +41,20 @@ const Ctx = createContext<EngineCtx | null>(null);
 const LS_KEY = "chess-review:engine-variant";
 
 export function EngineProvider({ children }: { children: ReactNode }) {
+  const computeProfile = useMemo(() => {
+    const nav = typeof navigator !== "undefined" ? navigator : undefined;
+    const extended = nav as (Navigator & {
+      deviceMemory?: number;
+      userAgentData?: { mobile?: boolean };
+    }) | undefined;
+    return getDeviceAnalysisProfile({
+      userAgent: nav?.userAgent,
+      mobile: extended?.userAgentData?.mobile,
+      maxTouchPoints: nav?.maxTouchPoints,
+      hardwareConcurrency: nav?.hardwareConcurrency,
+      deviceMemory: extended?.deviceMemory,
+    });
+  }, []);
   const [engine, setEngine] = useState<StockfishEngine | null>(null);
   const [status, setStatus] = useState<EngineStatus>("checking");
   const [progress, setProgress] = useState<EngineProgress | null>(null);
@@ -50,7 +68,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
-    return "full";
+    return computeProfile.defaultVariant;
   });
   const startedRef = useRef(false);
   const isolated = canUseThreads();
@@ -63,12 +81,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
 
   const createVerifier = useCallback(async (signal?: AbortSignal): Promise<StockfishEngine | null> => {
     const selectedVariant = info?.variant ?? variant;
-    const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-    const memory = typeof navigator !== "undefined"
-      ? (navigator as Navigator & { deviceMemory?: number }).deviceMemory
-      : undefined;
-    // A second WASM instance is optional: avoid doubling pressure on low-end devices.
-    if (cores < 4 || (selectedVariant === "full" && memory !== undefined && memory < 8)) return null;
+    // Secondary verification is enabled only on devices with enough spare compute and memory.
+    if (!computeProfile.verifierEnabled) return null;
 
     const bundle = await prepareEngineFiles(getFileSet(selectedVariant, false), () => undefined, signal);
     if (signal?.aborted) {
@@ -76,13 +90,13 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       URL.revokeObjectURL(bundle.wasmUrl);
       throw new Error("cancelled");
     }
-    const verifier = await StockfishEngine.create(bundle, 64);
+    const verifier = await StockfishEngine.create(bundle, Math.min(128, computeProfile.hashMb), 1);
     if (signal?.aborted) {
       verifier.terminate();
       throw new Error("cancelled");
     }
     return verifier;
-  }, [info?.variant, variant]);
+  }, [info?.variant, variant, computeProfile]);
 
   const setVariant = useCallback((v: EngineVariant) => {
     setVariantState(v);
@@ -101,21 +115,29 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       setVariant(chosen);
       setError(null);
       setStatus("loading");
+      const threadedAllowed = isolated && computeProfile.device === "desktop" && computeProfile.maxThreads > 1;
       const attempt = async (threaded: boolean) => {
         const set = getFileSet(chosen, threaded);
         const bundle = await prepareEngineFiles(set, (p) => setProgress(p));
-        const eng = await StockfishEngine.create(bundle, chosen === "full" ? 128 : 64);
+        const eng = await StockfishEngine.create(bundle, computeProfile.hashMb, computeProfile.maxThreads);
         setEngine(eng);
-        setInfo({ variant: chosen, threaded, threads: eng.threads, fromCache: bundle.fromCache });
+        setInfo({
+          variant: chosen,
+          threaded,
+          threads: eng.threads,
+          fromCache: bundle.fromCache,
+          device: computeProfile.device,
+          hashMb: computeProfile.hashMb,
+        });
         setStatus("ready");
       };
       try {
         try {
-          await attempt(isolated);
+          await attempt(threadedAllowed);
         } catch (e) {
-          if (!isolated) throw e;
+          if (!threadedAllowed) throw e;
           console.warn("Многопоточный движок не запустился, пробуем однопоточный", e);
-          await attempt(false); // автоматический fallback
+          await attempt(false); // automatic fallback, keep desktop hash budget
         }
       } catch (e) {
         startedRef.current = false;
@@ -123,7 +145,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
         setStatus("error");
       }
     },
-    [variant, isolated, setVariant]
+    [variant, isolated, setVariant, computeProfile]
   );
 
   // Проверяем кэш; если движок уже скачан — поднимаем мгновенно.
@@ -145,8 +167,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<EngineCtx>(
-    () => ({ engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier }),
-    [engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier]
+    () => ({ engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier, computeProfile }),
+    [engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier, computeProfile]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
