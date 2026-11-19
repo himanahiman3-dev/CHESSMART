@@ -16,7 +16,8 @@ export function Logo({ size = 44 }: { size?: number }) {
 }
 
 export function EngineLoader() {
-  const { status, progress, error, variant, setVariant, start, isolated, cachedVariants } = useEngine();
+  const { status, progress, error, variant, setVariant, start, isolated, cachedVariants, computeProfile } = useEngine();
+  const threadedMode = isolated && computeProfile.device === "desktop" && computeProfile.maxThreads > 1;
   const busy = status === "loading" || status === "checking";
   const pct = progress ? Math.min(100, (progress.loaded / progress.total) * 100) : 0;
 
@@ -79,7 +80,7 @@ export function EngineLoader() {
                 <div className="mt-7 space-y-3">
                   <div className="mb-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#87937c]">Выбери сборку</div>
                   {options.map((option) => {
-                    const set = getFileSet(option.id, isolated);
+                    const set = getFileSet(option.id, threadedMode);
                     const active = variant === option.id;
                     return (
                       <button
@@ -160,10 +161,10 @@ export function EngineLoader() {
                 <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#839078]">Многопоточность</span>
-                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold ${isolated ? "bg-[#8eb86b]/15 text-[#bce09a]" : "bg-[#c49c56]/15 text-[#e1c184]"}`}>{isolated ? "Доступна" : "Ограничена"}</span>
+                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold ${isolated ? "bg-[#8eb86b]/15 text-[#bce09a]" : "bg-[#c49c56]/15 text-[#e1c184]"}`}>{threadedMode ? "Используется" : "Однопоточный режим"}</span>
                   </div>
                   <p className="mt-2 text-xs leading-relaxed text-[#a1ab98]">
-                    {isolated ? "SharedArrayBuffer доступен. Stockfish сможет использовать несколько потоков." : "Браузер пока не изолирован для SharedArrayBuffer. Будет использована однопоточная сборка."}
+                    {threadedMode ? `ПК использует до ${computeProfile.maxThreads} потоков Stockfish.` : computeProfile.device === "mobile" ? "Телефон использует один поток, чтобы не перегревать устройство и не расходовать батарею." : "Для этого браузера используется однопоточная сборка Stockfish."}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
