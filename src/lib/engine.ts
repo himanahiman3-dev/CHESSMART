@@ -178,7 +178,7 @@ export class StockfishEngine {
     this.send("uci");
     await uciok;
     this.send(`setoption name Threads value ${this.threads}`);
-    const safeHashMb = this.threaded ? hashMb : Math.min(hashMb, this.variant === "full" ? 256 : 64);
+    const safeHashMb = this.threaded ? hashMb : Math.min(hashMb, this.variant === "full" ? 512 : 64);
     this.send(`setoption name Hash value ${safeHashMb}`);
     const ready = this.waitFor((line) => line === "readyok", 120000);
     this.send("isready");
