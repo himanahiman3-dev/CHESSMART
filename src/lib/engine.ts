@@ -112,9 +112,10 @@ export class StockfishEngine {
     this.releaseResources();
   }
 
-  static async create(bundle: EngineBundle, hashMb = 128): Promise<StockfishEngine> {
+  static async create(bundle: EngineBundle, hashMb = 128, maxThreads = 8): Promise<StockfishEngine> {
     const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-    const threads = bundle.set.threaded ? Math.max(1, Math.min(8, hw - 1)) : 1;
+    const threadCap = Math.max(1, Math.min(16, Math.floor(maxThreads) || 1));
+    const threads = bundle.set.threaded ? Math.max(1, Math.min(threadCap, hw - 1)) : 1;
     let engine: StockfishEngine | null = null;
     try {
       engine = new StockfishEngine(bundle, threads);
@@ -177,7 +178,8 @@ export class StockfishEngine {
     this.send("uci");
     await uciok;
     this.send(`setoption name Threads value ${this.threads}`);
-    this.send(`setoption name Hash value ${this.threaded ? hashMb : Math.min(hashMb, 64)}`);
+    const safeHashMb = this.threaded ? hashMb : Math.min(hashMb, this.variant === "full" ? 512 : 64);
+    this.send(`setoption name Hash value ${safeHashMb}`);
     const ready = this.waitFor((line) => line === "readyok", 120000);
     this.send("isready");
     await ready;

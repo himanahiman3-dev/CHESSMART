@@ -201,10 +201,17 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
                   Game review studio
                 </span>
                 {info && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/15 px-3 py-1.5 text-[10px] font-semibold text-[#d0d4c9]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#a6d36e]" />
-                    Stockfish 19 · {info.variant === "full" ? "Full" : "Lite"}
-                  </span>
+                  <>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/15 px-3 py-1.5 text-[10px] font-semibold text-[#d0d4c9]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#a6d36e]" />
+                      Stockfish 19 · {info.variant === "full" ? "Full" : "Lite"}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#a8c986]/20 bg-[#a8c986]/10 px-3 py-1.5 text-[10px] font-semibold text-[#c5e3a4]">
+                      {info.device === "desktop"
+                        ? `ПК MAX · ${info.threads} поток(а) · ${info.hashMb} МБ Hash`
+                        : "Мобильный режим · оптимизирован"}
+                    </span>
+                  </>
                 )}
               </div>
               <h1 className="max-w-3xl text-3xl font-black leading-[1.04] tracking-[-0.045em] text-white sm:text-4xl lg:text-[3.45rem]">

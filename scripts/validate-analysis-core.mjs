@@ -7,6 +7,8 @@ import { qBalance } from "../src/lib/see.ts";
 import { gameBudgetMs, slotForPosition } from "../src/lib/analysisBudget.ts";
 
 assert.equal(gameBudgetMs(10), 4000, "A ten-ply game gets the configured base budget");
+assert.equal(gameBudgetMs(10, 1400), 14000, "A desktop profile receives a larger per-move budget");
+assert.equal(gameBudgetMs(10, 80), 1320, "Low requested budgets still reserve the minimum for every position");
 assert.equal(gameBudgetMs(1), 400, "A one-ply game still budgets both evaluated positions");
 assert.ok(gameBudgetMs(10) >= 11 * 120, "The total budget reserves the minimum for every position");
 assert.equal(slotForPosition(4000, 0, 11), 364, "The initial position receives an even share");

@@ -73,7 +73,8 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { gameBudgetMs, slotForPosition } from "./analysisBudget";
+import { gameBudgetMs, slotForPosition, TIME_PER_MOVE_MS } from "./analysisBudget";
+import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
@@ -128,10 +129,25 @@ const REFINE_MAX_MOVES = 8;
 const REFINE_TOTAL_BUDGET_MS = 1400;
 /** Shared hard deadline for all optional tactical passes after the main review. */
 const TACTICAL_EXTRA_BUDGET_MS = 2400;
+/** Extra budget for an independent Stockfish worker on only the most critical positions. */
+const MULTI_ENGINE_RECHECK_BUDGET_MS = 1050;
+const MULTI_ENGINE_MAX_MOVES = 3;
+const MULTI_ENGINE_MOVETIME_MS = 220;
 
 function playerElo(headers: Record<string, string>, c: Color): number | undefined {
   const v = parseInt(headers[c === "w" ? "WhiteElo" : "BlackElo"] ?? "", 10);
   return Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
+export interface ReviewComputeProfile {
+  timePerMoveMs: number;
+  depthBonus: number;
+  mainMultiPv: number;
+  verifierEnabled: boolean;
+  verifierMaxMoves: number;
+  verifierBudgetMs: number;
+  verifierMoveTimeMs: number;
+  tacticalExtraBudgetMs: number;
 }
 
 export interface AnalyzeProgress {
@@ -216,6 +232,158 @@ function legalMoveCount(fen: string): number {
 
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
+export interface CriticalPositionCandidate {
+  index: number;
+  priority: number;
+  estimatedLoss: number;
+  secondLineGap: number;
+}
+
+/**
+ * Pick positions where a shallow first pass is most likely to misjudge the played move:
+ * meaningful evaluation loss, a forced/critical second-line gap, or tactical complications.
+ * Opening-book moves are intentionally excluded.
+ */
+export function selectCriticalPositions(
+  game: ParsedGame,
+  positions: PositionEval[],
+  maxCandidates = MULTI_ENGINE_MAX_MOVES
+): CriticalPositionCandidate[] {
+  const book = analyzeBook(game.moves.map((move) => move.san));
+  const candidates: CriticalPositionCandidate[] = [];
+
+  for (let i = 0; i < game.moves.length; i++) {
+    if (book.isBook[i]) continue;
+    const move = game.moves[i];
+    const before = positions[i];
+    const after = positions[i + 1];
+    const best = before?.lines[0];
+    const playedAfter = after?.lines[0];
+    if (!best || !playedAfter || after.depth === 0) continue;
+
+    const elo = playerElo(game.headers, move.color);
+    const bestWin = winForRated(best.score, move.color, elo);
+    const playedWin = best.pv[0] === move.uci
+      ? bestWin
+      : winForRated(playedAfter.score, move.color, elo);
+    const estimatedLoss = Math.max(0, bestWin - playedWin);
+    const second = before.lines[1];
+    const secondLineGap = second
+      ? Math.max(0, bestWin - winForRated(second.score, move.color, elo))
+      : 0;
+    const legal = legalMoveCount(move.fenBefore);
+    const sacrifice = move.piece !== "p" && move.piece !== "k"
+      ? detectSacrifice(move.fenBefore, move.uci, elo).sacrifice
+      : false;
+    const tactical = !!move.captured || move.san.includes("+") || move.san.includes("#")
+      || move.uci.length > 4 || sacrifice;
+
+    if (!shouldRecheckCriticalPosition(estimatedLoss, secondLineGap, legal, tactical)) continue;
+
+    const priority = estimatedLoss * 2
+      + Math.min(secondLineGap, 30) * 0.55
+      + (tactical ? 4 : 0)
+      + Math.min(legal, 40) * 0.04;
+    candidates.push({ index: i, priority, estimatedLoss, secondLineGap });
+  }
+
+  return rankCriticalPositions(candidates, maxCandidates);
+}
+
+/**
+ * A second, isolated Stockfish worker re-checks a tiny shortlist at higher depth.
+ * It is deliberately time-boxed and never changes normal analysis on low-memory devices.
+ */
+async function refineCriticalPositions(
+  game: ParsedGame,
+  positions: PositionEval[],
+  depth: number,
+  onProgress: (p: AnalyzeProgress) => void,
+  signal: AbortSignal | undefined,
+  deadlineAt: number,
+  createVerifier?: (signal?: AbortSignal) => Promise<StockfishEngine | null>,
+  maxCandidates = MULTI_ENGINE_MAX_MOVES,
+  maxMoveTimeMs = MULTI_ENGINE_MOVETIME_MS,
+  beforeMultiPv = 5,
+  enabled = true
+): Promise<void> {
+  if (!enabled || !createVerifier || now() >= deadlineAt) return;
+  const candidates = selectCriticalPositions(game, positions, maxCandidates);
+  if (!candidates.length) return;
+
+  let verifier: StockfishEngine | null = null;
+  try {
+    verifier = await createVerifier(signal);
+  } catch (error) {
+    if (signal?.aborted || (error instanceof Error && error.message === "cancelled")) {
+      throw new Error("cancelled");
+    }
+    // Verification is an optional quality pass; a failed second worker must not break review.
+    return;
+  }
+  if (!verifier) return;
+  if (signal?.aborted) {
+    verifier.terminate();
+    throw new Error("cancelled");
+  }
+
+  try {
+    verifier.newGame();
+    const targetDepth = Math.min(32, Math.max(16, depth + 4));
+    let searchesLeft = candidates.length;
+
+    for (const candidate of candidates) {
+      if (signal?.aborted) throw new Error("cancelled");
+      const index = candidate.index;
+      const remainingMs = Math.floor(deadlineAt - now());
+      if (remainingMs < 90) return;
+
+      const movetimeMs = Math.min(
+        maxMoveTimeMs,
+        Math.max(80, Math.floor(remainingMs / Math.max(1, searchesLeft)))
+      );
+      searchesLeft--;
+      const fen = game.fens[index];
+      // Use a MultiPV count distinct from the main pass, forcing a fresh, deeper root search.
+      onProgress({
+        done: game.moves.length,
+        total: game.moves.length + 1,
+        depth: 0,
+        targetDepth,
+        cached: 0,
+        fen,
+      });
+
+      try {
+        const { evalResult } = await evaluatePosition(
+          verifier,
+          fen,
+          targetDepth,
+          beforeMultiPv,
+          signal,
+          undefined,
+          movetimeMs,
+          {
+            startFen: game.startFen,
+            moves: game.moves.slice(0, index).map((move) => move.uci),
+          }
+        );
+        // Equal-depth independent searches can still surface a better root line.
+        if (evalResult.depth >= positions[index].depth) positions[index] = evalResult;
+      } catch (error) {
+        if (signal?.aborted || (error instanceof Error && error.message === "cancelled")) {
+          throw new Error("cancelled");
+        }
+        // Do not spend the remaining budget repeatedly on a worker that stopped responding.
+        return;
+      }
+    }
+  } finally {
+    verifier.terminate();
+  }
+}
+
+
 /**
  * @param moveTimeMs  необязательный ФИКСИРОВАННЫЙ лимит на позицию (мс). Если не задан —
  *                    используется адаптивный бюджет: 0.6 с × число ходов на всю партию.
@@ -227,12 +395,19 @@ export async function reviewGame(
   onProgress: (p: AnalyzeProgress) => void,
   signal?: AbortSignal,
   moveTimeMs?: number,
-  onPartialReview?: (review: GameReview) => void
+  onPartialReview?: (review: GameReview) => void,
+  createVerifier?: (signal?: AbortSignal) => Promise<StockfishEngine | null>,
+  computeProfile?: ReviewComputeProfile
 ): Promise<GameReview> {
   const game = parseGame(pgn);
   const N = game.moves.length;
   const total = N + 1;
-  const budgetMs = gameBudgetMs(N);
+  const timePerMoveMs = computeProfile?.timePerMoveMs ?? TIME_PER_MOVE_MS;
+  const effectiveDepth = Math.min(32, Math.max(1, depth + (computeProfile?.depthBonus ?? 0)));
+  const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
+  const tacticalExtraBudgetMs = computeProfile?.tacticalExtraBudgetMs ?? TACTICAL_EXTRA_BUDGET_MS;
+  const verifierBudgetMs = computeProfile?.verifierBudgetMs ?? MULTI_ENGINE_RECHECK_BUDGET_MS;
+  const budgetMs = gameBudgetMs(N, timePerMoveMs);
   const startedAt = now();
   engine.newGame();
   const positions: PositionEval[] = [];
@@ -246,7 +421,7 @@ export async function reviewGame(
       done: i,
       total,
       depth: 0,
-      targetDepth: depth,
+      targetDepth: effectiveDepth,
       cached: cachedHits,
       fen,
       budgetMs,
@@ -255,15 +430,15 @@ export async function reviewGame(
     const { evalResult, fromCache } = await evaluatePosition(
       engine,
       fen,
-      depth,
-      2,
+      effectiveDepth,
+      mainMultiPv,
       signal,
       (lines) => {
         onProgress({
           done: i,
           total,
           depth: Math.min(...lines.map((l) => l.depth)),
-          targetDepth: depth,
+          targetDepth: effectiveDepth,
           cached: cachedHits,
           fen,
           budgetMs,
@@ -279,8 +454,8 @@ export async function reviewGame(
   onProgress({
     done: total,
     total,
-    depth,
-    targetDepth: depth,
+    depth: effectiveDepth,
+    targetDepth: effectiveDepth,
     cached: cachedHits,
     fen: game.fens[N],
     budgetMs,
@@ -291,13 +466,27 @@ export async function reviewGame(
   // Publish a complete, immediately usable review before the optional deep
   // tactical passes. The same positions are refined below and the caller gets
   // the final, higher-confidence result from the returned Promise.
-  onPartialReview?.(buildReview(game, positions, depth));
+  onPartialReview?.(buildReview(game, positions, effectiveDepth));
 
-  const tacticalDeadline = now() + TACTICAL_EXTRA_BUDGET_MS;
+  const tacticalDeadline = now() + tacticalExtraBudgetMs;
+  const multiEngineDeadline = Math.min(tacticalDeadline, now() + verifierBudgetMs);
+  await refineCriticalPositions(
+    game,
+    positions,
+    effectiveDepth,
+    onProgress,
+    signal,
+    multiEngineDeadline,
+    createVerifier,
+    computeProfile?.verifierMaxMoves ?? MULTI_ENGINE_MAX_MOVES,
+    computeProfile?.verifierMoveTimeMs ?? MULTI_ENGINE_MOVETIME_MS,
+    Math.min(5, mainMultiPv + 1),
+    computeProfile?.verifierEnabled ?? true
+  );
   const refineDeadline = Math.min(tacticalDeadline, now() + REFINE_TOTAL_BUDGET_MS);
-  await refineSacrifices(game, positions, depth, engine, onProgress, signal, refineDeadline);
-  const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, depth, engine, signal, tacticalDeadline);
-  return buildReview(game, positions, depth, deferredSacrifices);
+  await refineSacrifices(game, positions, effectiveDepth, engine, onProgress, signal, refineDeadline);
+  const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, effectiveDepth, engine, signal, tacticalDeadline);
+  return buildReview(game, positions, effectiveDepth, deferredSacrifices);
 }
 
 /**
