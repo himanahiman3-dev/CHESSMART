@@ -6,7 +6,7 @@ const powerfulDesktop = getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0",
   mobile: false,
   hardwareConcurrency: 16,
-  deviceMemory: 32,
+  deviceMemory: 8, // Browsers commonly cap the exposed deviceMemory value at 8 GB.
 });
 assert.equal(powerfulDesktop.device, "desktop");
 assert.equal(powerfulDesktop.defaultVariant, "full");
