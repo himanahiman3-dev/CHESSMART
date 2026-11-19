@@ -152,8 +152,9 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const full = await isEngineCached(getFileSet("full", isolated));
-      const lite = await isEngineCached(getFileSet("lite", isolated));
+      const threadedCache = isolated && computeProfile.device === "desktop" && computeProfile.maxThreads > 1;
+      const full = await isEngineCached(getFileSet("full", threadedCache));
+      const lite = await isEngineCached(getFileSet("lite", threadedCache));
       if (!alive) return;
       setCachedVariants({ full, lite });
       const preferred = full && variant === "full" ? "full" : lite && variant === "lite" ? "lite" : full ? "full" : lite ? "lite" : null;
