@@ -1,0 +1,23 @@
+server {
+    listen ${PORT};
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Required for SharedArrayBuffer and threaded Stockfish in supported browsers.
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Embedder-Policy "require-corp" always;
+    add_header Cross-Origin-Resource-Policy "cross-origin" always;
+
+    # Vite SPA fallback.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Engine binaries are versioned by the app and can be cached by the browser.
+    location /engine/ {
+        expires 365d;
+        try_files $uri =404;
+    }
+}
