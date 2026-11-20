@@ -3,19 +3,22 @@ import { Chess } from "chess.js";
 import { fenKey } from "../src/lib/format.ts";
 import { positionKey } from "../src/lib/db.ts";
 import { buildPositionCommand } from "../src/lib/engine.ts";
+import { forcedMoveClass } from "../src/lib/forcedMove.ts";
 import { qBalance } from "../src/lib/see.ts";
-import { gameBudgetMs, slotForPosition, timePerMoveForDepth, MINIMUM_ANALYSIS_DEPTH } from "../src/lib/analysisBudget.ts";
+import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES } from "../src/lib/analysisBudget.ts";
 
-assert.equal(gameBudgetMs(10), 4000, "A ten-ply game gets the configured base budget");
-assert.equal(gameBudgetMs(10, 1400), 14000, "A desktop profile receives a larger per-move budget");
-assert.equal(gameBudgetMs(10, 80), 1320, "Low requested budgets still reserve the minimum for every position");
-assert.equal(gameBudgetMs(1), 400, "A one-ply game still budgets both evaluated positions");
-assert.equal(MINIMUM_ANALYSIS_DEPTH, 41, "Every non-terminal position must reach depth 41 before the review advances.");
-assert.equal(timePerMoveForDepth(14, 1000, 4750), 1000, "Existing quick presets keep their original response time");
-assert.equal(timePerMoveForDepth(245, 1000, 4750), 4750, "Depth 245 receives the desktop high-depth budget");
-assert.ok(timePerMoveForDepth(120, 1000, 4750) > 1000, "Higher target depths receive progressively more search time");
-assert.equal(gameBudgetMs(80, timePerMoveForDepth(245, 1000, 4750)), 380000,
-  "An 80-ply desktop game reserves about 380 seconds for the main pass");
+assert.equal(REVIEW_TARGET_DEPTH, 22, "Timed game review uses depth 22 as its maximum target.");
+assert.equal(ANALYSIS_TIME_MODES[0].timeMs, 300, "Fast mode gives each position 300 ms.");
+assert.equal(ANALYSIS_TIME_MODES[1].timeMs, 1000, "Optimal mode gives each position 1000 ms.");
+assert.equal(ANALYSIS_TIME_MODES[2].timeMs, 3000, "Deep mode gives each position 3000 ms.");
+assert.equal(normalizeAnalysisTimeMs(1700), 1000, "Unknown time values fall back to the optimal mode.");
+assert.equal(gameBudgetMs(10, 300), 3300, "A 10-ply game reviews 11 positions at 300 ms each.");
+assert.equal(gameBudgetMs(10, 1000), 11000, "A 10-ply game reviews 11 positions at one second each.");
+assert.equal(gameBudgetMs(10, 3000), 33000, "A 10-ply game reviews 11 positions at three seconds each.");
+assert.equal(gameBudgetMs(245, 300), 73800, "A 245-ply game has 246 timed positions in fast mode.");
+assert.equal(gameBudgetMs(245, 1000), 246000, "A 245-ply game has 246 timed positions in optimal mode.");
+assert.equal(gameBudgetMs(245, 3000), 738000, "A 245-ply game has 246 timed positions in deep mode.");
+
 assert.ok(gameBudgetMs(10) >= 11 * 120, "The total budget reserves the minimum for every position");
 assert.equal(slotForPosition(4000, 0, 11), 364, "The initial position receives an even share");
 assert.equal(slotForPosition(4000, 3970, 1), 30, "A position never receives more than the remaining budget");
@@ -67,5 +70,22 @@ assert.ok(
   checkedEval < -500,
   `Quiescence search must see the quiet check evasion followed by Bxa2; got ${checkedEval} cp`,
 );
+const forcedFen = "k6R/8/2K5/8/8/8/8/8 b - - 0 1";
+const forcedChess = new Chess(forcedFen);
+const forcedLegal = forcedChess.moves({ verbose: true });
+assert.equal(forcedLegal.length, 1, "The forced-move fixture must have exactly one legal move.");
+assert.equal(forcedMoveClass(forcedLegal.length), "forced",
+  "Exactly one legal move must map to the Forced classification.");
+assert.equal(forcedMoveClass(0), null,
+  "A position with no legal moves is checkmate or stalemate, not a forced move.");
+assert.equal(forcedMoveClass(2), null,
+  "Two or more legal moves must not receive the Forced classification.");
+
+const ordinaryFen = "4k3/8/8/8/8/8/8/R3K3 w - - 0 1";
+const ordinaryChess = new Chess(ordinaryFen);
+const ordinaryLegalCount = ordinaryChess.moves().length;
+assert.ok(ordinaryLegalCount > 1, "The comparison position must have several legal moves.");
+assert.equal(forcedMoveClass(ordinaryLegalCount), null,
+  "A position with multiple legal moves must never receive the Forced classification.");
 
 console.log("Analysis core validated: FEN cache identity, repetition history, and quiet check evasions.");

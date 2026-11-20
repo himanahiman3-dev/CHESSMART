@@ -108,7 +108,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
                 </div>
                 <div className="mt-2 flex flex-wrap justify-between gap-2 text-[9px] text-[#7f8a76]">
                   <span>{progress?.cached ?? 0} позиций взято из кэша</span>
-                  <span>MultiPV 2 · NNUE</span>
+                  <span>Depth 22 max · timed UCI search · NNUE</span>
                 </div>
               </div>
 
@@ -118,7 +118,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
                   Что происходит
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-[#a9b59e]">
-                  Каждая позиция обязательно достигает глубины 41, прежде чем движок перейдёт к следующему полуходу. После этого он использует дополнительное время для углубления до выбранной цели. Затем отдельные проверки уточнят тактические жертвы и блестящие продолжения.
+                  Каждая позиция получает собственный лимит времени. Stockfish останавливается на depth 22 или по таймеру — что наступит раньше. Если лимит закончится раньше, CHESSMART сохраняет последнюю завершённую оценку и сразу переходит к следующей позиции.
                 </p>
               </div>
 

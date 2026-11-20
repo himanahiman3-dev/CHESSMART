@@ -2,10 +2,9 @@
  * Конвейер обзора партии: разбор PGN → анализ Stockfish 19 (MultiPV 2, с кэшем и историей ходов)
  * → рейтинговый Expected Points (приближение) → классификация → собственная точность Chessmart → комментарии.
  *
- * Бюджет времени: на основную часть партии отводится 0.4 с на каждый полуход (10 ходов → 6 с, 20 → 12 с, 30 → 18 с…).
- * Бюджет делится динамически: если позиция посчитана быстрее (достигнута целевая глубина, ход единственный,
- * позиция взята из кэша), сэкономленное время достаётся следующим позициям, а общий анализ
- * завершается раньше. Время зря не тратится — Stockfish останавливается, как только достиг глубины.
+ * Основной проход: каждая позиция получает отдельный UCI movetime (300 / 1000 / 3000 мс).
+ * Поиск ограничен depth 22 и временем одновременно; выполняется то условие, которое наступит раньше.
+ * При таймауте используется последняя завершённая строка info, затем очередь переходит дальше.
  */
 import { Chess, type Square } from "chess.js";
 import type { Cls, Color, EngineLine, GameReview, MoveReview, PositionEval, Score } from "../types";
@@ -14,7 +13,7 @@ import type { PositionHistory, StockfishEngine } from "./engine";
 import { getCachedPosition, putCachedPosition } from "./db";
 import { analyzeBook, openingForCode } from "./openings";
 import { detectSacrifice } from "./see";
-import { BRILLIANT_MAX_LOSS, BRILLIANT_MIN_AFTER, qualifiesAsBrilliant } from "./brilliant";
+import { BRILLIANT_MAX_LOSS, qualifiesAsBrilliant } from "./brilliant";
 import { buildComment } from "./coach";
 import { cpFor, estimateGameRating, gameAccuracy, moveAccuracy, winFor, winForRated, winPercent } from "./winprob";
 
@@ -73,8 +72,9 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { gameBudgetMs, slotForPosition, TIME_PER_MOVE_MS, timePerMoveForDepth, MAX_ANALYSIS_DEPTH, MINIMUM_ANALYSIS_DEPTH } from "./analysisBudget";
+import { gameBudgetMs, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
 import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
+import { forcedMoveClass } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
@@ -88,9 +88,6 @@ export function moveTimeForDepth(depth: number): number | undefined {
 
 /** Результаты, недосчитанные глубже этого порога, не кэшируем (иначе слабая оценка закрепится в кэше навсегда). */
 const MIN_CACHEABLE_DEPTH = 8;
-/** Кэшированная оценка не глубже этого значения считается «слишком слабой» и пересчитывается. */
-const CACHE_ACCEPT_DEPTH = 16;
-
 /* ------------------------------------------------------------------ */
 /*        Параметры классификации (по Chess.com Classification V2)     */
 /* ------------------------------------------------------------------ */
@@ -121,34 +118,13 @@ const BAND_LOSING = 35;
 const BAND_WINNING = 65;
 const bandOf = (w: number) => (w >= BAND_WINNING ? 2 : w >= BAND_LOSING ? 1 : 0);
 
-/** Углублённая перепроверка ходов-жертв (см. refineSacrifices). */
-const REFINE_DEPTH_BONUS = 6;
-const REFINE_MOVETIME_MS = 900;
-const REFINE_MAX_MOVES = 8;
-/** Общий потолок времени на перепроверку, мс. */
-const REFINE_TOTAL_BUDGET_MS = 1400;
-/** Shared hard deadline for all optional tactical passes after the main review. */
-const TACTICAL_EXTRA_BUDGET_MS = 2400;
-/** Extra budget for an independent Stockfish worker on only the most critical positions. */
-const MULTI_ENGINE_RECHECK_BUDGET_MS = 1050;
-const MULTI_ENGINE_MAX_MOVES = 3;
-const MULTI_ENGINE_MOVETIME_MS = 220;
-
 function playerElo(headers: Record<string, string>, c: Color): number | undefined {
   const v = parseInt(headers[c === "w" ? "WhiteElo" : "BlackElo"] ?? "", 10);
   return Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
 export interface ReviewComputeProfile {
-  timePerMoveMs: number;
-  maxTimePerMoveMs?: number;
-  depthBonus: number;
   mainMultiPv: number;
-  verifierEnabled: boolean;
-  verifierMaxMoves: number;
-  verifierBudgetMs: number;
-  verifierMoveTimeMs: number;
-  tacticalExtraBudgetMs: number;
 }
 
 export interface AnalyzeProgress {
@@ -181,21 +157,18 @@ export async function evaluatePosition(
   signal?: AbortSignal,
   onInfo?: (lines: EngineLine[]) => void,
   movetimeMs?: number,
-  history?: PositionHistory,
-  searchPolicy?: { minimumDepth?: number; movetimeAfterMinimumDepthMs?: number }
+  history?: PositionHistory
 ): Promise<{ evalResult: PositionEval; fromCache: boolean }> {
   const term = terminalEval(fen);
   if (term) return { evalResult: term, fromCache: true };
   const historyKey = history ? `${history.startFen}|${history.moves.join(" ")}` : undefined;
   const cached = await getCachedPosition(fen, depth, multipv, historyKey);
-  // A quick-pass cache must not silently satisfy a user request for a much deeper search.
-  // For high target depths, accept only a result that reached at least 75% of the target.
-  const requiredCacheDepth = Math.min(
-    depth,
-    Math.max(MINIMUM_ANALYSIS_DEPTH, CACHE_ACCEPT_DEPTH, Math.floor(depth * 0.75))
-  );
+  // Reuse only a result that completed the target depth. Partial cache entries
+  // remain available as fallbacks if a fresh timed search reaches less depth.
+  // A shallow timed-out cache entry must not skip a fresh timed search.
+  const requiredCacheDepth = depth;
   if (cached && cached.depth >= requiredCacheDepth) return { evalResult: cached, fromCache: true };
-  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history, ...searchPolicy });
+  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
   let lines: EngineLine[];
@@ -253,7 +226,7 @@ export interface CriticalPositionCandidate {
 export function selectCriticalPositions(
   game: ParsedGame,
   positions: PositionEval[],
-  maxCandidates = MULTI_ENGINE_MAX_MOVES
+  maxCandidates = 3
 ): CriticalPositionCandidate[] {
   const book = analyzeBook(game.moves.map((move) => move.san));
   const candidates: CriticalPositionCandidate[] = [];
@@ -296,448 +269,102 @@ export function selectCriticalPositions(
   return rankCriticalPositions(candidates, maxCandidates);
 }
 
-/**
- * A second, isolated Stockfish worker re-checks a tiny shortlist at higher depth.
- * It is deliberately time-boxed and never changes normal analysis on low-memory devices.
- */
-async function refineCriticalPositions(
-  game: ParsedGame,
-  positions: PositionEval[],
-  depth: number,
-  onProgress: (p: AnalyzeProgress) => void,
-  signal: AbortSignal | undefined,
-  deadlineAt: number,
-  createVerifier?: (signal?: AbortSignal) => Promise<StockfishEngine | null>,
-  maxCandidates = MULTI_ENGINE_MAX_MOVES,
-  maxMoveTimeMs = MULTI_ENGINE_MOVETIME_MS,
-  beforeMultiPv = 5,
-  enabled = true
-): Promise<void> {
-  if (!enabled || !createVerifier || now() >= deadlineAt) return;
-  const candidates = selectCriticalPositions(game, positions, maxCandidates);
-  if (!candidates.length) return;
-
-  let verifier: StockfishEngine | null = null;
-  try {
-    verifier = await createVerifier(signal);
-  } catch (error) {
-    if (signal?.aborted || (error instanceof Error && error.message === "cancelled")) {
-      throw new Error("cancelled");
-    }
-    // Verification is an optional quality pass; a failed second worker must not break review.
-    return;
-  }
-  if (!verifier) return;
-  if (signal?.aborted) {
-    verifier.terminate();
-    throw new Error("cancelled");
-  }
-
-  try {
-    verifier.newGame();
-    const targetDepth = Math.min(MAX_ANALYSIS_DEPTH, Math.max(16, depth + 4));
-    let searchesLeft = candidates.length;
-
-    for (const candidate of candidates) {
-      if (signal?.aborted) throw new Error("cancelled");
-      const index = candidate.index;
-      const remainingMs = Math.floor(deadlineAt - now());
-      if (remainingMs < 90) return;
-
-      const movetimeMs = Math.min(
-        maxMoveTimeMs,
-        Math.max(80, Math.floor(remainingMs / Math.max(1, searchesLeft)))
-      );
-      searchesLeft--;
-      const fen = game.fens[index];
-      // Use a MultiPV count distinct from the main pass, forcing a fresh, deeper root search.
-      onProgress({
-        done: game.moves.length,
-        total: game.moves.length + 1,
-        depth: 0,
-        targetDepth,
-        cached: 0,
-        fen,
-      });
-
-      try {
-        const { evalResult } = await evaluatePosition(
-          verifier,
-          fen,
-          targetDepth,
-          beforeMultiPv,
-          signal,
-          undefined,
-          movetimeMs,
-          {
-            startFen: game.startFen,
-            moves: game.moves.slice(0, index).map((move) => move.uci),
-          }
-        );
-        // Equal-depth independent searches can still surface a better root line.
-        if (evalResult.depth >= positions[index].depth) positions[index] = evalResult;
-      } catch (error) {
-        if (signal?.aborted || (error instanceof Error && error.message === "cancelled")) {
-          throw new Error("cancelled");
-        }
-        // Do not spend the remaining budget repeatedly on a worker that stopped responding.
-        return;
-      }
-    }
-  } finally {
-    verifier.terminate();
-  }
-}
-
 
 /**
- * @param moveTimeMs  необязательный ФИКСИРОВАННЫЙ лимит на позицию (мс). Если не задан —
- *                    используется адаптивный бюджет: 0.6 с × число ходов на всю партию.
+ * Runs one timed UCI search for every position in the PGN.
+ * No extra verification pass follows, so the main-pass time table remains meaningful.
  */
 export async function reviewGame(
   pgn: string,
-  depth: number,
+  timePerPositionMs: number,
   engine: StockfishEngine,
   onProgress: (p: AnalyzeProgress) => void,
   signal?: AbortSignal,
-  moveTimeMs?: number,
-  onPartialReview?: (review: GameReview) => void,
-  createVerifier?: (signal?: AbortSignal) => Promise<StockfishEngine | null>,
   computeProfile?: ReviewComputeProfile
 ): Promise<GameReview> {
   const game = parseGame(pgn);
   const N = game.moves.length;
   const total = N + 1;
-  const timePerMoveMs = computeProfile
-    ? timePerMoveForDepth(depth, computeProfile.timePerMoveMs, computeProfile.maxTimePerMoveMs ?? computeProfile.timePerMoveMs)
-    : TIME_PER_MOVE_MS;
-  const effectiveDepth = Math.min(
-    MAX_ANALYSIS_DEPTH,
-    Math.max(MINIMUM_ANALYSIS_DEPTH, Math.floor(depth) + (computeProfile?.depthBonus ?? 0))
-  );
+  const movetimeMs = normalizeAnalysisTimeMs(timePerPositionMs);
+  const targetDepth = REVIEW_TARGET_DEPTH;
   const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
-  const tacticalExtraBudgetMs = computeProfile?.tacticalExtraBudgetMs ?? TACTICAL_EXTRA_BUDGET_MS;
-  const verifierBudgetMs = computeProfile?.verifierBudgetMs ?? MULTI_ENGINE_RECHECK_BUDGET_MS;
-  const budgetMs = gameBudgetMs(N, timePerMoveMs);
+  const budgetMs = gameBudgetMs(N, movetimeMs);
   const startedAt = now();
+
   engine.newGame();
   const positions: PositionEval[] = [];
   let cachedHits = 0;
+
   for (let i = 0; i <= N; i++) {
     if (signal?.aborted) throw new Error("cancelled");
     const fen = game.fens[i];
-    // The slot is extra deepening time after all principal variations reach the mandatory depth 41.
-    const slot = moveTimeMs ?? slotForPosition(budgetMs, now() - startedAt, total - i);
+    const history = {
+      startFen: game.startFen,
+      moves: game.moves.slice(0, i).map((move) => move.uci),
+    };
+
     onProgress({
       done: i,
       total,
       depth: 0,
-      targetDepth: effectiveDepth,
+      targetDepth,
       cached: cachedHits,
       fen,
       budgetMs,
       elapsedMs: now() - startedAt,
     });
+
     const { evalResult, fromCache } = await evaluatePosition(
       engine,
       fen,
-      effectiveDepth,
+      targetDepth,
       mainMultiPv,
       signal,
       (lines) => {
         onProgress({
           done: i,
           total,
-          depth: Math.min(...lines.map((l) => l.depth)),
-          targetDepth: effectiveDepth,
+          depth: lines.length ? Math.min(...lines.map((line) => line.depth)) : 0,
+          targetDepth,
           cached: cachedHits,
           fen,
           budgetMs,
           elapsedMs: now() - startedAt,
         });
       },
-      slot,
-      { startFen: game.startFen, moves: game.moves.slice(0, i).map((move) => move.uci) },
-      {
-        minimumDepth: MINIMUM_ANALYSIS_DEPTH,
-        // The per-position budget is now extra time after depth 41, not a cap
-        // that can interrupt the mandatory first pass before it reaches depth 41.
-        movetimeAfterMinimumDepthMs: slot,
-      }
+      movetimeMs,
+      history
     );
+
     if (fromCache) cachedHits++;
     positions.push(evalResult);
+    onProgress({
+      done: i + 1,
+      total,
+      depth: evalResult.depth,
+      targetDepth,
+      cached: cachedHits,
+      fen,
+      budgetMs,
+      elapsedMs: now() - startedAt,
+    });
   }
+
+  const reachedDepths = positions.filter((position) => position.depth > 0).map((position) => position.depth);
+  const minimumReachedDepth = reachedDepths.length ? Math.min(...reachedDepths) : 0;
   onProgress({
     done: total,
     total,
-    depth: effectiveDepth,
-    targetDepth: effectiveDepth,
+    depth: minimumReachedDepth,
+    targetDepth,
     cached: cachedHits,
     fen: game.fens[N],
     budgetMs,
     elapsedMs: now() - startedAt,
   });
 
-  if (signal?.aborted) throw new Error("cancelled");
-  // Publish a complete, immediately usable review before the optional deep
-  // tactical passes. The same positions are refined below and the caller gets
-  // the final, higher-confidence result from the returned Promise.
-  onPartialReview?.(buildReview(game, positions, effectiveDepth));
-
-  const tacticalDeadline = now() + tacticalExtraBudgetMs;
-  const multiEngineDeadline = Math.min(tacticalDeadline, now() + verifierBudgetMs);
-  await refineCriticalPositions(
-    game,
-    positions,
-    effectiveDepth,
-    onProgress,
-    signal,
-    multiEngineDeadline,
-    createVerifier,
-    computeProfile?.verifierMaxMoves ?? MULTI_ENGINE_MAX_MOVES,
-    computeProfile?.verifierMoveTimeMs ?? MULTI_ENGINE_MOVETIME_MS,
-    Math.min(5, mainMultiPv + 1),
-    computeProfile?.verifierEnabled ?? true
-  );
-  const refineDeadline = Math.min(tacticalDeadline, now() + REFINE_TOTAL_BUDGET_MS);
-  await refineSacrifices(game, positions, effectiveDepth, engine, onProgress, signal, refineDeadline);
-  const deferredSacrifices = await findDeferredBrilliantContinuations(game, positions, effectiveDepth, engine, signal, tacticalDeadline);
-  return buildReview(game, positions, effectiveDepth, deferredSacrifices);
+  return buildReview(game, positions, targetDepth);
 }
-
-/**
- * Быстрый анализ (ограниченный бюджет на полуход) на малой глубине часто «не видит» компенсации за жертву, и жертвенный ход
- * выглядит как потеря нескольких процентов. Поэтому ходы-жертвы перепроверяем глубже:
- * перезаписываем оценки позиций «до» и «после» хода, если новый результат глубже прежнего.
- * Перепроверка ограничена общей тактической квотой и не может бесконечно продлевать обзор.
- */
-async function refineSacrifices(
-  game: ParsedGame,
-  positions: PositionEval[],
-  depth: number,
-  engine: StockfishEngine,
-  onProgress: (p: AnalyzeProgress) => void,
-  signal?: AbortSignal,
-  deadlineAt = now() + REFINE_TOTAL_BUDGET_MS
-): Promise<void> {
-  const N = game.moves.length;
-  const book = analyzeBook(game.moves.map((m) => m.san));
-  const candidates: { i: number; amount: number }[] = [];
-  for (let i = 0; i < N; i++) {
-    const m = game.moves[i];
-    if (book.isBook[i] || m.piece === "k" || m.piece === "p") continue;
-    const top = positions[i].lines[0];
-    const after = positions[i + 1].lines[0];
-    if (!top || !after || positions[i + 1].depth === 0) continue; // терминальные позиции не трогаем
-    const elo = playerElo(game.headers, m.color);
-    // Не отбрасываем кандидата из-за большой потери в быстром поиске: именно сложные жертвы
-    // чаще всего выглядят плохо до углублённого расчёта компенсации.
-    const sac = detectSacrifice(m.fenBefore, m.uci, elo);
-    if (sac.sacrifice) candidates.push({ i, amount: sac.amount });
-  }
-  candidates.sort((a, b) => b.amount - a.amount);
-  const targetDepth = Math.min(MAX_ANALYSIS_DEPTH, depth + REFINE_DEPTH_BONUS);
-  for (const { i } of candidates.slice(0, REFINE_MAX_MOVES)) {
-    for (const idx of [i, i + 1]) {
-      if (signal?.aborted) throw new Error("cancelled");
-      const remainingMs = Math.floor(deadlineAt - now());
-      if (remainingMs <= 0) return;
-      onProgress({
-        done: game.moves.length,
-        total: game.moves.length + 1,
-        depth: 0,
-        targetDepth,
-        cached: 0,
-        fen: game.fens[idx],
-      });
-      try {
-        const { evalResult } = await evaluatePosition(
-          engine, game.fens[idx], targetDepth, 2, signal, undefined, Math.min(REFINE_MOVETIME_MS, remainingMs),
-          { startFen: game.startFen, moves: game.moves.slice(0, idx).map((move) => move.uci) }
-        );
-        if (evalResult.depth > positions[idx].depth) positions[idx] = evalResult;
-      } catch (e) {
-        if (e instanceof Error && e.message === "cancelled") throw e;
-        /* перепроверка — это бонус: при любой другой ошибке остаёмся с быстрой оценкой */
-      }
-    }
-  }
-}
-
-
-
-/**
- * Проверяет продолжение уже совершённой жертвы.
- * Если соперник отказался брать фигуру, а она всё ещё может быть взята,
- * проверяем движком каждое такое взятие из позиции после следующего хода жертвовавшей стороны.
- * Продолжение становится Brilliant только пока любое принятие жертвы остаётся плохим для соперника.
- */
-async function findDeferredBrilliantContinuations(
-  game: ParsedGame,
-  positions: PositionEval[],
-  depth: number,
-  engine: StockfishEngine,
-  signal?: AbortSignal,
-  deadlineAt = now() + 1000
-): Promise<Map<number, string>> {
-  const result = new Map<number, string>();
-  const book = analyzeBook(game.moves.map((move) => move.san));
-  const remainingBudget = () => Math.max(0, Math.floor(deadlineAt - now()));
-  const maxContinuations = 16;
-  const captureEvaluations = new Map<string, number>();
-
-  const captureStillLoses = async (
-    fen: string, square: string, piece: string, sacrificeColor: Color, elo: number | undefined,
-    historyMoves: string[]
-  ): Promise<boolean> => {
-    let chess: Chess;
-    try {
-      chess = new Chess(fen);
-    } catch {
-      return false;
-    }
-    const captures = chess.moves({ verbose: true }).filter((move) => move.to === square && move.captured === piece);
-    if (!captures.length) return false;
-
-    let worstForSacrificer = 100;
-    for (const capture of captures) {
-      if (signal?.aborted) throw new Error("cancelled");
-      if (remainingBudget() <= 0) return false;
-      const afterCapture = new Chess(fen);
-      const played = afterCapture.move({ from: capture.from, to: capture.to, promotion: capture.promotion });
-      if (!played) return false;
-      const captureUci = capture.from + capture.to + (capture.promotion ?? "");
-      const cacheKey = `${afterCapture.fen()}|${sacrificeColor}|${historyMoves.join(" ")}`;
-      let chance = captureEvaluations.get(cacheKey);
-      if (chance === undefined) {
-        // evaluatePosition использует общий кэш FEN; локальный кэш убирает повторные проверки той же позиции.
-        const evaluated = await evaluatePosition(
-          engine,
-          afterCapture.fen(),
-          Math.min(24, Math.max(16, depth + 4)),
-          1,
-          signal,
-          undefined,
-          Math.min(700, remainingBudget()),
-          { startFen: game.startFen, moves: [...historyMoves, captureUci] }
-        );
-        chance = winForRated(evaluated.evalResult.lines[0].score, sacrificeColor, elo);
-        captureEvaluations.set(cacheKey, chance);
-      }
-      worstForSacrificer = Math.min(worstForSacrificer, chance);
-      // Соперник выберет наиболее выгодное для себя из доступных взятий.
-      if (worstForSacrificer < BRILLIANT_MIN_AFTER) return false;
-    }
-    return worstForSacrificer >= BRILLIANT_MIN_AFTER;
-  };
-
-  for (let i = 0; i < game.moves.length; i++) {
-    if (signal?.aborted) throw new Error("cancelled");
-    if (remainingBudget() <= 0) break;
-    const sacrificeMove = game.moves[i];
-    if (book.isBook[i] || sacrificeMove.piece === "p" || sacrificeMove.piece === "k" || i + 2 >= game.moves.length) continue;
-
-    const before = positions[i];
-    const after = positions[i + 1];
-    const best = before.lines[0];
-    const second = before.lines[1];
-    if (!best || !after.lines[0]) continue;
-    const elo = playerElo(game.headers, sacrificeMove.color);
-    const sacrifice = detectSacrifice(sacrificeMove.fenBefore, sacrificeMove.uci, elo);
-    if (!sacrifice.sacrifice) continue;
-
-    const playedIsBest = best.pv[0] === sacrificeMove.uci;
-    const winBefore = winForRated(best.score, sacrificeMove.color, elo);
-    const scoreAfter = playedIsBest ? best.score : after.lines[0].score;
-    const winAfter = playedIsBest ? winBefore : winForRated(scoreAfter, sacrificeMove.color, elo);
-    const winLoss = Math.max(0, winBefore - winAfter);
-    const altWin = playedIsBest ? (second ? winForRated(second.score, sacrificeMove.color, elo) : null) : winBefore;
-    const legal = legalMoveCount(sacrificeMove.fenBefore);
-    const cpBefore = cpFor(best.score, sacrificeMove.color);
-    const cpAfter = cpFor(scoreAfter, sacrificeMove.color);
-    const lostMate = best.score.mate !== undefined && cpBefore > 0 && !(scoreAfter.mate !== undefined && cpAfter > 0);
-    const allowedMate = scoreAfter.mate !== undefined && cpAfter < 0 && !(best.score.mate !== undefined && cpBefore < 0);
-    const initialIsBrilliant = qualifiesAsBrilliant({
-      sacrifice: sacrifice.sacrifice,
-      legalMoves: legal,
-      alternativeWin: altWin,
-      lostMate,
-      allowedMate,
-      winLoss,
-      winAfter,
-      elo,
-    });
-    if (!initialIsBrilliant) continue;
-
-    const targetSquare = sacrificeMove.to;
-    const targetPiece = sacrificeMove.piece;
-    // Сначала проверяем, что принять саму жертву уже было бы плохим решением.
-    const canTakeAndPunish = await captureStillLoses(
-      sacrificeMove.fenAfter, targetSquare, targetPiece, sacrificeMove.color, elo,
-      game.moves.slice(0, i + 1).map((move) => move.uci)
-    );
-    if (!canTakeAndPunish) continue;
-
-    // Первый ответ соперника должен отказаться от взятия. После него очередь снова за нами.
-    let opponentIndex = i + 1;
-    let continuationIndex = i + 2;
-    let steps = 0;
-    while (continuationIndex < game.moves.length && steps < maxContinuations && remainingBudget() > 0) {
-      const opponentMove = game.moves[opponentIndex];
-      const continuation = game.moves[continuationIndex];
-      if (!opponentMove || !continuation) break;
-      if (opponentMove.to === targetSquare && opponentMove.captured === targetPiece) break;
-
-      let beforeContinuation: Chess;
-      try {
-        beforeContinuation = new Chess(continuation.fenBefore);
-      } catch {
-        break;
-      }
-      const hangingPiece = beforeContinuation.get(targetSquare as Square);
-      if (!hangingPiece || hangingPiece.color !== sacrificeMove.color || hangingPiece.type !== targetPiece) break;
-
-      // Если наш ход уводит фигуру или позволяет сопернику успешно принять жертву — цепочка заканчивается.
-      const stillPunishesTake = await captureStillLoses(
-        continuation.fenAfter, targetSquare, targetPiece, sacrificeMove.color, elo,
-        game.moves.slice(0, continuationIndex + 1).map((move) => move.uci)
-      );
-      if (!stillPunishesTake) break;
-
-      const continuationBefore = positions[continuationIndex]?.lines[0];
-      const continuationAfter = positions[continuationIndex + 1]?.lines[0];
-      if (continuationBefore && continuationAfter) {
-        const continuationWinBefore = winForRated(continuationBefore.score, sacrificeMove.color, elo);
-        const continuationWinAfter = winForRated(continuationAfter.score, sacrificeMove.color, elo);
-        const continuationLoss = Math.max(0, continuationWinBefore - continuationWinAfter);
-        if (qualifiesAsBrilliant({
-          sacrifice: true,
-          legalMoves: legalMoveCount(continuation.fenBefore),
-          alternativeWin: null,
-          lostMate: false,
-          allowedMate: false,
-          winLoss: continuationLoss,
-          winAfter: continuationWinAfter,
-          elo,
-          continuation: true,
-        })) {
-          result.set(continuationIndex, targetPiece);
-        }
-      }
-
-      // Следующий ход соперника снова может принять жертву или изменить тактическую ситуацию.
-      opponentIndex = continuationIndex + 1;
-      continuationIndex = opponentIndex + 1;
-      steps++;
-    }
-  }
-  return result;
-}
-
-/* ------------------------------------------------------------------ */
-/*                         Классификация ходов                         */
-/* ------------------------------------------------------------------ */
 
 export function buildReview(
   game: ParsedGame,
@@ -759,6 +386,10 @@ export function buildReview(
     const second = before.lines[1];
     const bestUci = top.pv[0];
     const playedIsBest = bestUci === m.uci;
+    const isBook = book.isBook[i];
+    const legal = legalMoveCount(m.fenBefore);
+    const forcedClass = forcedMoveClass(legal);
+    const isForced = forcedClass === "forced";
 
     const scoreBefore = top.score;
     // При лимите времени позиции считаются до разной глубины. Если сыгран ход со 2-й линии,
@@ -771,23 +402,21 @@ export function buildReview(
     // Приближение рейтинговых Expected Points для порогов Classification V2; модель Chess.com закрыта.
     const winBefore = winForRated(scoreBefore, color, elo);
     const winAfter = playedIsBest ? winBefore : winForRated(scoreAfter, color, elo);
-    const winLoss = Math.max(0, winBefore - winAfter);
+    // An exactly forced move has no legal alternative, so it cannot incur avoidable move-quality loss.
+    const winLoss = isForced ? 0 : Math.max(0, winBefore - winAfter);
     // Точность хода считается по стандартной кривой (формула Lichess), без рейтинга.
     const stdBefore = winFor(scoreBefore, color);
     const stdAfter = playedIsBest ? stdBefore : winFor(scoreAfter, color);
-    const accuracyLoss = Math.max(0, stdBefore - stdAfter);
+    const accuracyLoss = isForced ? 0 : Math.max(0, stdBefore - stdAfter);
 
     const cpBefore = cpFor(scoreBefore, color);
     const cpAfter = cpFor(scoreAfter, color);
-    const prevLoss = i > 0 ? reviews[i - 1].winLoss : 0;
+    const prevLoss = i > 0 && reviews[i - 1].cls !== "forced" ? reviews[i - 1].winLoss : 0;
     const prevSan = i > 0 ? reviews[i - 1].san : undefined;
-
-    const isBook = book.isBook[i];
-    const legal = legalMoveCount(m.fenBefore);
 
     // --- жертва для Brilliant ---
     let sac = { sacrifice: false, amount: 0, pieceType: "" };
-    if (!isBook && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS) && m.piece !== "k" && m.piece !== "p") {
+    if (!isBook && !isForced && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS) && m.piece !== "k" && m.piece !== "p") {
       sac = detectSacrifice(m.fenBefore, m.uci, elo);
     }
     const deferredPiece = deferredSacrifices.get(i);
@@ -824,7 +453,9 @@ export function buildReview(
       continuation: isDeferredBrilliant,
     });
 
-    if (isBook) {
+    if (forcedClass) {
+      cls = forcedClass;
+    } else if (isBook) {
       cls = "book";
     } else if (isBrilliant) {
       cls = "brilliant";
@@ -908,7 +539,7 @@ export function buildReview(
       bestSecondGapCp: gapCp,
       bestSecondSan: secondSan,
     });
-    const comment = isDeferredBrilliant
+    const comment = cls !== "forced" && isDeferredBrilliant
       ? `Блестящее продолжение жертвы: вы оставили фигуру под боем, но соперник всё ещё не может безопасно её забрать. ${generatedComment}`
       : generatedComment;
 
@@ -934,7 +565,7 @@ export function buildReview(
       bestSan,
       secondUci: second?.pv[0],
       playedIsBest,
-      sacrifice: sac.sacrifice || isDeferredBrilliant,
+      sacrifice: cls !== "forced" && (sac.sacrifice || isDeferredBrilliant),
       opening,
       comment,
       lines: before.lines,

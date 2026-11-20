@@ -4,33 +4,7 @@ import { SAMPLE_GAMES, fetchGameFromLink } from "../lib/importers";
 import { parseGame } from "../lib/analyze";
 import { clearPositionCache, positionCacheSize } from "../lib/db";
 import { clearEngineCache } from "../lib/engineFiles";
-
-export const DEPTHS = [
-  {
-    id: "fast",
-    depth: 14,
-    title: "Быстрый",
-    desc: "Для первого взгляда на партию",
-    note: "Меньше ожидания",
-    level: "01",
-  },
-  {
-    id: "deep",
-    depth: 18,
-    title: "Подробный",
-    desc: "Оптимальный баланс анализа",
-    note: "Рекомендуем",
-    level: "02",
-  },
-  {
-    id: "max",
-    depth: 22,
-    title: "Максимальный",
-    desc: "Больше расчёта в сложных позициях",
-    note: "Самый глубокий",
-    level: "03",
-  },
-] as const;
+import { ANALYSIS_TIME_MODES, DEFAULT_ANALYSIS_TIME_MS, normalizeAnalysisTimeMs } from "../lib/analysisBudget";
 
 const PIECES = [
   ["♜", "♞", "♝", "♛", "♚", "♝", "♞", "♜"],
@@ -70,18 +44,16 @@ function formatResult(result: string | undefined) {
   return "Результат не указан";
 }
 
-export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number) => void }) {
+export function ImportScreen({ onStart }: { onStart: (pgn: string, timePerPositionMs: number) => void }) {
   const { info } = useEngine();
   const [pgn, setPgn] = useState("");
   const [link, setLink] = useState("");
-  const [depth, setDepth] = useState<number>(() => {
+  const [timePerPositionMs, setTimePerPositionMs] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem("chess-review:analysis-depth");
-      const numeric = saved === null ? NaN : Number(saved);
-      if (Number.isFinite(numeric) && numeric >= 8 && numeric <= 245) return Math.round(numeric);
-      return DEPTHS.find((item) => item.id === saved)?.depth ?? 14;
+      const saved = localStorage.getItem("chess-review:analysis-time-ms:v1");
+      return saved === null ? DEFAULT_ANALYSIS_TIME_MS : normalizeAnalysisTimeMs(Number(saved));
     } catch {
-      return 14;
+      return DEFAULT_ANALYSIS_TIME_MS;
     }
   });
   const [error, setError] = useState<string | null>(null);
@@ -108,13 +80,13 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
 
   useEffect(() => {
     try {
-      localStorage.setItem("chess-review:analysis-depth", String(depth));
+      localStorage.setItem("chess-review:analysis-time-ms:v1", String(timePerPositionMs));
     } catch {
       // Настройка необязательна и не должна мешать анализу.
     }
-  }, [depth]);
+  }, [timePerPositionMs]);
 
-  const selectedDepth = DEPTHS.find((item) => item.depth === depth);
+  const selectedTimeMode = ANALYSIS_TIME_MODES.find((item) => item.timeMs === timePerPositionMs);
 
   const game = parsed.game;
   const displayError = error || (pgn.trim() ? parsed.error : null);
@@ -165,7 +137,7 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
       return;
     }
     setError(null);
-    onStart(pgn, depth);
+    onStart(pgn, timePerPositionMs);
   };
 
   const chooseSample = (samplePgn: string) => {
@@ -385,17 +357,17 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
             <section className="rounded-[24px] border border-[#464e40] bg-[#292d27] p-5 shadow-[0_18px_55px_rgba(0,0,0,.18)] sm:p-6">
               <div className="mb-4">
                 <div className="text-[10px] font-extrabold uppercase tracking-[0.17em] text-[#8d9a80]">02 / Analysis setup</div>
-                <h3 className="mt-1 text-base font-extrabold text-white">Глубина анализа</h3>
-                <p className="mt-1 text-[11px] leading-relaxed text-[#87917e]">Выбери, насколько подробно движок проверит позиции.</p>
+                <h3 className="mt-1 text-base font-extrabold text-white">Время на позицию</h3>
+                <p className="mt-1 text-[11px] leading-relaxed text-[#87917e]">Каждая позиция получает отдельный лимит времени. Целевая глубина Stockfish — 22.</p>
               </div>
               <div className="space-y-2">
-                {DEPTHS.map((item) => {
-                  const active = depth === item.depth;
+                {ANALYSIS_TIME_MODES.map((item) => {
+                  const active = timePerPositionMs === item.timeMs;
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setDepth(item.depth)}
+                      onClick={() => setTimePerPositionMs(item.timeMs)}
                       aria-pressed={active}
                       className={`group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${active ? "border-[#8eaf68] bg-gradient-to-r from-[#3b4d31] to-[#303b2a] shadow-[inset_0_0_0_1px_rgba(169,210,128,.08)]" : "border-[#434b3e] bg-[#222620] hover:border-[#69785b] hover:bg-[#2c3328]"}`}
                     >
@@ -403,7 +375,7 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className={`text-sm font-extrabold ${active ? "text-white" : "text-[#d4dacd]"}`}>{item.title}</span>
-                          {item.id === "deep" && <span className="rounded-full bg-[#a5c87b]/15 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#bad89b]">Советуем</span>}
+                          {item.id === "optimal" && <span className="rounded-full bg-[#a5c87b]/15 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#bad89b]">Советуем</span>}
                         </span>
                         <span className="mt-0.5 block text-[10px] text-[#909a87]">{item.desc}</span>
                       </span>
@@ -417,25 +389,10 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
 
               <div className="mt-4 rounded-xl border border-[#8eaf68]/20 bg-[#20241e] px-3.5 py-3.5">
                 <div className="flex items-center justify-between gap-3">
-                  <label htmlFor="review-depth-slider" className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa58f]">Точная глубина</label>
-                  <span className="font-mono text-base font-black tabular-nums text-[#c5e3a4]">{depth}<span className="ml-1 text-[9px] font-bold uppercase tracking-wider text-[#87947c]">/ 245</span></span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa58f]">Целевой максимум</span>
+                  <span className="font-mono text-base font-black tabular-nums text-[#c5e3a4]">Depth 22</span>
                 </div>
-                <input
-                  id="review-depth-slider"
-                  aria-label="Целевая глубина анализа"
-                  type="range"
-                  min={8}
-                  max={245}
-                  step={1}
-                  value={depth}
-                  onChange={(event) => setDepth(Number(event.target.value))}
-                  className="mt-3 w-full cursor-pointer accent-[#a7cb7d]"
-                />
-                <div className="mt-1 flex justify-between text-[9px] font-semibold text-[#77816f]">
-                  <span>8 · быстрее</span>
-                  <span>245 · предел Stockfish</span>
-                </div>
-                <p className="mt-2 text-[10px] leading-relaxed text-[#77816f]">Это целевая глубина, а не обещание достигнуть её: движок остановится по лимиту времени или при достижении глубины.</p>
+                <p className="mt-2 text-[10px] leading-relaxed text-[#77816f]">Поиск завершится при достижении depth 22 или по истечении таймера — что наступит раньше. При таймауте сохраняется последняя завершённая оценка.</p>
               </div>
 
               <div className="mt-4 rounded-xl border border-white/[0.06] bg-[#20241e] px-3.5 py-3">
@@ -444,10 +401,10 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
                   Выбранный режим
                 </div>
                 <div className="mt-1.5 flex items-end justify-between gap-2">
-                  <div className="text-sm font-extrabold text-white">{selectedDepth?.title ?? "Пользовательская"}</div>
-                  <div className="font-mono text-lg font-black tabular-nums text-[#b5d98e]">{depth}<span className="ml-1 text-[9px] font-bold uppercase tracking-wider text-[#87947c]">depth</span></div>
+                  <div className="text-sm font-extrabold text-white">{selectedTimeMode?.title ?? "Оптимальный"}</div>
+                  <div className="font-mono text-lg font-black tabular-nums text-[#b5d98e]">{timePerPositionMs.toLocaleString("ru-RU")}<span className="ml-1 text-[9px] font-bold uppercase tracking-wider text-[#87947c]">мс / позицию</span></div>
                 </div>
-                <div className="mt-1 text-[10px] text-[#87917e]">{selectedDepth?.note ?? "Глубина настроена вручную"}</div>
+                <div className="mt-1 text-[10px] text-[#87917e]">{selectedTimeMode?.note ?? "Время на каждую позицию"}</div>
               </div>
 
               <button

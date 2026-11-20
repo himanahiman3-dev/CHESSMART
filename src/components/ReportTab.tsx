@@ -30,6 +30,8 @@ function PlayerBox({ name, elo, acc, rating, white }: { name: string; elo?: stri
 export function ReportTab({ review, ply, onSeek }: { review: GameReview; ply: number; onSeek: (p: number) => void }) {
   const h = review.headers;
   const phases = calculatePhaseAccuracy(review.moves);
+  const measuredDepths = review.positions.filter((position) => position.depth > 0).map((position) => position.depth);
+  const minimumReachedDepth = measuredDepths.length ? Math.min(...measuredDepths) : 0;
   const brilliant = review.moves.filter((move) => move.cls === "brilliant");
   const missed = review.moves.filter((move) => move.cls === "miss");
   return (
@@ -124,7 +126,7 @@ export function ReportTab({ review, ply, onSeek }: { review: GameReview; ply: nu
           <div className="flex items-start gap-2"><ClsBadge cls="book" size={22} /><div><div className="text-sm font-bold"><span className="mr-1.5 rounded bg-[#a88865]/25 px-1.5 py-0.5 text-xs text-[#d6b88f]">{review.opening.eco}</span>{review.opening.ru}</div><div className="text-xs text-[#a7a6a2]">{review.opening.en}</div></div></div>
         </div>
       )}
-      <p className="px-1 text-[11px] leading-relaxed text-[#6f6d69]">Глубина анализа: {review.depth} · Stockfish 19 · MultiPV 2. Точность — оценка Chessmart на основе Win% и волатильности позиции (не официальный CAPS2 Chess.com). Стадии — приближённое деление по номеру хода и материалу.</p>
+      <p className="px-1 text-[11px] leading-relaxed text-[#6f6d69]">Целевая глубина: {review.depth} · минимальная фактически достигнутая глубина: {minimumReachedDepth} · Stockfish 19. Позиции анализировались по отдельному таймеру; короткий результат не подменяется целевой глубиной. Точность — оценка Chessmart, не официальный CAPS2 Chess.com.</p>
     </div>
   );
 }
