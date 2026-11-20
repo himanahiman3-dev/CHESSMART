@@ -1825,3 +1825,60 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .cm-game-review-overlay, .cm-game-review-card, .cm-game-review-cta:not(:disabled) { animation: none !important; }
 }
+
+
+/* Profile navigation and locally calculated achievements */
+.cm-member-tabs { position: relative; align-items: center; gap: 27px; min-height: 48px; margin: 15px 0 18px; }
+.cm-member-tabs button { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 48px; padding: 0 2px; border: 0; background: transparent; color: #aaa69e; font-size: 13px; font-weight: 700; }
+.cm-member-tabs button:hover { color: #f4f2ec; }
+.cm-member-tabs button.active { color: #f5f4ef; }
+.cm-member-tabs button.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--replica-green); content: ""; }
+.cm-member-tab-count { display: inline-grid; min-width: 19px; height: 19px; place-items: center; padding: 0 5px; border-radius: 10px; background: rgba(129,182,76,.18); color: #c6e6a6; font-size: 10px; font-variant-numeric: tabular-nums; }
+.cm-member-tab-panel { min-height: 330px; }
+.cm-member-games-list { display: grid; gap: 7px; }
+.cm-member-game-card { display: flex; min-width: 0; min-height: 66px; align-items: center; gap: 13px; padding: 10px 13px; border: 1px solid rgba(255,255,255,.055); border-radius: 8px; background: #302e2b; }
+.cm-member-game-main { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5px; }
+.cm-member-game-main strong { color: #f0eee8; font-size: 13px; }
+.cm-member-game-main small { overflow: hidden; color: #99958c; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.cm-member-game-rating { color: #d8d5cd; font-size: 12px; font-variant-numeric: tabular-nums; }
+.cm-member-data-note { margin: 15px 0 0; color: #99958c; font-size: 11px; line-height: 1.5; }
+.cm-member-awards-total { display: inline-grid; min-width: 47px; height: 36px; place-items: center; border: 1px solid rgba(129,182,76,.25); border-radius: 7px; background: rgba(129,182,76,.1); color: #cce9ad; font-size: 14px; font-weight: 850; font-variant-numeric: tabular-nums; }
+.cm-achievement-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.cm-achievement-card { display: grid; min-width: 0; grid-template-columns: 48px minmax(0,1fr) auto; grid-template-rows: auto 5px; align-items: center; gap: 8px 12px; padding: 13px; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; background: #302e2b; }
+.cm-achievement-card.earned { border-color: rgba(129,182,76,.28); background: linear-gradient(115deg,rgba(129,182,76,.11),rgba(48,46,43,.96) 54%); }
+.cm-achievement-icon { display: grid; width: 46px; height: 46px; grid-row: 1; place-items: center; border-radius: 9px; background: rgba(255,255,255,.055); color: #c6c2b9; font-size: 24px; }
+.cm-achievement-card.earned .cm-achievement-icon { background: rgba(129,182,76,.17); color: #c5e8a1; }
+.cm-achievement-copy { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.cm-achievement-copy strong { color: #eeece6; font-size: 12px; }
+.cm-achievement-copy small { color: #99958c; font-size: 10px; line-height: 1.35; }
+.cm-achievement-progress { color: #a9a59c; font-size: 10px; white-space: nowrap; }
+.cm-achievement-card.earned .cm-achievement-progress { color: #c5e8a1; }
+.cm-achievement-track { display: block; height: 5px; grid-column: 1 / -1; overflow: hidden; border-radius: 5px; background: rgba(255,255,255,.09); }
+.cm-achievement-track i { display: block; height: 100%; border-radius: inherit; background: var(--replica-green); transition: width .2s ease; }
+.cm-awards-mini-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.cm-awards-mini-row span { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid rgba(129,182,76,.2); border-radius: 8px; background: rgba(129,182,76,.1); color: #c6e6a6; font-size: 19px; }
+
+/* User-controlled Chess.com-style collapsible navigation rail */
+.cm-app-shell .cm-sidebar-toggle { display: grid; width: 34px; height: 30px; place-items: center; border: 1px solid rgba(255,255,255,.08); border-radius: 7px; background: rgba(255,255,255,.035); color: #aaa69e; font-size: 18px; }
+.cm-app-shell .cm-sidebar-toggle:hover { border-color: rgba(255,255,255,.17); background: rgba(255,255,255,.08); color: #fff; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-sidebar { width: 76px; padding-right: 7px; padding-left: 7px; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-main-column { margin-left: 76px; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-brand { justify-content: center; gap: 0; margin-right: 0; margin-left: 0; padding-right: 0; padding-left: 0; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-brand > span,
+.cm-app-shell.cm-sidebar-is-collapsed .cm-side-item > span:not(.cm-side-icon),
+.cm-app-shell.cm-sidebar-is-collapsed .cm-profile-shortcut > span:last-child,
+.cm-app-shell.cm-sidebar-is-collapsed .cm-side-submenu { display: none !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-side-item { justify-content: center; padding-right: 2px; padding-left: 2px; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-profile-shortcut { justify-content: center; padding-right: 0; padding-left: 0; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-bottom-actions { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 5px; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-bottom-actions button { width: 34px; }
+@media (max-width: 700px) {
+  .cm-app-shell.cm-sidebar-is-collapsed .cm-main-column { margin-left: 0; }
+  .cm-achievement-grid { grid-template-columns: 1fr; }
+  .cm-member-tabs { gap: 20px; }
+  .cm-member-game-card { gap: 8px; padding: 9px; }
+  .cm-member-game-main small { font-size: 10px; }
+}
+@media (min-width: 701px) and (max-width: 1023px) {
+  .cm-achievement-grid { grid-template-columns: 1fr; }
+}
