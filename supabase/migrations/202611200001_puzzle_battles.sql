@@ -128,6 +128,10 @@ begin
   if jsonb_typeof(p_puzzles) <> 'array' or jsonb_array_length(p_puzzles) <> 5 then
     raise exception 'A battle requires exactly five puzzles';
   end if;
+
+  -- Serialize queue changes so simultaneous arrivals cannot both miss each other.
+  perform pg_advisory_xact_lock(hashtext('chessmart:puzzle-battle-queue'));
+
   for v_puzzle in select value from jsonb_array_elements(p_puzzles) as items(value)
   loop
     if coalesce(v_puzzle->>'id', '') = ''
