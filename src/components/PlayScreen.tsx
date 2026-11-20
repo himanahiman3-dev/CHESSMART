@@ -44,6 +44,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
   const [boardFlipped, setBoardFlipped] = useState(false);
   const [exportNotice, setExportNotice] = useState("");
   const finishedRef = useRef(false);
+  const terminalSoundPlayedRef = useRef(false);
   const game = useMemo(() => new Chess(fen), [fen]);
   const botColor = playerColor === "w" ? "b" : "w";
   const strength = useMemo(() => botStrengthForElo(botElo), [botElo]);
@@ -63,6 +64,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
   const begin = () => {
     engine.newGame();
     finishedRef.current = false;
+    terminalSoundPlayedRef.current = false;
     setFen(START_FEN);
     setLastSan([]);
     setRedoSan([]);
@@ -82,7 +84,10 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
   const finish = (result: Result) => {
     if (finishedRef.current) return;
     finishedRef.current = true;
-    if (!game.isCheckmate()) playSound("end");
+    if (!game.isCheckmate() && !terminalSoundPlayedRef.current) {
+      terminalSoundPlayedRef.current = true;
+      playSound("end");
+    }
     setPremove(null);
     setFinished(result);
     setStarted(false);
@@ -132,6 +137,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
         setRedoSan([]);
         setLastSan((items) => [...items, moved.san]);
         setFen(next.fen());
+        if (next.isGameOver()) terminalSoundPlayedRef.current = true;
         playSound(soundForSan(moved.san, next.isGameOver(), undefined, "opponent"));
         setThinking(false);
       })
@@ -170,6 +176,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     setRedoSan([]);
     setLastSan((items) => [...items, moved.san]);
     setFen(next.fen());
+    if (next.isGameOver()) terminalSoundPlayedRef.current = true;
     playSound(soundForSan(moved.san, next.isGameOver(), undefined, "premove"));
   }, [premove, started, thinking, finished, game, fen, playerColor]);
 
@@ -194,6 +201,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
       setRedoSan([]);
       setLastSan((items) => [...items, played.san]);
       setFen(next.fen());
+      if (next.isGameOver()) terminalSoundPlayedRef.current = true;
       playSound(soundForSan(played.san, next.isGameOver()));
       return true;
     } catch {
