@@ -110,9 +110,9 @@ try {
     fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     depth: 22,
     multipv: 1,
-    movetimeMs: 300,
+    movetimeMs: 10,
   }).promise;
-  assert.ok(timedWorker.commands.includes("go depth 22 movetime 300"),
+  assert.ok(timedWorker.commands.includes("go depth 22 movetime 10"),
     "The main review must use a timed UCI search with a depth-22 ceiling.");
   assert.equal(timedResult[0]?.depth, 16,
     "When movetime ends before depth 22, the latest completed depth must be returned.");
