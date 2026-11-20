@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import type { PlayerProfile, PuzzleRatingEntry } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
 import { playSound, soundForSan } from "../lib/sound";
+import { awardPuzzleJourneyPoints, getPuzzleJourneyProgress } from "../lib/puzzleJourney";
 
 export interface Puzzle {
   id: string;
@@ -19,6 +20,12 @@ interface PuzzleStats {
   correct: number;
   streak: number;
   lastDaily: string;
+  journeyPoints: number;
+  dailyQuestDate: string;
+  dailyQuestSolved: number;
+  hardestPuzzleRating: number;
+  bestStreak: number;
+  journeyMilestones: number[];
 }
 type Mode = "rated" | "daily" | "themes";
 type Mission = "mixed" | "mate1" | "mate2" | "mate3" | "punish" | "fork" | "defend" | "hanging";
@@ -40,7 +47,11 @@ const CACHE_KEY = "chessmart:puzzle-bank:3500:v1";
 const STATS_KEY = "chessmart:puzzle-stats:v1";
 const PAGE_SIZE = 100;
 const TARGET = 3500;
-const EMPTY_STATS: PuzzleStats = { rating: 1200, solved: [], attempts: 0, correct: 0, streak: 0, lastDaily: "" };
+const EMPTY_STATS: PuzzleStats = {
+  rating: 1200, solved: [], attempts: 0, correct: 0, streak: 0, lastDaily: "",
+  journeyPoints: 0, dailyQuestDate: "", dailyQuestSolved: 0,
+  hardestPuzzleRating: 0, bestStreak: 0, journeyMilestones: [],
+};
 const THEME_LABELS: Record<string, string> = {
   mateIn1: "Мат в 1", mateIn2: "Мат в 2", mateIn3: "Мат в 3", mate: "Мат",
   fork: "Вилка", pin: "Связка", skewer: "Шпажка", doubleCheck: "Двойной шах",
@@ -55,7 +66,19 @@ const THEME_LABELS: Record<string, string> = {
 function readStats(): PuzzleStats {
   try {
     const value = JSON.parse(localStorage.getItem(STATS_KEY) ?? "null") as Partial<PuzzleStats> | null;
-    return { ...EMPTY_STATS, ...value, solved: Array.isArray(value?.solved) ? value.solved : [] };
+    return {
+      ...EMPTY_STATS,
+      ...value,
+      solved: Array.isArray(value?.solved) ? value.solved : [],
+      journeyPoints: Number.isFinite(value?.journeyPoints) ? Math.max(0, Math.floor(value!.journeyPoints!)) : 0,
+      dailyQuestDate: typeof value?.dailyQuestDate === "string" ? value.dailyQuestDate : "",
+      dailyQuestSolved: Number.isFinite(value?.dailyQuestSolved) ? Math.max(0, Math.min(3, Math.floor(value!.dailyQuestSolved!))) : 0,
+      hardestPuzzleRating: Number.isFinite(value?.hardestPuzzleRating) ? Math.max(0, Math.floor(value!.hardestPuzzleRating!)) : 0,
+      bestStreak: Number.isFinite(value?.bestStreak) ? Math.max(0, Math.floor(value!.bestStreak!)) : 0,
+      journeyMilestones: Array.isArray(value?.journeyMilestones)
+        ? value.journeyMilestones.filter((item): item is number => Number.isInteger(item) && item > 0)
+        : [],
+    };
   } catch { return EMPTY_STATS; }
 }
 function saveStats(stats: PuzzleStats) {
@@ -157,6 +180,8 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
   const [feedback, setFeedback] = useState<"idle" | "wrong" | "solved" | "revealed">("idle");
   const [hint, setHint] = useState(false);
   const [rushCount, setRushCount] = useState(0);
+  const [journeyReward, setJourneyReward] = useState<{ points: number; bonuses: string[] } | null>(null);
+  const puzzleStartedAt = useRef(Date.now());
 
   useEffect(() => {
     const controller = new AbortController();
