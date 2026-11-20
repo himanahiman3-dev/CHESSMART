@@ -10,6 +10,7 @@ class FakeWorker {
     this.onmessage = null;
     this.listeners = new Map();
     this.terminated = false;
+    this.commands = [];
     workers.push(this);
     nextMode = "success";
   }
@@ -37,6 +38,7 @@ class FakeWorker {
   }
 
   postMessage(command) {
+    this.commands.push(command);
     if (command === "uci") {
       queueMicrotask(() => {
         if (this.mode === "init-crash") this.emit("error", { message: "simulated init crash" });
@@ -45,11 +47,18 @@ class FakeWorker {
     } else if (command === "isready") {
       queueMicrotask(() => this.line("readyok"));
     } else if (command.startsWith("go ")) {
-      queueMicrotask(() => {
-        this.line("info depth 8 multipv 1 score cp 42 pv e2e4 e7e5");
-        if (this.mode === "search-crash") this.emit("error", { message: "simulated search crash" });
-        else this.line("bestmove e2e4");
-      });
+      if (this.mode === "minimum-depth") {
+        setTimeout(() => this.line("info depth 40 multipv 1 score cp 40 pv e2e4 e7e5"), 0);
+        setTimeout(() => this.line("info depth 41 multipv 1 score cp 41 pv e2e4 e7e5"), 5);
+      } else {
+        queueMicrotask(() => {
+          this.line("info depth 8 multipv 1 score cp 42 pv e2e4 e7e5");
+          if (this.mode === "search-crash") this.emit("error", { message: "simulated search crash" });
+          else this.line("bestmove e2e4");
+        });
+      }
+    } else if (command === "stop" && this.mode === "minimum-depth") {
+      queueMicrotask(() => this.line("bestmove e2e4"));
     }
   }
 
@@ -91,6 +100,27 @@ try {
   assert.ok(revoked.has(successBundle.jsUrl) && revoked.has(successBundle.wasmUrl),
     "Terminating the engine must revoke both Blob URLs.");
 
+  nextMode = "minimum-depth";
+  const minimumBundle = makeBundle();
+  const minimumEngine = await StockfishEngine.create(minimumBundle, 64);
+  const minimumWorker = workers.at(-1);
+  const minimumResult = await minimumEngine.search({
+    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    depth: 245,
+    multipv: 1,
+    minimumDepth: 41,
+    movetimeAfterMinimumDepthMs: 20,
+  }).promise;
+  assert.ok(minimumWorker.commands.includes("go depth 245"),
+    "A minimum-depth search must request the selected target depth without a UCI movetime cap.");
+  assert.ok(!minimumWorker.commands.some((command) => command.startsWith("go depth 245 movetime")),
+    "The time budget must not expire before the mandatory depth is reached.");
+  assert.ok(minimumWorker.commands.includes("stop"),
+    "The deferred time budget must stop the search only after the minimum depth.");
+  assert.equal(minimumResult[0]?.depth, 41,
+    "A search must return the depth-41 result before advancing to the next position.");
+  minimumEngine.terminate();
+
   nextMode = "search-crash";
   const crashBundle = makeBundle();
   const crashEngine = await StockfishEngine.create(crashBundle, 64);
@@ -113,7 +143,7 @@ try {
   assert.ok(revoked.has(initBundle.jsUrl) && revoked.has(initBundle.wasmUrl),
     "An initialization failure must release both Blob URLs.");
 
-  console.log("Stockfish worker lifecycle validated: success, crash after partial info, init failure, and Blob URL cleanup.");
+  console.log("Stockfish worker lifecycle validated: success, mandatory depth 41, crash after partial info, init failure, and Blob URL cleanup.");
 } finally {
   URL.revokeObjectURL = nativeRevoke;
 }
