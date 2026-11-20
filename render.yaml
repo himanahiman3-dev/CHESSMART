@@ -1,20 +1,13 @@
-# Render.com Blueprint — статический сайт с COOP/COEP заголовками
+# Render Blueprint matching the existing CHESSMART Docker Web Service.
+# Review the Blueprint plan before the first sync: the live service may not yet
+# be managed by this Blueprint, and an unreviewed sync could create a duplicate.
 services:
   - type: web
-    runtime: static
-    name: chess-game-review
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
-    headers:
-      - path: /*
-        name: Cross-Origin-Opener-Policy
-        value: same-origin
-      - path: /*
-        name: Cross-Origin-Embedder-Policy
-        value: require-corp
-      - path: /*
-        name: Cross-Origin-Resource-Policy
-        value: cross-origin
-      - path: /engine/*
-        name: Cache-Control
-        value: public, max-age=31536000, immutable
+    name: CHESSMART
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    autoDeployTrigger: commit
