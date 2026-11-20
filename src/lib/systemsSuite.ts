@@ -646,7 +646,9 @@ export function getOnlinePollDelay(policy: {
   if (failures > 0) return getRetryDelay(failures - 1, 800, 12_000);
   // Active chess games are latency-sensitive: short, non-overlapping polling catches
   // opponent moves quickly without keeping the previous one-second idle cadence.
-  return policy.urgent ? 120 : 220;
+  // Realtime is the primary live path. These very short intervals are only
+  // used while the WebSocket is connecting or temporarily unavailable.
+  return policy.urgent ? 50 : 100;
 }
 
 export function getConnectionQuality(latencyMs: number | null, online: boolean): "offline" | "good" | "fair" | "poor" | "unknown" {
