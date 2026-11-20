@@ -233,7 +233,33 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
     return true;
   }, [customPuzzle, customFen, customIndex]);
 
+  const saveRushAttempt = useCallback(() => {
+    if (rushStartedAt.current === null) return;
+    const runId = rushStartedAt.current + "-" + rushSessionNumber.current;
+    if (rushRecordedId.current === runId) return;
+    rushRecordedId.current = runId;
+    const record: PuzzleRushAttempt = {
+      id: runId,
+      mode: rushMode,
+      playedAt: new Date(rushStartedAt.current).toISOString(),
+      score: rushScore,
+      mistakes: rushMistakes,
+      maxPuzzleRating: rushHighestRating,
+    };
+    setSaved((previous) => {
+      const best = Math.max(previous.rushBest[rushMode] ?? 0, rushScore);
+      const next = {
+        ...previous,
+        rushBest: { ...previous.rushBest, [rushMode]: best },
+        rushHistory: [record, ...previous.rushHistory.filter((item) => item.id !== runId)].slice(0, 20),
+      };
+      saveProgress(next);
+      return next;
+    });
+  }, [rushMode, rushScore, rushMistakes, rushHighestRating]);
+
   const beginRush = () => {
+    if (rushRunning) saveRushAttempt();
     const next = selectRushPuzzle(bank, 0, []);
     setRushPuzzle(next);
     setRushFen(next?.fen ?? "");
@@ -290,29 +316,8 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
   }, [rushRunning, rushMode]);
 
   useEffect(() => {
-    if (!rushFinished || rushStartedAt.current === null) return;
-    const runId = rushStartedAt.current + "-" + rushSessionNumber.current;
-    if (rushRecordedId.current === runId) return;
-    rushRecordedId.current = runId;
-    const record: PuzzleRushAttempt = {
-      id: runId,
-      mode: rushMode,
-      playedAt: new Date(rushStartedAt.current).toISOString(),
-      score: rushScore,
-      mistakes: rushMistakes,
-      maxPuzzleRating: rushHighestRating,
-    };
-    setSaved((previous) => {
-      const best = Math.max(previous.rushBest[rushMode] ?? 0, rushScore);
-      const next = {
-        ...previous,
-        rushBest: { ...previous.rushBest, [rushMode]: best },
-        rushHistory: [record, ...previous.rushHistory.filter((item) => item.id !== runId)].slice(0, 20),
-      };
-      saveProgress(next);
-      return next;
-    });
-  }, [rushFinished]);
+    if (rushFinished) saveRushAttempt();
+  }, [rushFinished, saveRushAttempt]);
 
 
   const shareDailyResult = async () => {
