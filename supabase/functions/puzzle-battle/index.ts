@@ -238,6 +238,9 @@ Deno.serve(async (req: Request) => {
     if (!isRecord(body) || typeof body.action !== "string") return fail("Некорректный запрос.");
 
     if (body.action === "queue") {
+      const existing = await getQueueState(user.id);
+      if (existing.status === "queued" || existing.status === "active") return json(existing);
+
       const { data: profile, error: profileError } = await admin.from("online_profiles")
         .select("blitz_rating").eq("user_id", user.id).maybeSingle();
       if (profileError || !profile) return fail("Сначала создай профиль в CHESSMART Online.", 409);
