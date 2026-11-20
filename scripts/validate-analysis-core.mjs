@@ -3,6 +3,7 @@ import { Chess } from "chess.js";
 import { fenKey } from "../src/lib/format.ts";
 import { positionKey } from "../src/lib/db.ts";
 import { buildPositionCommand } from "../src/lib/engine.ts";
+import { buildReview } from "../src/lib/analyze.ts";
 import { qBalance } from "../src/lib/see.ts";
 import { gameBudgetMs, slotForPosition, timePerMoveForDepth, MINIMUM_ANALYSIS_DEPTH } from "../src/lib/analysisBudget.ts";
 
@@ -67,5 +68,92 @@ assert.ok(
   checkedEval < -500,
   `Quiescence search must see the quiet check evasion followed by Bxa2; got ${checkedEval} cp`,
 );
+const forcedFen = "k6R/8/2K5/8/8/8/8/8 b - - 0 1";
+const forcedChess = new Chess(forcedFen);
+const forcedLegal = forcedChess.moves({ verbose: true });
+assert.equal(forcedLegal.length, 1, "The forced-move fixture must have exactly one legal move.");
+const forcedPlayed = forcedChess.move({
+  from: forcedLegal[0].from,
+  to: forcedLegal[0].to,
+  promotion: forcedLegal[0].promotion,
+});
+assert.ok(forcedPlayed, "The only legal move must apply successfully.");
+const forcedUci = forcedPlayed.from + forcedPlayed.to + (forcedPlayed.promotion ?? "");
+const forcedGame = {
+  headers: {},
+  startFen: forcedFen,
+  moves: [{
+    san: forcedPlayed.san,
+    uci: forcedUci,
+    from: forcedPlayed.from,
+    to: forcedPlayed.to,
+    piece: forcedPlayed.piece,
+    captured: forcedPlayed.captured,
+    color: forcedPlayed.color,
+    fenBefore: forcedPlayed.before,
+    fenAfter: forcedPlayed.after,
+  }],
+  fens: [forcedPlayed.before, forcedPlayed.after],
+};
+const forcedBefore = {
+  fen: forcedPlayed.before,
+  depth: 41,
+  lines: [{ multipv: 1, depth: 41, score: { cp: -350 }, pv: [forcedUci] }],
+};
+const forcedAfter = {
+  fen: forcedPlayed.after,
+  depth: 41,
+  lines: [{ multipv: 1, depth: 41, score: { cp: -350 }, pv: ["h8h7"] }],
+};
+const forcedReview = buildReview(forcedGame, [forcedBefore, forcedAfter], 41);
+assert.equal(forcedReview.moves[0].playedIsBest, true,
+  "The single legal move may also match the engine's first line.");
+assert.equal(forcedReview.moves[0].cls, "forced",
+  "A forced move must be classified as Forced, not Best.");
+assert.equal(forcedReview.moves[0].accuracy, 100,
+  "A player must not lose accuracy for having no legal alternative.");
+assert.equal(forcedReview.moves[0].winLoss, 0,
+  "A forced move must not be counted as an avoidable evaluation loss.");
+assert.equal(forcedReview.counts.b.forced, 1,
+  "Forced moves must appear in the dedicated per-side category totals.");
+assert.match(forcedReview.moves[0].comment, /единственный легальный вариант/,
+  "The coach must explain why this move was forced.");
+
+const ordinaryFen = "4k3/8/8/8/8/8/8/R3K3 w - - 0 1";
+const ordinaryChess = new Chess(ordinaryFen);
+assert.ok(ordinaryChess.moves().length > 1, "The comparison position must have several legal moves.");
+const ordinaryPlayed = ordinaryChess.move({ from: "a1", to: "a2" });
+assert.ok(ordinaryPlayed, "The comparison move must be legal.");
+const ordinaryUci = ordinaryPlayed.from + ordinaryPlayed.to + (ordinaryPlayed.promotion ?? "");
+const ordinaryGame = {
+  headers: {},
+  startFen: ordinaryFen,
+  moves: [{
+    san: ordinaryPlayed.san,
+    uci: ordinaryUci,
+    from: ordinaryPlayed.from,
+    to: ordinaryPlayed.to,
+    piece: ordinaryPlayed.piece,
+    captured: ordinaryPlayed.captured,
+    color: ordinaryPlayed.color,
+    fenBefore: ordinaryPlayed.before,
+    fenAfter: ordinaryPlayed.after,
+  }],
+  fens: [ordinaryPlayed.before, ordinaryPlayed.after],
+};
+const ordinaryBefore = {
+  fen: ordinaryPlayed.before,
+  depth: 41,
+  lines: [{ multipv: 1, depth: 41, score: { cp: 0 }, pv: [ordinaryUci] }],
+};
+const ordinaryAfter = {
+  fen: ordinaryPlayed.after,
+  depth: 41,
+  lines: [{ multipv: 1, depth: 41, score: { cp: 0 }, pv: ["e8d7"] }],
+};
+const ordinaryReview = buildReview(ordinaryGame, [ordinaryBefore, ordinaryAfter], 41);
+assert.notEqual(ordinaryReview.moves[0].cls, "forced",
+  "A position with multiple legal moves must never receive the Forced classification.");
+
 
 console.log("Analysis core validated: FEN cache identity, repetition history, and quiet check evasions.");
