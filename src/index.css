@@ -1882,3 +1882,29 @@ body {
 @media (min-width: 701px) and (max-width: 1023px) {
   .cm-achievement-grid { grid-template-columns: 1fr; }
 }
+
+
+/* Quick-game configuration on the play hub */
+.cm-replica-quick-settings { margin: 13px 14px 7px; padding: 13px; border: 1px solid var(--replica-border); border-radius: 8px; background: #302e2b; }
+.cm-replica-quick-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.cm-replica-quick-settings-heading > div { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.cm-replica-quick-settings-heading strong { color: #e8e6df; font-size: 12px; font-weight: 800; }
+.cm-replica-quick-settings-heading small { color: #96928a; font-size: 10px; }
+.cm-replica-quick-settings-heading > span { padding: 5px 8px; border-radius: 5px; background: rgba(129,182,76,.15); color: #c7e8a6; font-size: 12px; font-weight: 850; font-variant-numeric: tabular-nums; }
+.cm-replica-time-control-grid { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 5px; }
+.cm-replica-time-control-grid button { display: flex; min-width: 0; min-height: 48px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 5px 2px; border: 1px solid rgba(255,255,255,.08); border-radius: 6px; background: #3a3835; color: #d9d6cd; }
+.cm-replica-time-control-grid button:hover { border-color: rgba(129,182,76,.4); background: #414039; }
+.cm-replica-time-control-grid button.active { border-color: #86b957; background: #3b4a31; color: #ecf5e4; box-shadow: inset 0 0 0 1px rgba(134,185,87,.22); }
+.cm-replica-time-control-grid button strong { font-size: 12px; font-weight: 850; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cm-replica-time-control-grid button small { color: #a29e95; font-size: 9px; }
+.cm-replica-time-control-grid button.active small { color: #c7e2af; }
+.cm-replica-rated-toggle { display: flex; align-items: center; gap: 9px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.07); cursor: pointer; }
+.cm-replica-rated-toggle input { width: 15px; height: 15px; accent-color: var(--replica-green); }
+.cm-replica-rated-toggle > span { display: flex; flex-direction: column; gap: 3px; }
+.cm-replica-rated-toggle strong { color: #d9d6cd; font-size: 11px; }
+.cm-replica-rated-toggle small { color: #96928a; font-size: 9px; }
+@media (max-width: 700px) {
+  .cm-replica-quick-settings { margin-right: 10px; margin-left: 10px; }
+  .cm-replica-time-control-grid { gap: 4px; }
+  .cm-replica-time-control-grid button { min-height: 45px; }
+}

@@ -5,6 +5,7 @@ import type { AccountProfile } from "../lib/accountProfile";
 import type { ShellRoute } from "./ChessmartShellScreens";
 import { GameBoard } from "./GameBoard";
 import { loadGameplayPreferences } from "../lib/gameplayPreferences";
+import { loadSavedOnlineRated, loadSavedOnlineTimeControl, saveOnlineRated, saveOnlineTimeControl, ONLINE_TIME_CONTROL_OPTIONS } from "../lib/onlinePreferences";
 
 type Navigate = (route: ShellRoute) => void;
 
@@ -59,6 +60,8 @@ export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
   onNavigate: Navigate;
 }) {
   const preferences = loadGameplayPreferences();
+  const [timeControl, setTimeControl] = useState(loadSavedOnlineTimeControl);
+  const [rated, setRated] = useState(loadSavedOnlineRated);
   const username = accountProfile?.username ?? profile.name;
 
   return (
@@ -105,9 +108,30 @@ export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
             <h2>Play Chess</h2>
             <p>Найди соперника или выбери свой способ игры.</p>
           </div>
-          <div className="cm-replica-control-row">
-            <span>Контроль времени</span><strong>10 мин <span>⌄</span></strong>
-          </div>
+          <section className="cm-replica-quick-settings" aria-label="Настройки быстрой онлайн-партии">
+            <div className="cm-replica-quick-settings-heading">
+              <div><strong>Контроль времени</strong><small>Сразу применится к поиску и приглашению</small></div>
+              <span>{timeControl.replace("+", " + ")}</span>
+            </div>
+            <div className="cm-replica-time-control-grid">
+              {ONLINE_TIME_CONTROL_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={timeControl === option.value ? "active" : ""}
+                  aria-pressed={timeControl === option.value}
+                  onClick={() => { setTimeControl(option.value); saveOnlineTimeControl(option.value); }}
+                >
+                  <strong>{option.value.replace("+", " + ")}</strong>
+                  <small>{option.type}</small>
+                </button>
+              ))}
+            </div>
+            <label className="cm-replica-rated-toggle">
+              <input type="checkbox" checked={rated} onChange={(event) => { setRated(event.target.checked); saveOnlineRated(event.target.checked); }} />
+              <span><strong>Рейтинговая игра</strong><small>Учитывать результат в сетевом Elo</small></span>
+            </label>
+          </section>
           <div className="cm-replica-play-actions">
             <PlayAction icon="⚡" title="Играть онлайн" subtitle="Соперник твоего уровня" featured onClick={() => onNavigate("online")} />
             <PlayAction icon="♞" title="Играть с ботом" subtitle="От новичка до мастера" onClick={() => onNavigate("play")} />
