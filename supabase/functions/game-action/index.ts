@@ -309,6 +309,16 @@ Deno.serve(async (req: Request) => {
       if (game) await admin.from("online_matchmaking_queue").delete().eq("user_id", user.id);
       return json({ profile, game: game ?? undefined });
     }
+    if (action === "archive") {
+      const { data: games, error } = await admin.from("online_games")
+        .select("id,white_id,black_id,white_name,black_name,status,minutes,increment_seconds,rated,rating_type,result,reason,white_rating,black_rating,moves,created_at")
+        .eq("status", "completed")
+        .or("white_id.eq." + user.id + ",black_id.eq." + user.id)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) return fail("Не удалось загрузить архив онлайн-партий.", 500);
+      return json({ games: games ?? [] });
+    }
     if (action === "lookup_player") {
       const username = normalizeUsername(body.username);
       const { data: target } = await admin.from("online_profiles")
