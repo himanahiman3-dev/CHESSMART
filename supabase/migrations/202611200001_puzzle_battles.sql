@@ -249,6 +249,7 @@ declare
   v_new_score smallint;
   v_new_mistakes smallint;
   v_new_completed boolean;
+  v_puzzle_completed boolean := false;
   v_all_done boolean;
   v_winner uuid;
 begin
@@ -292,6 +293,7 @@ begin
   if p_uci <> v_expected then
     v_new_mistakes := v_player.mistakes + 1;
     v_new_completed := v_new_mistakes >= 3;
+    v_puzzle_completed := false;
     update public.puzzle_battle_players set mistakes = v_new_mistakes,
       completed = v_new_completed, last_active_at = now()
       where battle_id = p_battle_id and user_id = p_user_id;
@@ -306,6 +308,7 @@ begin
       v_new_score := v_player.score + 1;
       v_next_index := 0;
       v_new_completed := v_new_round >= 5;
+      v_puzzle_completed := true;
     end if;
     update public.puzzle_battle_players set
       score = v_new_score,
@@ -335,7 +338,7 @@ begin
   return jsonb_build_object(
     'correct', p_uci = v_expected,
     'opponent_reply', case when p_uci = v_expected then v_reply else null end,
-    'puzzle_completed', p_uci = v_expected and v_next_index = 0,
+    'puzzle_completed', v_puzzle_completed,
     'score', v_player.score,
     'round_index', v_player.round_index,
     'mistakes', v_player.mistakes,
