@@ -252,6 +252,8 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
       ? (stats.lastDaily === localDateKey() ? "solved" : "idle")
       : (stats.solved.includes(current.id) ? "solved" : "idle"));
     setHint(false);
+    setJourneyReward(null);
+    puzzleStartedAt.current = Date.now();
   }, [current?.id, current?.fen, mode]);
 
   const selectPuzzle = useCallback((puzzle: Puzzle) => {
@@ -262,11 +264,16 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
       ? (stats.lastDaily === localDateKey() ? "solved" : "idle")
       : (stats.solved.includes(puzzle.id) ? "solved" : "idle"));
     setHint(false);
+    setJourneyReward(null);
+    puzzleStartedAt.current = Date.now();
   }, [mode, stats.lastDaily, stats.solved]);
 
   const finishPuzzle = useCallback((puzzle: Puzzle, wasRevealed: boolean) => {
     const alreadySolved = stats.solved.includes(puzzle.id);
-    const nextRating = Math.max(400, Math.min(3200, Math.round(stats.rating + 24 * ((wasRevealed ? 0 : 1) - expectedScore(stats.rating, puzzle.rating)))));
+    const ratedMode = mode === "rated";
+    const nextRating = ratedMode && !wasRevealed
+      ? Math.max(400, Math.min(3200, Math.round(stats.rating + 24 * (1 - expectedScore(stats.rating, puzzle.rating)))))
+      : stats.rating;
     const completedAt = Date.now();
     const today = localDateKey(new Date(completedAt));
     const now = new Date(completedAt);
@@ -285,24 +292,55 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
       puzzleRating: ratingAfter,
       puzzleRatingHistory: [...profile.puzzleRatingHistory, ratingEntry].slice(-180),
     });
+
+    const newlySolved = !wasRevealed && !alreadySolved;
+    const nextStreak = wasRevealed ? 0 : stats.streak + 1;
+    const solveSeconds = Math.max(0, Math.round((completedAt - puzzleStartedAt.current) / 1000));
+    const journey = awardPuzzleJourneyPoints({
+      state: {
+        journeyPoints: stats.journeyPoints,
+        dailyQuestDate: stats.dailyQuestDate,
+        dailyQuestSolved: stats.dailyQuestSolved,
+        hardestPuzzleRating: stats.hardestPuzzleRating,
+        bestStreak: stats.bestStreak,
+        journeyMilestones: stats.journeyMilestones,
+      },
+      puzzleRating: puzzle.rating,
+      playerRating: stats.rating,
+      solveSeconds,
+      dateKey: today,
+      uniqueSolvedCount: stats.solved.length + (newlySolved ? 1 : 0),
+      streak: nextStreak,
+      firstSolve: newlySolved,
+    });
+    setJourneyReward(journey.pointsAwarded > 0
+      ? { points: journey.pointsAwarded, bonuses: journey.bonuses }
+      : null);
+
     setStats((previous) => {
       const completedDailyToday = mode === "daily" && !wasRevealed && previous.lastDaily !== today;
       const nextDailyStreak = previous.lastDaily === yesterday ? previous.streak + 1 : 1;
       return {
         ...previous,
-        rating: alreadySolved ? previous.rating : nextRating,
+        rating: ratedMode && !alreadySolved ? nextRating : previous.rating,
         solved: alreadySolved ? previous.solved : [...previous.solved, puzzle.id],
         attempts: previous.attempts + 1,
         correct: previous.correct + (wasRevealed ? 0 : 1),
         streak: mode === "daily"
           ? (completedDailyToday ? nextDailyStreak : previous.streak)
-          : (wasRevealed ? 0 : previous.streak + 1),
+          : nextStreak,
         lastDaily: completedDailyToday ? today : previous.lastDaily,
+        journeyPoints: journey.state.journeyPoints,
+        dailyQuestDate: journey.state.dailyQuestDate,
+        dailyQuestSolved: journey.state.dailyQuestSolved,
+        hardestPuzzleRating: journey.state.hardestPuzzleRating,
+        bestStreak: journey.state.bestStreak,
+        journeyMilestones: journey.state.journeyMilestones,
       };
     });
     if (mode === "rated" && !wasRevealed) setRushCount((value) => value + 1);
     setFeedback(wasRevealed ? "revealed" : "solved");
-  }, [stats.solved, stats.rating, stats.lastDaily, mode, profile, onChange]);
+  }, [stats, mode, profile, onChange]);
 
   const handleMove = useCallback((move: BoardMove): boolean => {
     if (!current || feedback === "solved" || feedback === "revealed" || !playerMove) return false;
