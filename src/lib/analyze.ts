@@ -73,7 +73,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { gameBudgetMs, slotForPosition, TIME_PER_MOVE_MS, timePerMoveForDepth, MAX_ANALYSIS_DEPTH } from "./analysisBudget";
+import { gameBudgetMs, slotForPosition, TIME_PER_MOVE_MS, timePerMoveForDepth, MAX_ANALYSIS_DEPTH, MINIMUM_ANALYSIS_DEPTH } from "./analysisBudget";
 import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
@@ -181,7 +181,8 @@ export async function evaluatePosition(
   signal?: AbortSignal,
   onInfo?: (lines: EngineLine[]) => void,
   movetimeMs?: number,
-  history?: PositionHistory
+  history?: PositionHistory,
+  searchPolicy?: { minimumDepth?: number; movetimeAfterMinimumDepthMs?: number }
 ): Promise<{ evalResult: PositionEval; fromCache: boolean }> {
   const term = terminalEval(fen);
   if (term) return { evalResult: term, fromCache: true };
@@ -189,9 +190,12 @@ export async function evaluatePosition(
   const cached = await getCachedPosition(fen, depth, multipv, historyKey);
   // A quick-pass cache must not silently satisfy a user request for a much deeper search.
   // For high target depths, accept only a result that reached at least 75% of the target.
-  const requiredCacheDepth = Math.min(depth, Math.max(CACHE_ACCEPT_DEPTH, Math.floor(depth * 0.75)));
+  const requiredCacheDepth = Math.max(
+    MINIMUM_ANALYSIS_DEPTH,
+    Math.min(depth, Math.max(CACHE_ACCEPT_DEPTH, Math.floor(depth * 0.75)))
+  );
   if (cached && cached.depth >= requiredCacheDepth) return { evalResult: cached, fromCache: true };
-  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history });
+  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history, ...searchPolicy });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
   let lines: EngineLine[];
@@ -407,7 +411,10 @@ export async function reviewGame(
   const timePerMoveMs = computeProfile
     ? timePerMoveForDepth(depth, computeProfile.timePerMoveMs, computeProfile.maxTimePerMoveMs ?? computeProfile.timePerMoveMs)
     : TIME_PER_MOVE_MS;
-  const effectiveDepth = Math.min(MAX_ANALYSIS_DEPTH, Math.max(1, Math.floor(depth) + (computeProfile?.depthBonus ?? 0)));
+  const effectiveDepth = Math.min(
+    MAX_ANALYSIS_DEPTH,
+    Math.max(MINIMUM_ANALYSIS_DEPTH, Math.floor(depth) + (computeProfile?.depthBonus ?? 0))
+  );
   const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
   const tacticalExtraBudgetMs = computeProfile?.tacticalExtraBudgetMs ?? TACTICAL_EXTRA_BUDGET_MS;
   const verifierBudgetMs = computeProfile?.verifierBudgetMs ?? MULTI_ENGINE_RECHECK_BUDGET_MS;
@@ -450,7 +457,13 @@ export async function reviewGame(
         });
       },
       slot,
-      { startFen: game.startFen, moves: game.moves.slice(0, i).map((move) => move.uci) }
+      { startFen: game.startFen, moves: game.moves.slice(0, i).map((move) => move.uci) },
+      {
+        minimumDepth: MINIMUM_ANALYSIS_DEPTH,
+        // The per-position budget is now extra time after depth 41, not a cap
+        // that can interrupt the mandatory first pass before it reaches depth 41.
+        movetimeAfterMinimumDepthMs: slot,
+      }
     );
     if (fromCache) cachedHits++;
     positions.push(evalResult);
