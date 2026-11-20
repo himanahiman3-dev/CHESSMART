@@ -3,7 +3,7 @@ import type { GameReview, Cls } from "../types";
 import { ClsBadge } from "./ClsBadge";
 import { sanRu } from "../lib/format";
 
-type MoveFilter = "all" | "mistakes" | "brilliant" | "book";
+type MoveFilter = "all" | "mistakes" | "brilliant" | "book" | "forced";
 
 const isMistake = (cls: Cls) => cls === "inaccuracy" || cls === "mistake" || cls === "miss" || cls === "blunder";
 
@@ -18,7 +18,8 @@ export function MovesTab({ review, ply, onSeek }: { review: GameReview; ply: num
       const filterMatch = filter === "all"
         || (filter === "mistakes" && isMistake(move.cls))
         || (filter === "brilliant" && move.cls === "brilliant")
-        || (filter === "book" && move.cls === "book");
+        || (filter === "book" && move.cls === "book")
+        || (filter === "forced" && move.cls === "forced");
       const number = `${Math.floor(index / 2) + 1}${move.color === "b" ? "…" : "."}`;
       const queryMatch = !q
         || sanRu(move.san).toLocaleLowerCase().includes(q)
@@ -74,6 +75,7 @@ export function MovesTab({ review, ply, onSeek }: { review: GameReview; ply: num
     mistakes: review.moves.filter((move) => isMistake(move.cls)).length,
     brilliant: review.moves.filter((move) => move.cls === "brilliant").length,
     book: review.moves.filter((move) => move.cls === "book").length,
+    forced: review.moves.filter((move) => move.cls === "forced").length,
   };
 
   const filters: { id: MoveFilter; label: string; count?: number }[] = [
@@ -81,6 +83,7 @@ export function MovesTab({ review, ply, onSeek }: { review: GameReview; ply: num
     { id: "mistakes", label: "Ошибки", count: counts.mistakes },
     { id: "brilliant", label: "Brilliant", count: counts.brilliant },
     { id: "book", label: "Дебют", count: counts.book },
+    { id: "forced", label: "Вынужденные", count: counts.forced },
   ];
 
   return (
