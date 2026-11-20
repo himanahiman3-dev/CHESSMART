@@ -126,6 +126,14 @@ assert.ok(weaknesses.some((item) => item.title === "Эндшпиль"));
 assert.ok(weaknesses.some((item) => item.title === "Вилки и двойные удары"));
 assert.ok(weaknesses.every((item) => item.sourceCount > 0 && Number.isFinite(item.score)));
 
+const mastered = emptyProfile();
+mastered.puzzles.push(makePuzzle("mastered-fork", NOW, "Вилка и двойной удар уже решены.", "blunder", NOW));
+assert.deepEqual(
+  analyzeTrainingWeaknesses(mastered),
+  [],
+  "Solved historical mistakes must remain in history but stop driving current weakness recommendations.",
+);
+
 const recommendations = buildTrainingRecommendations(rich, NOW, weaknesses);
 assert.ok(recommendations.some((item) => item.destination === "mistakes"));
 assert.ok(recommendations.some((item) => item.destination === "endgame"));

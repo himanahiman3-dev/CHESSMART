@@ -6,6 +6,7 @@ import { buildPositionCommand } from "../src/lib/engine.ts";
 import { forcedMoveClass } from "../src/lib/forcedMove.ts";
 import { qBalance } from "../src/lib/see.ts";
 import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES } from "../src/lib/analysisBudget.ts";
+import { summarizeReview } from "../src/lib/learningStats.ts";
 
 assert.equal(REVIEW_TARGET_DEPTH, 22, "Timed game review uses depth 22 as its maximum target.");
 assert.equal(ANALYSIS_TIME_MODES[0].timeMs, 300, "Fast mode gives each position 300 ms.");
@@ -87,5 +88,29 @@ const ordinaryLegalCount = ordinaryChess.moves().length;
 assert.ok(ordinaryLegalCount > 1, "The comparison position must have several legal moves.");
 assert.equal(forcedMoveClass(ordinaryLegalCount), null,
   "A position with multiple legal moves must never receive the Forced classification.");
+
+
+const reviewFixture = (moves) => ({
+  headers: { Site: "fixture", Date: "2026.11.20", White: "A", Black: "B", Result: "*" },
+  startFen: new Chess().fen(),
+  moves: moves.map((uci, index) => ({
+    uci,
+    index,
+    color: index % 2 === 0 ? "w" : "b",
+    fenBefore: new Chess().fen(),
+    accuracy: 80,
+    cls: "good",
+    san: "e4",
+    comment: "",
+  })),
+  accuracy: { w: 80, b: 80 },
+});
+const firstGameSummary = summarizeReview(reviewFixture(["e2e4", "e7e5", "g1f3"]));
+const secondGameSummary = summarizeReview(reviewFixture(["e2e4", "c7c5", "g1f3"]));
+assert.notEqual(
+  firstGameSummary.id,
+  secondGameSummary.id,
+  "Different game move sequences must not collide merely because the first/last moves match.",
+);
 
 console.log("Analysis core validated: FEN cache identity, repetition history, and quiet check evasions.");

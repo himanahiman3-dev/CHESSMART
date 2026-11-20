@@ -100,16 +100,14 @@ function hashString(value: string): string {
 
 export function summarizeReview(review: GameReview): ReviewSummary {
   const headers = review.headers;
-  const first = review.moves[0]?.uci ?? "";
-  const last = review.moves[review.moves.length - 1]?.uci ?? "";
+  const moveSequence = review.moves.map((move) => move.uci).join(",");
   const identity = [
     headers.Site ?? "",
     headers.Date ?? "",
     headers.White ?? "",
     headers.Black ?? "",
-    String(review.moves.length),
-    first,
-    last,
+    review.startFen,
+    moveSequence,
   ].join("|");
   const phases = calculatePhaseAccuracy(review.moves);
   const opening = review.opening ?? review.moves.find((move) => move.opening)?.opening;
