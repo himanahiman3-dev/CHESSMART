@@ -759,6 +759,9 @@ export function buildReview(
     const second = before.lines[1];
     const bestUci = top.pv[0];
     const playedIsBest = bestUci === m.uci;
+    const isBook = book.isBook[i];
+    const legal = legalMoveCount(m.fenBefore);
+    const isForced = legal === 1;
 
     const scoreBefore = top.score;
     // При лимите времени позиции считаются до разной глубины. Если сыгран ход со 2-й линии,
@@ -771,23 +774,21 @@ export function buildReview(
     // Приближение рейтинговых Expected Points для порогов Classification V2; модель Chess.com закрыта.
     const winBefore = winForRated(scoreBefore, color, elo);
     const winAfter = playedIsBest ? winBefore : winForRated(scoreAfter, color, elo);
-    const winLoss = Math.max(0, winBefore - winAfter);
+    // An exactly forced move has no legal alternative, so it cannot incur avoidable move-quality loss.
+    const winLoss = isForced ? 0 : Math.max(0, winBefore - winAfter);
     // Точность хода считается по стандартной кривой (формула Lichess), без рейтинга.
     const stdBefore = winFor(scoreBefore, color);
     const stdAfter = playedIsBest ? stdBefore : winFor(scoreAfter, color);
-    const accuracyLoss = Math.max(0, stdBefore - stdAfter);
+    const accuracyLoss = isForced ? 0 : Math.max(0, stdBefore - stdAfter);
 
     const cpBefore = cpFor(scoreBefore, color);
     const cpAfter = cpFor(scoreAfter, color);
-    const prevLoss = i > 0 ? reviews[i - 1].winLoss : 0;
+    const prevLoss = i > 0 && reviews[i - 1].cls !== "forced" ? reviews[i - 1].winLoss : 0;
     const prevSan = i > 0 ? reviews[i - 1].san : undefined;
-
-    const isBook = book.isBook[i];
-    const legal = legalMoveCount(m.fenBefore);
 
     // --- жертва для Brilliant ---
     let sac = { sacrifice: false, amount: 0, pieceType: "" };
-    if (!isBook && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS) && m.piece !== "k" && m.piece !== "p") {
+    if (!isBook && !isForced && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS) && m.piece !== "k" && m.piece !== "p") {
       sac = detectSacrifice(m.fenBefore, m.uci, elo);
     }
     const deferredPiece = deferredSacrifices.get(i);
@@ -824,7 +825,9 @@ export function buildReview(
       continuation: isDeferredBrilliant,
     });
 
-    if (isBook) {
+    if (isForced) {
+      cls = "forced";
+    } else if (isBook) {
       cls = "book";
     } else if (isBrilliant) {
       cls = "brilliant";
@@ -908,7 +911,7 @@ export function buildReview(
       bestSecondGapCp: gapCp,
       bestSecondSan: secondSan,
     });
-    const comment = isDeferredBrilliant
+    const comment = cls !== "forced" && isDeferredBrilliant
       ? `Блестящее продолжение жертвы: вы оставили фигуру под боем, но соперник всё ещё не может безопасно её забрать. ${generatedComment}`
       : generatedComment;
 
@@ -934,7 +937,7 @@ export function buildReview(
       bestSan,
       secondUci: second?.pv[0],
       playedIsBest,
-      sacrifice: sac.sacrifice || isDeferredBrilliant,
+      sacrifice: cls !== "forced" && (sac.sacrifice || isDeferredBrilliant),
       opening,
       comment,
       lines: before.lines,
