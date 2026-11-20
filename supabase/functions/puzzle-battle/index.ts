@@ -32,6 +32,18 @@ interface BattlePlayer {
   mistakes: number;
   completed: boolean;
 }
+interface PublicBattleLeader {
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+  puzzle_battle_rating: number;
+  puzzle_battle_games: number;
+  season_points: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  best_win_streak: number;
+}
 let cachedPuzzles: Puzzle[] = [];
 let cacheTimestamp = 0;
 
@@ -133,7 +145,7 @@ async function completeExpiredBattle(battleId: string, players: BattlePlayer[]) 
 }
 async function battleState(battleId: string, userId: string) {
   const { data: battle, error: battleError } = await admin.from("puzzle_battles")
-    .select("id,status,player_one_id,player_two_id,started_at,ends_at,finished_at,winner_id,finish_reason")
+    .select("id,status,player_one_id,player_two_id,started_at,ends_at,finished_at,winner_id,finish_reason,player_one_rating,player_two_rating,player_one_rating_after,player_two_rating_after,season_points_one,season_points_two,rating_applied")
     .eq("id", battleId).maybeSingle();
   if (battleError || !battle) throw new Error("Дуэль не найдена.");
   if (battle.player_one_id !== userId && battle.player_two_id !== userId) throw new Error("Ты не участник этой дуэли.");
@@ -146,16 +158,24 @@ async function battleState(battleId: string, userId: string) {
   if (battle.status === "active" && Date.parse(battle.ends_at) <= Date.now()) {
     await completeExpiredBattle(battleId, players);
     const { data: refreshed } = await admin.from("puzzle_battles")
-      .select("id,status,player_one_id,player_two_id,started_at,ends_at,finished_at,winner_id,finish_reason")
+      .select("id,status,player_one_id,player_two_id,started_at,ends_at,finished_at,winner_id,finish_reason,player_one_rating,player_two_rating,player_one_rating_after,player_two_rating_after,season_points_one,season_points_two,rating_applied")
       .eq("id", battleId).single();
     if (refreshed) Object.assign(battle, refreshed);
     players = players.map((player) => ({ ...player, completed: true }));
   }
 
   const ids = players.map((player) => player.user_id);
-  const { data: profiles } = await admin.from("online_profiles")
-    .select("user_id,username,avatar_url").in("user_id", ids);
+  const [{ data: profiles }, { data: seasonRows }] = await Promise.all([
+    admin.from("online_profiles")
+      .select("user_id,username,avatar_url,puzzle_battle_rating,puzzle_battle_games,puzzle_battle_wins,puzzle_battle_losses,puzzle_battle_draws,puzzle_battle_win_streak,puzzle_battle_best_win_streak")
+      .in("user_id", ids),
+    admin.from("puzzle_battle_season_stats")
+      .select("user_id,points,wins,losses,draws,best_win_streak")
+      .eq("season_start", new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString().slice(0, 10))
+      .in("user_id", ids),
+  ]);
   const names = new Map((profiles ?? []).map((profile) => [profile.user_id, profile]));
+  const seasonByUser = new Map((seasonRows ?? []).map((row) => [row.user_id, row]));
   const publicPlayers = players.map((player) => ({
     user_id: player.user_id,
     username: names.get(player.user_id)?.username ?? "Игрок",
@@ -164,6 +184,14 @@ async function battleState(battleId: string, userId: string) {
     round_index: player.round_index,
     mistakes: player.mistakes,
     completed: player.completed,
+    puzzle_battle_rating: names.get(player.user_id)?.puzzle_battle_rating ?? 1200,
+    puzzle_battle_games: names.get(player.user_id)?.puzzle_battle_games ?? 0,
+    puzzle_battle_wins: names.get(player.user_id)?.puzzle_battle_wins ?? 0,
+    puzzle_battle_losses: names.get(player.user_id)?.puzzle_battle_losses ?? 0,
+    puzzle_battle_draws: names.get(player.user_id)?.puzzle_battle_draws ?? 0,
+    puzzle_battle_win_streak: names.get(player.user_id)?.puzzle_battle_win_streak ?? 0,
+    puzzle_battle_best_win_streak: names.get(player.user_id)?.puzzle_battle_best_win_streak ?? 0,
+    season_points: seasonByUser.get(player.user_id)?.points ?? 0,
   }));
   const me = players.find((player) => player.user_id === userId)!;
   let puzzle: Record<string, unknown> | null = null;
@@ -196,6 +224,68 @@ async function battleState(battleId: string, userId: string) {
     puzzle,
   };
 }
+async function getPuzzleBattleLeaderboard(sort: "points" | "rating", userId: string) {
+  const seasonStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
+    .toISOString().slice(0, 10);
+  let leaders: PublicBattleLeader[] = [];
+
+  if (sort === "rating") {
+    const { data: profiles, error } = await admin.from("online_profiles")
+      .select("user_id,username,avatar_url,puzzle_battle_rating,puzzle_battle_games,puzzle_battle_wins,puzzle_battle_losses,puzzle_battle_draws,puzzle_battle_best_win_streak")
+      .order("puzzle_battle_rating", { ascending: false })
+      .order("puzzle_battle_games", { ascending: false })
+      .limit(50);
+    if (error) throw new Error("Не удалось загрузить рейтинг Puzzle Battle: " + error.message);
+    leaders = (profiles ?? []).map((profile) => ({
+      user_id: profile.user_id,
+      username: profile.username,
+      avatar_url: profile.avatar_url,
+      puzzle_battle_rating: profile.puzzle_battle_rating ?? 1200,
+      puzzle_battle_games: profile.puzzle_battle_games ?? 0,
+      season_points: 0,
+      wins: profile.puzzle_battle_wins ?? 0,
+      losses: profile.puzzle_battle_losses ?? 0,
+      draws: profile.puzzle_battle_draws ?? 0,
+      best_win_streak: profile.puzzle_battle_best_win_streak ?? 0,
+    }));
+  } else {
+    const { data: rows, error } = await admin.from("puzzle_battle_season_stats")
+      .select("user_id,points,wins,losses,draws,best_win_streak")
+      .eq("season_start", seasonStart)
+      .order("points", { ascending: false })
+      .order("wins", { ascending: false })
+      .limit(50);
+    if (error) throw new Error("Не удалось загрузить сезонную таблицу: " + error.message);
+    const ids = (rows ?? []).map((row) => row.user_id);
+    const { data: profiles, error: profileError } = ids.length
+      ? await admin.from("online_profiles")
+        .select("user_id,username,avatar_url,puzzle_battle_rating,puzzle_battle_games")
+        .in("user_id", ids)
+      : { data: [], error: null };
+    if (profileError) throw new Error("Не удалось загрузить игроков таблицы лидеров.");
+    const profileMap = new Map((profiles ?? []).map((profile) => [profile.user_id, profile]));
+    leaders = (rows ?? []).map((row) => ({
+      user_id: row.user_id,
+      username: profileMap.get(row.user_id)?.username ?? "Игрок",
+      avatar_url: profileMap.get(row.user_id)?.avatar_url ?? null,
+      puzzle_battle_rating: profileMap.get(row.user_id)?.puzzle_battle_rating ?? 1200,
+      puzzle_battle_games: profileMap.get(row.user_id)?.puzzle_battle_games ?? 0,
+      season_points: row.points,
+      wins: row.wins,
+      losses: row.losses,
+      draws: row.draws,
+      best_win_streak: row.best_win_streak,
+    }));
+  }
+
+  return {
+    sort,
+    season_start: seasonStart,
+    leaders,
+    my_rank: leaders.findIndex((leader) => leader.user_id === userId) + 1 || null,
+  };
+}
+
 async function getQueueState(userId: string) {
   const { data, error } = await admin.from("puzzle_battle_queue")
     .select("status,battle_id,queued_at").eq("user_id", userId).maybeSingle();
@@ -224,12 +314,12 @@ Deno.serve(async (req: Request) => {
       if (existing.status === "queued" || existing.status === "active") return json(existing);
 
       const { data: profile, error: profileError } = await admin.from("online_profiles")
-        .select("blitz_rating").eq("user_id", user.id).maybeSingle();
+        .select("puzzle_battle_rating").eq("user_id", user.id).maybeSingle();
       if (profileError || !profile) return fail("Сначала создай профиль в CHESSMART Online.", 409);
       const puzzles = await createPuzzlePack();
       const { data, error } = await admin.rpc("join_puzzle_battle_queue", {
         p_user_id: user.id,
-        p_rating: profile.blitz_rating,
+        p_rating: profile.puzzle_battle_rating,
         p_puzzles: puzzles,
       });
       if (error) throw new Error("Не удалось войти в очередь дуэли: " + error.message);
@@ -237,6 +327,11 @@ Deno.serve(async (req: Request) => {
       const battleId = data?.battle_id;
       if (typeof battleId !== "string") throw new Error("Сервер не вернул идентификатор дуэли.");
       return json(await battleState(battleId, user.id));
+    }
+
+    if (body.action === "leaderboard") {
+      const sort = body.sort === "rating" ? "rating" : "points";
+      return json(await getPuzzleBattleLeaderboard(sort, user.id));
     }
 
     if (body.action === "status") return json(await getQueueState(user.id));
