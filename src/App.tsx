@@ -32,53 +32,10 @@ import {
 } from "./lib/playerProfile";
 import type { GameReview } from "./types";
 import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
+import { HomeScreen, ProfileHubScreen, StatsScreen, SettingsScreen, NewsScreen, type ShellRoute } from "./components/ChessmartShellScreens";
 
 type Stage = "import" | "analyzing" | "review";
-type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "daily" | "battle" | "mistakes" | "coach" | "academy" | "lessons" | "endgame" | "openings" | "lab" | "diagnostics" | "systems";
-type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "coach" | "academy" | "lessons" | "endgame" | "openings" | "profile" | "lab" | "diagnostics" | "systems";
-
-const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconName }> = [
-  { id: "review", label: "Анализ партий", group: "Играть", icon: "analysis" },
-  { id: "play", label: "Против компьютера", group: "Играть", icon: "play" },
-  { id: "online", label: "Играть онлайн", group: "Играть", icon: "online" },
-  { id: "puzzles", label: "Библиотека задач", group: "Тренировка", icon: "puzzles" },
-  { id: "daily", label: "Задача дня и Rush", group: "Тренировка", icon: "puzzles" },
-  { id: "battle", label: "Puzzle Battle", group: "Соревноваться", icon: "puzzles" },
-  { id: "mistakes", label: "Мои ошибки", group: "Тренировка", icon: "mistakes" },
-  { id: "coach", label: "Personal Coach", group: "Тренировка", icon: "coach" },
-  { id: "academy", label: "Академия и план", group: "Тренировка", icon: "academy" },
-  { id: "lessons", label: "Уроки и курсы", group: "Изучать", icon: "lessons" },
-  { id: "endgame", label: "Эндшпиль", group: "Тренировка", icon: "endgame" },
-  { id: "openings", label: "Дебютная база", group: "Изучать", icon: "openings" },
-  { id: "profile", label: "Статистика", group: "Изучать", icon: "profile" },
-  { id: "lab", label: "Лаборатория позиции", group: "Изучать", icon: "lab" },
-  { id: "diagnostics", label: "Диагностика 300", group: "Изучать", icon: "diagnostics" },
-  { id: "systems", label: "Центр систем", group: "Система", icon: "systems" },
-];
-
-function NavIcon({ name, active = false }: { name: IconName; active?: boolean }) {
-  const stroke = active ? "#d9edc4" : "#9b9a93";
-  const common = { fill: "none", stroke, strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-      {name === "analysis" && <><path {...common} d="M3 18V5M3 18h18" /><path {...common} d="m6 14 4-4 3 2 6-7" /><circle cx="19" cy="5" r="1.5" fill={stroke} /></>}
-      {name === "play" && <><path {...common} d="M5 4.5h14v15H5z" /><path {...common} d="m10 8 6 4-6 4z" /></>}
-      {name === "online" && <><circle {...common} cx="9" cy="8" r="3" /><path {...common} d="M3.5 19v-1.2A4.8 4.8 0 0 1 8.3 13h1.4a4.8 4.8 0 0 1 4.8 4.8V19" /><path {...common} d="M16 5.5a3 3 0 0 1 0 5.8M17 13.5a4.5 4.5 0 0 1 3.5 4.4V19" /></>}
-      {name === "puzzles" && <><path {...common} d="M8 4h8v4a2 2 0 1 1 0 4v8H8v-4a2 2 0 1 0 0-4z" /></>}
-      {name === "mistakes" && <><path {...common} d="M12 3 2.8 19h18.4L12 3Z" /><path {...common} d="M12 9v4.5M12 17h.01" /></>}
-      {name === "coach" && <><path {...common} d="M12 3.5 14 8l4.9.6-3.6 3.3.9 4.8-4.2-2.4-4.2 2.4.9-4.8-3.6-3.3L11 8z" /><path {...common} d="M6 20h12M8 17.5V20m8-2.5V20" /></>}
-      {name === "academy" && <><path {...common} d="m3 8 9-4 9 4-9 4-9-4Z" /><path {...common} d="M7 10v5c3.2 2.5 6.8 2.5 10 0v-5M21 8v7" /><path {...common} d="M5 19h14" /></>}
-      {name === "lessons" && <><path {...common} d="M3.5 5.5c3.2-.9 6.1-.3 8.5 1.7v12c-2.4-2-5.3-2.6-8.5-1.7z" /><path {...common} d="M20.5 5.5c-3.2-.9-6.1-.3-8.5 1.7v12c2.4-2 5.3-2.6 8.5-1.7z" /><path {...common} d="M12 7.2v12" /></>}
-      {name === "endgame" && <><path {...common} d="M4 20h16M6 20V8l6-4 6 4v12" /><path {...common} d="M9 11h6M9 15h6" /></>}
-      {name === "openings" && <><path {...common} d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" /></>}
-      {name === "profile" && <><circle {...common} cx="12" cy="8" r="3.2" /><path {...common} d="M4.5 20a7.5 7.5 0 0 1 15 0" /></>}
-      {name === "lab" && <><path {...common} d="m14.5 6.5 3-3 3 3-3 3" /><path {...common} d="m3 21 8-8M12 5a5 5 0 0 0 7 7L10 21l-7-7 4-4" /></>}
-      {name === "diagnostics" && <><circle {...common} cx="12" cy="12" r="8.5" /><path {...common} d="M12 7v5l3.5 2M5.8 5.8l2 2M18.2 5.8l-2 2" /></>}
-      {name === "systems" && <><path {...common} d="M4 7h16M4 12h16M4 17h16" /><circle cx="8" cy="7" r="2" fill="#20251e" stroke={stroke} strokeWidth="1.8" /><circle cx="15" cy="12" r="2" fill="#20251e" stroke={stroke} strokeWidth="1.8" /><circle cx="10" cy="17" r="2" fill="#20251e" stroke={stroke} strokeWidth="1.8" /></>}
-    </svg>
-  );
-}
-
+type MainMode = ShellRoute | "daily" | "mistakes" | "endgame" | "lab" | "diagnostics" | "systems";
 function BrandMark() {
   return (
     <svg viewBox="0 0 44 44" width="38" height="38" aria-hidden="true">
@@ -90,10 +47,16 @@ function BrandMark() {
   );
 }
 
+function AvatarPlaceholder({ accountProfile, name }: { accountProfile: AccountProfile | null; name: string }) {
+  return accountProfile?.avatar_url
+    ? <img className="cm-sidebar-avatar" src={accountProfile.avatar_url} alt="" />
+    : <span className="cm-sidebar-avatar">{(accountProfile?.username ?? name).slice(0, 1).toUpperCase()}</span>;
+}
+
 function Main() {
   const { engine, computeProfile } = useEngine();
   const [stage, setStage] = useState<Stage>("import");
-  const [mode, setMode] = useState<MainMode>("review");
+  const [mode, setMode] = useState<MainMode>("home");
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null);
   const [review, setReview] = useState<GameReview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -229,7 +192,13 @@ function Main() {
   if (stage === "analyzing") return <AnalyzingScreen progress={progress} onCancel={() => abortRef.current?.abort()} />;
 
   let page = null;
-  if (mode === "play") page = engine
+  if (mode === "home") page = <HomeScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
+  else if (mode === "profile") page = <ProfileHubScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
+  else if (mode === "stats") page = <StatsScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
+  else if (mode === "settings") page = <SettingsScreen profile={profile} accountProfile={accountProfile} onChangeProfile={setProfile} onNavigate={changeMode} />;
+  else if (mode === "news") page = <NewsScreen />;
+  else if (mode === "profileDetails") page = <ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("profile")} onOpenAccount={() => changeMode("online")} />;
+  else if (mode === "play") page = engine
     ? <PlayScreen engine={engine} profile={profile} onFinished={setProfile} onBack={() => changeMode("review")} />
     : <EngineLoader />;
   else if (mode === "online") page = <OnlinePlayScreen onBack={() => changeMode("review")} />;
@@ -292,94 +261,84 @@ function Main() {
     );
   }
 
-  const activeItem = NAV_ITEMS.find((item) => item.id === mode) ?? NAV_ITEMS[0];
-  const grouped = ["Играть", "Тренировка", "Изучать", "Система"];
+  const pageTitle: Record<MainMode, string> = {
+    home: "Играть", review: "Анализ партий", play: "Боты", online: "Играть онлайн",
+    profile: "Профиль", profileDetails: "История и данные профиля", stats: "Статистика",
+    settings: "Настройки", news: "Новости", puzzles: "Задачи", daily: "Задача дня и Rush",
+    battle: "Puzzle Battle", mistakes: "Мои ошибки", coach: "Тренер", academy: "Академия",
+    lessons: "Учёба", endgame: "Эндшпиль", openings: "Дебюты", lab: "Лаборатория позиции",
+    diagnostics: "Диагностика 300", systems: "Центр систем",
+  };
+  const sidebarItems: Array<{ id: MainMode; label: string; icon: string }> = [
+    { id: "home", label: "Играть", icon: "♟" },
+    { id: "puzzles", label: "Задачи", icon: "🧩" },
+    { id: "lessons", label: "Учёба", icon: "🎓" },
+    { id: "academy", label: "Тренировка", icon: "🏋" },
+    { id: "review", label: "Анализ", icon: "⌕" },
+    { id: "news", label: "Новости", icon: "📰" },
+  ];
+  const communityActive = mode === "online" || mode === "battle";
+  const change = (next: ShellRoute | "daily" | "mistakes" | "endgame" | "lab" | "diagnostics" | "systems") => changeMode(next);
 
   return (
-    <div className="min-h-screen bg-[#1d211c] text-[#f0f2eb]">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-white/[0.06] bg-[#191d18] shadow-[12px_0_40px_rgba(0,0,0,.12)] lg:flex">
-        <div className="flex h-[82px] items-center gap-3.5 border-b border-white/[0.06] px-5">
-          <BrandMark />
-          <div><div className="text-[16px] font-black tracking-[0.04em] text-white">CHESSMART</div><div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.2em] text-[#87917e]">Chess analysis studio</div></div>
-        </div>
-        <nav aria-label="Основная навигация" className="chess-scrollbar flex-1 overflow-y-auto px-3 py-6">
-          {grouped.map((group) => (
-            <div key={group} className="mb-7">
-              <div className="mb-2.5 px-3 text-[9px] font-extrabold uppercase tracking-[0.2em] text-[#788271]">{group}</div>
-              <div className="space-y-1.5">
-                {NAV_ITEMS.filter((item) => item.group === group).map((item) => {
-                  const active = mode === item.id;
-                  return (
-                    <button key={item.id} onClick={() => changeMode(item.id)} aria-current={active ? "page" : undefined}
-                      className={"group flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-[11px] font-bold transition-all " + (active ? "bg-gradient-to-r from-[#384a30] to-[#2c3827] text-[#e3f0d5] shadow-[inset_3px_0_0_#a5ce78,0_8px_22px_rgba(0,0,0,.12)] ring-1 ring-[#8eaf68]/15" : "text-[#a3ac9a] hover:bg-white/[0.045] hover:text-white")}>
-                      <NavIcon name={item.icon} active={active} />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+    <div className="cm-app-shell">
+      <aside className="cm-sidebar">
+        <button type="button" className="cm-brand" onClick={() => changeMode("home")} aria-label="CHESSMART — главная">
+          <BrandMark /><span>Chessmart</span>
+        </button>
+        <nav className="cm-sidebar-nav" aria-label="Главная навигация">
+          {sidebarItems.slice(0, 4).map((item) => (
+            <button key={item.id} type="button" onClick={() => changeMode(item.id)} aria-current={mode === item.id ? "page" : undefined} className={mode === item.id ? "cm-side-item active" : "cm-side-item"}>
+              <span className="cm-side-icon">{item.icon}</span><span>{item.label}</span>
+            </button>
+          ))}
+          <div className="cm-side-group">
+            <button type="button" onClick={() => setMobileMore((open) => !open)} aria-expanded={mobileMore} className={communityActive ? "cm-side-item active" : "cm-side-item"}>
+              <span className="cm-side-icon">♟</span><span>Сообщество</span><span className="cm-side-chevron">{mobileMore ? "⌃" : "⌄"}</span>
+            </button>
+            {mobileMore && <div className="cm-side-submenu">
+              <button type="button" onClick={() => changeMode("online")} className={mode === "online" ? "active" : ""}>🌐 Играть онлайн</button>
+              <button type="button" onClick={() => changeMode("battle")} className={mode === "battle" ? "active" : ""}>🏅 Puzzle Battle</button>
+            </div>}
+          </div>
+          {sidebarItems.slice(4).map((item) => (
+            <button key={item.id} type="button" onClick={() => changeMode(item.id)} aria-current={mode === item.id ? "page" : undefined} className={mode === item.id ? "cm-side-item active" : "cm-side-item"}>
+              <span className="cm-side-icon">{item.icon}</span><span>{item.label}</span>
+            </button>
           ))}
         </nav>
-        <div className="border-t border-white/[0.06] p-4">
-          <button type="button" onClick={() => changeMode("online")} aria-label={accountProfile ? "Открыть аккаунт " + accountProfile.username : "Открыть профиль игрока"}
-            className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[#2b3327] to-[#22271f] p-3.5 text-left transition hover:border-[#8ca96b]/35 hover:from-[#303c2b]">
-            {accountProfile?.avatar_url
-              ? <img src={accountProfile.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-xl border border-[#8ca96b]/25 object-cover shadow-inner" />
-              : <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#8ca96b]/25 bg-[#526d3e] text-sm font-black text-white shadow-inner">{(accountProfile?.username ?? profile.name).slice(0, 1).toUpperCase()}</div>}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-bold text-white">{accountProfile?.username ?? profile.name}</div>
-              <div className="text-[10px] text-[#96968d]">{accountProfile ? "Аккаунт CHESSMART" : "Локальный профиль · " + profile.rating + " Elo"}</div>
-            </div>
-            <span className="text-[#849078]" aria-hidden="true">›</span>
+        <div className="cm-sidebar-bottom">
+          <button type="button" className="cm-profile-shortcut" onClick={() => changeMode("profile")}>
+            <AvatarPlaceholder accountProfile={accountProfile} name={profile.name} />
+            <span><strong>{accountProfile?.username ?? profile.name}</strong><small>{accountProfile ? "Онлайн-аккаунт" : "Локальный игрок"}</small></span>
           </button>
-          <div className="mt-4 flex items-center justify-center gap-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#687362]"><span className="h-1 w-1 rounded-full bg-[#90b96a]" />Independent chess toolkit</div>
+          <div className="cm-bottom-actions">
+            <button type="button" onClick={() => changeMode("stats")} title="Статистика" aria-label="Статистика">▥</button>
+            <button type="button" onClick={() => changeMode("settings")} title="Настройки" aria-label="Настройки">⚙</button>
+          </div>
         </div>
       </aside>
 
-      <div className="min-h-screen lg:pl-[248px]">
-        <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[#1d211c]/90 px-4 py-3.5 backdrop-blur-2xl sm:px-7">
-          <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="lg:hidden"><BrandMark /></div>
-              <div><div className="text-sm font-extrabold tracking-tight text-white">{activeItem.label}</div><div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#849078]">Chessmart <span className="mx-1 text-[#59634f]">/</span> {activeItem.group}</div></div>
-            </div>
-            <div className="hidden items-center gap-3 sm:flex">
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.035] px-3.5 py-2 text-right"><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#7f8c73]">Локальный рейтинг</div><div className="mt-0.5 text-sm font-black tabular-nums text-[#d9edc4]">{profile.rating} <span className="text-[9px] font-bold text-[#89977c]">ELO</span></div></div>
-              <div className="h-8 w-px bg-white/[0.08]" />
-              {accountProfile?.avatar_url
-                ? <img src={accountProfile.avatar_url} alt="" className="h-10 w-10 rounded-xl border border-[#596b49] object-cover shadow-[0_4px_14px_rgba(0,0,0,.18)]" />
-                : <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#596b49] bg-[#34442c] text-sm font-black text-[#e3f0d5] shadow-[0_4px_14px_rgba(0,0,0,.18)]">{(accountProfile?.username ?? profile.name).slice(0, 1).toUpperCase()}</div>}
-            </div>
+      <div className="cm-main-column">
+        <header className="cm-topbar">
+          <div className="cm-topbar-title"><div className="cm-mobile-brand"><BrandMark /></div><div><strong>{pageTitle[mode]}</strong><small>CHESSMART <span>·</span> Шахматная платформа</small></div></div>
+          <div className="cm-topbar-actions">
+            <button type="button" className="cm-topbar-news" onClick={() => changeMode("news")}>Последние обновления <span>↗</span></button>
+            <button type="button" className="cm-topbar-user" onClick={() => changeMode("profile")} aria-label="Открыть профиль">
+              {accountProfile?.avatar_url ? <img src={accountProfile.avatar_url} alt="" /> : <span>{(accountProfile?.username ?? profile.name).slice(0, 1).toUpperCase()}</span>}
+              <b>{accountProfile?.username ?? profile.name}</b>
+            </button>
           </div>
         </header>
-
-        <nav aria-label="Навигация" className="hidden lg:hidden">
-          {NAV_ITEMS.map((item) => <button key={item.id} onClick={() => changeMode(item.id)}>{item.label}</button>)}
-        </nav>
-        <main className="min-h-[calc(100vh-64px)] bg-[#1d211c] mobile-app-main">{page}</main>
-        <nav aria-label="Мобильная навигация" className="mobile-bottom-nav lg:hidden">
-          {(["review", "play", "online", "profile"] as MainMode[]).map((id) => {
-            const item = NAV_ITEMS.find((entry) => entry.id === id)!;
-            const active = mode === id;
-            return <button key={id} onClick={() => changeMode(id)} aria-current={active ? "page" : undefined} className={active ? "mobile-nav-item active" : "mobile-nav-item"}>
-              <NavIcon name={item.icon} active={active} /><span>{id === "review" ? "Анализ" : id === "profile" ? "Профиль" : id === "online" ? "Онлайн" : "Играть"}</span>
-            </button>;
-          })}
-          <div className="mobile-more-wrap">
-            <button type="button" onClick={() => setMobileMore((open) => !open)} aria-expanded={mobileMore} aria-controls="mobile-more-menu" className={mobileMore ? "mobile-nav-item active" : "mobile-nav-item"}>
-              <span className="mobile-more-dots">•••</span><span>Ещё</span>
-            </button>
-            {mobileMore && <div id="mobile-more-menu" className="mobile-more-menu">
-              {NAV_ITEMS.filter((item) => !(["review", "play", "online", "profile"] as MainMode[]).includes(item.id)).map((item) => (
-                <button key={item.id} onClick={() => { changeMode(item.id); setMobileMore(false); }} className="mobile-more-option">
-                  <NavIcon name={item.icon} /><span>{item.label}</span>
-                </button>
-              ))}
-            </div>}
-          </div>
-        </nav>
+        <main className="cm-main-content mobile-app-main">{page}</main>
       </div>
+      <nav className="cm-mobile-nav" aria-label="Мобильная навигация">
+        <button type="button" onClick={() => changeMode("home")} className={mode === "home" ? "active" : ""}><span>♟</span>Играть</button>
+        <button type="button" onClick={() => changeMode("puzzles")} className={mode === "puzzles" ? "active" : ""}><span>🧩</span>Задачи</button>
+        <button type="button" onClick={() => changeMode("review")} className={mode === "review" ? "active" : ""}><span>⌕</span>Анализ</button>
+        <button type="button" onClick={() => changeMode("profile")} className={mode === "profile" ? "active" : ""}><span>♙</span>Профиль</button>
+        <button type="button" onClick={() => changeMode("settings")} className={mode === "settings" ? "active" : ""}><span>⚙</span>Настройки</button>
+      </nav>
     </div>
   );
 }
