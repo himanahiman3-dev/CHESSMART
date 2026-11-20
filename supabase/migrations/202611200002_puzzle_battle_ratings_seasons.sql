@@ -215,14 +215,19 @@ begin
     raise exception 'Puzzle Battle player state is missing';
   end if;
 
+  -- Lock both profiles in UUID order to avoid deadlocks when concurrent battles share players.
+  perform 1
+    from public.online_profiles
+    where user_id in (v_battle.player_one_id, v_battle.player_two_id)
+    order by user_id
+    for update;
+
   select * into v_one_profile
     from public.online_profiles
-    where user_id = v_battle.player_one_id
-    for update;
+    where user_id = v_battle.player_one_id;
   select * into v_two_profile
     from public.online_profiles
-    where user_id = v_battle.player_two_id
-    for update;
+    where user_id = v_battle.player_two_id;
   if v_one_profile.user_id is null or v_two_profile.user_id is null then
     raise exception 'Puzzle Battle profile is missing';
   end if;
