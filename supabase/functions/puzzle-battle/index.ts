@@ -223,10 +223,10 @@ async function getQueueState(userId: string) {
     if (matchError) throw new Error("Не удалось обновить поиск соперника: " + matchError.message);
     if (match?.queued) return { status: "queued", queued_at: data.queued_at };
     if (typeof match?.battle_id !== "string") throw new Error("Сервер не вернул идентификатор дуэли.");
-    return { status: "active", ...(await battleState(match.battle_id, userId)) };
+    return await battleState(match.battle_id, userId);
   }
 
-  return { status: "active", ...(await battleState(data.battle_id, userId)) };
+  return await battleState(data.battle_id, userId);
 }
 
 Deno.serve(async (req: Request) => {
@@ -254,7 +254,7 @@ Deno.serve(async (req: Request) => {
       if (data?.queued) return json({ status: "queued" });
       const battleId = data?.battle_id;
       if (typeof battleId !== "string") throw new Error("Сервер не вернул идентификатор дуэли.");
-      return json({ status: "active", ...(await battleState(battleId, user.id)) });
+      return json(await battleState(battleId, user.id));
     }
 
     if (body.action === "status") return json(await getQueueState(user.id));
