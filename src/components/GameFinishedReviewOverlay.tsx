@@ -9,7 +9,6 @@ interface Props {
   playerColor: Color;
   onAnalyzed: (review: GameReview, color: Color) => void;
   onOpenReview: (review: GameReview) => void;
-  onClose: () => void;
 }
 
 export function GameFinishedReviewOverlay({
@@ -18,12 +17,12 @@ export function GameFinishedReviewOverlay({
   playerColor,
   onAnalyzed,
   onOpenReview,
-  onClose,
 }: Props) {
   const { engine, status, start, computeProfile } = useEngine();
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null);
   const [review, setReview] = useState<GameReview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     // Онлайн-игра не обязана заранее загружать Stockfish. Поднимем движок,
@@ -84,6 +83,8 @@ export function GameFinishedReviewOverlay({
   const percent = review ? 100 : Math.min(99, Math.round(((done + depthProgress) / total) * 100));
   const elapsedSeconds = Math.max(0, Math.floor((progress?.elapsedMs ?? 0) / 1000));
 
+  if (dismissed) return null;
+
   return (
     <div className="cm-game-review-overlay" role="dialog" aria-modal="true" aria-labelledby="cm-postgame-title">
       <div className="cm-game-review-backdrop" />
@@ -96,7 +97,7 @@ export function GameFinishedReviewOverlay({
             <div className="cm-game-review-eyebrow">CHESSMART · GAME REVIEW</div>
             <h2 id="cm-postgame-title">Партия завершена</h2>
           </div>
-          <button type="button" className="cm-game-review-close" onClick={onClose} aria-label="Закрыть">×</button>
+          <button type="button" className="cm-game-review-close" onClick={() => setDismissed(true)} aria-label="Закрыть">×</button>
         </header>
 
         <div className="cm-game-review-intro">
@@ -134,7 +135,7 @@ export function GameFinishedReviewOverlay({
           <span>{review ? "Анализировать партию" : "Готовим анализ…"}</span>
           <b>→</b>
         </button>
-        <button type="button" className="cm-game-review-later" onClick={onClose}>Вернуться к результатам</button>
+        <button type="button" className="cm-game-review-later" onClick={() => setDismissed(true)}>Вернуться к результатам</button>
         <p className="cm-game-review-footnote">Личная статистика учитывает только ходы твоей стороны.</p>
       </section>
     </div>
