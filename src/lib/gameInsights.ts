@@ -1,6 +1,6 @@
 import { Chess, type PieceSymbol } from "chess.js";
 import type { UciGameMove } from "./gameNotation";
-import { classifyGamePhase } from "./learningStats";
+import { classifyGamePhase } from "./learningStats.ts";
 
 export type GamePhase = "opening" | "middlegame" | "endgame";
 export type TerminalState = "playing" | "check" | "checkmate" | "stalemate" | "draw";
