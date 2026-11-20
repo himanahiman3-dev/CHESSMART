@@ -351,7 +351,7 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
                     <div className="text-[9px] font-black uppercase tracking-widest text-[#8fa17f]">Задание</div>
                     <div className="mt-2 text-lg font-black">{dailyPuzzle.color === "w" ? "Белые ходят" : "Чёрные ходят"}</div>
                     <p className="mt-2 text-xs leading-relaxed text-[#a5b29a]">Найди точную комбинацию и доведи её до конца. После твоего хода ответ соперника появится автоматически.</p>
-                    {dailyHint === 2 && <div className="mt-3 rounded-lg bg-[#35482d] p-2 text-xs font-bold text-[#d7edc3]">Первый ход: {dailyPuzzle.moves[0].slice(0, 2)}–{dailyPuzzle.moves[0].slice(2, 4)}</div>}
+                    {dailyHint === 2 && dailyCurrentMove && <div className="mt-3 rounded-lg bg-[#35482d] p-2 text-xs font-bold text-[#d7edc3]">Текущий ход: {dailyCurrentMove.slice(0, 2)}–{dailyCurrentMove.slice(2, 4)}</div>}
                   </div>
                   <div className="rounded-2xl border border-white/[.07] bg-[#1c281c] p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-[#8fa17f]">Твоя серия</div>
