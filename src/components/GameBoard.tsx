@@ -5,7 +5,8 @@ import type { Cls } from "../types";
 import { ClsBadge } from "./ClsBadge";
 import { CLS_META } from "../types";
 import { createPremove, getPremoveMoves, type Premove } from "../lib/premoves";
-import type { GameBoardTheme } from "../lib/gameplayPreferences";
+import { loadGameplayPreferences, type GameBoardTheme } from "../lib/gameplayPreferences";
+import { playSound, setSoundEnabled } from "../lib/sound";
 
 export interface BoardArrow {
   from: string;
@@ -104,6 +105,10 @@ export function GameBoard({
   const [selected, setSelected] = useState<string | null>(null);
   const [promotionDraft, setPromotionDraft] = useState<{ from: string; to: string; kind: "move" | "premove" } | null>(null);
 
+  useEffect(() => {
+    setSoundEnabled(loadGameplayPreferences().soundEnabled);
+  }, []);
+
   useEffect(() => setSelected(null), [fen, interactive]);
 
   const chess = useMemo(() => {
@@ -156,6 +161,7 @@ export function GameBoard({
         chess.undo();
         return onMove({ from, to, san: mv.san, uci: from + to + (mv.promotion ?? ""), fenAfter: after });
       } catch {
+        playSound("illegal");
         return false;
       }
     },
