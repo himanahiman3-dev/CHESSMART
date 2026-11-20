@@ -36,7 +36,7 @@ import {
 } from "../lib/systemsSuite";
 
 type HubTab = "overview" | "analysis" | "quests" | "cache" | "network" | "settings";
-type HubDestination = AcademyDestination | "play" | "online" | "profile";
+type HubDestination = AcademyDestination | "academy" | "play" | "online" | "profile";
 
 const TABS: Array<{ id: HubTab; label: string }> = [
   { id: "overview", label: "Обзор" },
