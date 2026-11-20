@@ -281,7 +281,7 @@ declare
   first_join jsonb;
   second_join jsonb;
   answer jsonb;
-  battle_id uuid;
+  v_battle_id uuid;
   player_score integer;
   player_mistakes integer;
   player_completed boolean;
@@ -302,46 +302,46 @@ begin
 
   select public.join_puzzle_battle_queue('00000000-0000-0000-0000-000000000002', 1200, puzzle_pack) into second_join;
   if second_join->>'queued' <> 'false' then raise exception 'Second battle player should be matched immediately'; end if;
-  battle_id := (second_join->>'battle_id')::uuid;
+  v_battle_id := (second_join->>'v_battle_id')::uuid;
 
-  if (select count(*) from public.puzzle_battle_rounds where puzzle_battle_rounds.battle_id = battle_id) <> 5 then
+  if (select count(*) from public.puzzle_battle_rounds where puzzle_battle_rounds.v_battle_id = v_battle_id) <> 5 then
     raise exception 'Battle must contain exactly five rounds'; end if;
-  if (select count(*) from public.puzzle_battle_solutions where puzzle_battle_solutions.battle_id = battle_id) <> 5 then
+  if (select count(*) from public.puzzle_battle_solutions where puzzle_battle_solutions.v_battle_id = v_battle_id) <> 5 then
     raise exception 'Server must retain five hidden answer keys'; end if;
-  if (select count(*) from public.puzzle_battle_players where puzzle_battle_players.battle_id = battle_id) <> 2 then
+  if (select count(*) from public.puzzle_battle_players where puzzle_battle_players.v_battle_id = v_battle_id) <> 2 then
     raise exception 'Battle must have two player state rows'; end if;
 
-  select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000001', 'e2e4') into answer;
+  select public.submit_puzzle_battle_answer(v_battle_id, '00000000-0000-0000-0000-000000000001', 'e2e4') into answer;
   if answer->>'correct' <> 'true' or answer->>'opponent_reply' <> 'e7e5' or answer->>'puzzle_completed' <> 'false' then
     raise exception 'Correct answer must return the automatic opponent reply'; end if;
-  select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000001', 'g1f3') into answer;
+  select public.submit_puzzle_battle_answer(v_battle_id, '00000000-0000-0000-0000-000000000001', 'g1f3') into answer;
   if answer->>'correct' <> 'true' or answer->>'puzzle_completed' <> 'true' or (answer->>'score')::integer <> 1 then
     raise exception 'Completing a puzzle must award exactly one point'; end if;
 
   for i in 1..3 loop
-    select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000002', 'a2a3') into answer;
+    select public.submit_puzzle_battle_answer(v_battle_id, '00000000-0000-0000-0000-000000000002', 'a2a3') into answer;
   end loop;
   if answer->>'correct' <> 'false' or answer->>'completed' <> 'true' then
     raise exception 'Three incorrect answers must end the player series'; end if;
   select mistakes, completed into player_mistakes, player_completed
     from public.puzzle_battle_players
-    where puzzle_battle_players.battle_id = battle_flow_test.battle_id
+    where puzzle_battle_players.v_battle_id = v_battle_id
       and user_id = '00000000-0000-0000-0000-000000000002';
   if player_mistakes <> 3 or not player_completed then
     raise exception 'Three strikes must be persisted server-side'; end if;
 
   for i in 2..5 loop
-    select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000001', 'e2e4') into answer;
+    select public.submit_puzzle_battle_answer(v_battle_id, '00000000-0000-0000-0000-000000000001', 'e2e4') into answer;
     if answer->>'correct' <> 'true' then raise exception 'Correct puzzle opener rejected on round %', i; end if;
-    select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000001', 'g1f3') into answer;
+    select public.submit_puzzle_battle_answer(v_battle_id, '00000000-0000-0000-0000-000000000001', 'g1f3') into answer;
     if answer->>'correct' <> 'true' or answer->>'puzzle_completed' <> 'true' then
       raise exception 'Final puzzle move failed on round %', i; end if;
   end loop;
 
-  select status, winner_id into battle_status, winner from public.puzzle_battles where id = battle_id;
+  select status, winner_id into battle_status, winner from public.puzzle_battles where id = v_battle_id;
   select score, completed into player_score, player_completed
     from public.puzzle_battle_players
-    where puzzle_battle_players.battle_id = battle_flow_test.battle_id
+    where puzzle_battle_players.v_battle_id = v_battle_id
       and user_id = '00000000-0000-0000-0000-000000000001';
   if battle_status <> 'completed'
     or winner <> '00000000-0000-0000-0000-000000000001'
