@@ -15,7 +15,7 @@ npm run preview
 
 ```
 ├─ index.html
-├─ render.yaml                 # Render.com Blueprint (static site + COOP/COEP заголовки)
+├─ render.yaml                 # Render Blueprint для Docker Web Service
 ├─ public/
 │  ├─ _headers                 # COOP/COEP для Netlify/Cloudflare/Render-совместимых хостингов
 │  ├─ coi-serviceworker.js     # страховка: добавляет COOP/COEP на клиенте
@@ -33,7 +33,7 @@ npm run preview
    │  ├─ openings.ts           # ECO A00–E99 (ru/en), книжные ходы
    │  ├─ see.ts                # статический размен (qsearch по взятиям), вилки, висящие фигуры
    │  ├─ coach.ts              # комментарии тренера на русском
-   │  ├─ sound.ts              # звуки Web Audio API
+   │  ├─ sound.ts              # игровые MP3-звуки + Web Audio для тренировок
    │  ├─ importers.ts          # примеры партий, загрузка с lichess.org
    │  └─ coi.ts                # регистрация coi-serviceworker
    └─ components/              # доска, обзор, тренер, игра, профиль, задачи и энциклопедия дебютов
@@ -56,11 +56,10 @@ npm run preview
 
 ## COOP / COEP
 
-1. **Render.com** — `render.yaml` (Blueprint) и/или `public/_headers` добавляют заголовки автоматически.
+1. **Render.com** — production запускается как Docker Web Service: `Dockerfile` собирает Vite, Nginx из `docker/default.conf.template` отдаёт SPA и COOP/COEP/CORP-заголовки. `render.yaml` описывает эту Docker-конфигурацию; перед первым Blueprint sync обязательно проверь план изменений, чтобы не создать дубликат уже существующего сервиса.
 2. **Service Worker** — `public/coi-serviceworker.js`: если хостинг не отдал заголовки, SW добавит их и страница
    один раз перезагрузится.
-3. **Dev/preview** — скопируйте `docs/vite.config.coop-coep.example.ts` в `vite.config.ts`, чтобы заголовки отдавал
-   сам Vite (`server.headers`, `preview.headers`). Без этого в dev включится Service Worker.
+3. **Dev/preview** — текущий `vite.config.ts` уже выставляет COOP/COEP/CORP для `server` и `preview`. Service Worker остаётся запасным механизмом для хостингов, которые не умеют отдавать эти заголовки.
 
 ## Алгоритм обзора партии
 
@@ -86,7 +85,7 @@ npm run preview
 * **Игра и обучение:** партии против Stockfish с выбором силы, задачи на основе собственных ошибок и упражнения по эндшпилю.
 * **Профиль:** локальная статистика, точность по стадиям, дебюты, Brilliant/Miss, рейтинг против бота и список тренировочных задач.
 * **Резервная копия:** экспорт и восстановление профиля из JSON. Перед восстановлением файл проверяется, а замена существующих данных требует подтверждения.
-* **Личные предпочтения:** приложение запоминает громкость/состояние звуков и выбранную глубину анализа.
+* **Личные предпочтения:** приложение запоминает включение/выключение звуков и выбранную глубину анализа.
 
 Профиль и история обучения хранятся в браузере и не синхронизируются автоматически между устройствами. Для переноса используй резервную копию профиля.
 
