@@ -9,9 +9,10 @@ interface SavedProgress {
   completedDates: string[];
   heartsByDate: Record<string, number>;
   rushBest: Record<RushMode, number>;
+  hardMode: boolean;
 }
 const STORAGE_KEY = "chessmart:daily-rush-progress:v1";
-const EMPTY: SavedProgress = { completedDates: [], heartsByDate: {}, rushBest: { "3m": 0, "5m": 0, survival: 0 } };
+const EMPTY: SavedProgress = { completedDates: [], heartsByDate: {}, rushBest: { "3m": 0, "5m": 0, survival: 0 }, hardMode: false };
 const THEMES: Array<[string, string]> = [
   ["fork", "Вилки"], ["pin", "Связки"], ["skewer", "Шпажки"], ["mateIn1", "Мат в 1"],
   ["mateIn2", "Мат в 2"], ["mateIn3", "Мат в 3"], ["hangingPiece", "Выигрыш фигуры"],
@@ -27,6 +28,7 @@ function readProgress(): SavedProgress {
       completedDates: Array.isArray(saved?.completedDates) ? saved.completedDates.filter((value): value is string => typeof value === "string") : [],
       heartsByDate: saved?.heartsByDate && typeof saved.heartsByDate === "object" ? saved.heartsByDate : {},
       rushBest: { ...EMPTY.rushBest, ...(saved?.rushBest ?? {}) },
+      hardMode: typeof saved?.hardMode === "boolean" ? saved.hardMode : false,
     };
   } catch { return EMPTY; }
 }
@@ -114,11 +116,17 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
     return date;
   }, [dailyOffset]);
   const dailyKey = dayKey(dailyDate);
+  const dailyWeekday = (dailyDate.getDay() + 6) % 7;
+  const difficultyLabels = ["Разминка", "Лёгкая", "Уверенная", "Средняя", "Сложная", "Очень сложная", "Экспертная"];
   const dailyPuzzle = useMemo(() => {
     if (!bank.length) return null;
-    const index = ((dayOrdinal(dailyDate) % bank.length) + bank.length) % bank.length;
-    return bank[index] ?? null;
-  }, [bank, dailyDate]);
+    const sorted = [...bank].sort((a, b) => a.rating - b.rating);
+    const start = Math.floor(dailyWeekday * sorted.length / 7);
+    const end = Math.max(start + 1, Math.floor((dailyWeekday + 1) * sorted.length / 7));
+    const pool = sorted.slice(start, end);
+    const index = ((dayOrdinal(dailyDate) % pool.length) + pool.length) % pool.length;
+    return pool[index] ?? null;
+  }, [bank, dailyDate, dailyWeekday]);
   const dailyCurrentMove = dailyPuzzle?.moves[dailyIndex] ?? "";
   const dailyStreak = streakDays(saved.completedDates);
   const dailyPieceHint = dailyHint >= 1 && dailyCurrentMove ? dailyCurrentMove.slice(0, 2) : "";
@@ -148,14 +156,14 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
     if (!dailyPuzzle || dailyDone) return false;
     const result = advancePuzzle(dailyPuzzle, dailyFen, dailyIndex, move);
     if (!result) {
-      setDailyHearts((current) => {
-        const next = Math.max(0, current - 1);
-        setSaved((previous) => ({ ...previous, heartsByDate: { ...previous.heartsByDate, [dailyKey]: next } }));
-        return next;
-      });
-      setDailyMessage(dailyHearts > 1
-        ? "Не тот ход. Тренер подсказывает: проверь все шахи, взятия и угрозы."
-        : "Последнее сердце! Не торопись — даже без сердец задачу можно спокойно закончить.");
+      const nextHearts = Math.max(0, dailyHearts - 1);
+      setDailyHearts(nextHearts);
+      setSaved((previous) => ({ ...previous, heartsByDate: { ...previous.heartsByDate, [dailyKey]: nextHearts } }));
+      setDailyMessage(saved.hardMode
+        ? nextHearts === 0 ? "Сердца закончились. Продолжай самостоятельно — решение всё ещё засчитывается." : "Неверный ход. Одно сердце потеряно. Продолжай без подсказки тренера."
+        : nextHearts === 0 ? "Сердца закончились — но ты всё ещё можешь решить задачу и сохранить серию."
+        : nextHearts === 1 ? "Осталось последнее сердце. Проверь шахи, взятия и прямые угрозы."
+        : "Не тот ход. Тренер подсказывает: проверь все шахи, взятия и угрозы.");
       return false;
     }
     setDailyFen(result.fen);
@@ -163,7 +171,7 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
     setDailyMessage(result.done ? "Точно рассчитано. Позиция решена!" : "Верно! Соперник ответил. Найди продолжение.");
     if (result.done) markDailyDone();
     return true;
-  }, [dailyPuzzle, dailyDone, dailyFen, dailyIndex, dailyHearts, dailyKey, markDailyDone]);
+  }, [dailyPuzzle, dailyDone, dailyFen, dailyIndex, dailyHearts, dailyKey, saved.hardMode, markDailyDone]);
 
   const useDailyHint = () => {
     if (!dailyPuzzle || dailyDone || dailyHint >= 2 || dailyHearts <= 0) return;
@@ -262,6 +270,22 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
     });
   }, [rushFinished]);
 
+  const shareDailyResult = async () => {
+    const result = [
+      "CHESSMART · Ежедневная задача",
+      dateLabel,
+      "Результат: решено",
+      "Осталось сердец: " + dailyHearts + "/5",
+      "Серия: " + dailyStreak + " дн.",
+      window.location.origin,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(result);
+      setDailyMessage("Результат скопирован. Отправляй друзьям и сравнивайте серию!");
+    } catch {
+      setDailyMessage(result);
+    }
+  };
   const customThemeLabel = THEMES.find(([id]) => id === customTheme)?.[1] ?? "Все темы";
   const dateLabel = dailyDate.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
@@ -325,11 +349,12 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
                 <div>
                   <div className="text-[9px] font-black uppercase tracking-[.2em] text-[#a8ca89]">DAILY CHALLENGE</div>
                   <h2 className="mt-1 text-xl font-black sm:text-2xl">Задача дня</h2>
-                  <div className="mt-1 text-xs capitalize text-[#a4b39a]">{dateLabel}</div>
+                  <div className="mt-1 text-xs capitalize text-[#a4b39a]">{dateLabel} · {difficultyLabels[dailyWeekday]}</div>
                 </div>
                 <div className="flex items-center gap-2 rounded-xl border border-white/[.08] bg-black/15 px-3 py-2">
                   <span className="text-[9px] font-extrabold uppercase text-[#9eae93]">Жизни</span>
                   <span className="text-lg tracking-[.12em] text-[#f0bd76]">{Array.from({ length: 5 }, (_, index) => index < dailyHearts ? "♥" : "♡").join(" ")}</span>
+                  {dailyDone && <button onClick={shareDailyResult} className="ml-2 rounded-lg bg-[#a5cf78] px-3 py-2 text-[10px] font-black text-[#172315] hover:bg-[#b8e28e]">Поделиться</button>}
                 </div>
               </div>
               <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-white/[.06] bg-black/[.12] p-2">
@@ -357,6 +382,13 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
                     <div className="text-[9px] font-black uppercase tracking-widest text-[#8fa17f]">Твоя серия</div>
                     <div className="mt-1 text-3xl font-black text-[#cdeaa9]">{dailyStreak} <span className="text-sm text-[#8fa17f]">дней</span></div>
                     <div className="mt-2 text-xs text-[#98a68f]">Задача считается выполненной после всей комбинации, а не после одного угаданного хода.</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/[.07] bg-[#1c281c] p-4">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-[#8fa17f]">Настройки</div>
+                    <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs leading-relaxed text-[#aebda4]">
+                      <input type="checkbox" checked={saved.hardMode} onChange={(event) => setSaved((previous) => ({ ...previous, hardMode: event.target.checked }))} className="mt-0.5 accent-[#9bc96e]" />
+                      <span><b className="text-[#e0ead8]">Сложный режим</b><br />Без автоматических подсказок тренера при ошибках</span>
+                    </label>
                   </div>
                   <div className="rounded-2xl border border-white/[.07] bg-[#1c281c] p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-[#8fa17f]">Архив</div>
