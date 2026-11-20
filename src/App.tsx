@@ -63,6 +63,7 @@ function Main() {
   const [isRefining, setIsRefining] = useState(false);
   const [profile, setProfile] = useState<PlayerProfile>(() => loadPlayerProfile());
   const [mobileMore, setMobileMore] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(() => readAccountProfile());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -202,7 +203,6 @@ function Main() {
     ? <PlayScreen engine={engine} profile={profile} onFinished={setProfile} onBack={() => changeMode("review")} />
     : <EngineLoader />;
   else if (mode === "online") page = <OnlinePlayScreen onBack={() => changeMode("review")} />;
-  else if (mode === "profile") page = <ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} onOpenAccount={() => changeMode("online")} />;
   else if (mode === "puzzles") page = <PuzzleLibraryScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "daily") page = <DailyTrainingScreen onBack={() => changeMode("review")} />;
   else if (mode === "battle") page = <PuzzleBattleScreen onBack={() => changeMode("review")} />;
@@ -304,6 +304,21 @@ function Main() {
               <span className="cm-side-icon">{item.icon}</span><span>{item.label}</span>
             </button>
           ))}
+          <div className="cm-side-group cm-more-group">
+            <button type="button" onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen} className={moreOpen ? "cm-side-item active" : "cm-side-item"}>
+              <span className="cm-side-icon">•••</span><span>Ещё</span><span className="cm-side-chevron">{moreOpen ? "⌃" : "⌄"}</span>
+            </button>
+            {moreOpen && <div className="cm-side-submenu">
+              <button type="button" onClick={() => changeMode("daily")}>⚡ Задача дня и Rush</button>
+              <button type="button" onClick={() => changeMode("mistakes")}>⚠ Мои ошибки</button>
+              <button type="button" onClick={() => changeMode("coach")}>🎓 Personal Coach</button>
+              <button type="button" onClick={() => changeMode("endgame")}>♔ Эндшпиль</button>
+              <button type="button" onClick={() => changeMode("openings")}>📖 Дебюты</button>
+              <button type="button" onClick={() => changeMode("lab")}>🧪 Лаборатория позиции</button>
+              <button type="button" onClick={() => changeMode("diagnostics")}>🧠 Диагностика 300</button>
+              <button type="button" onClick={() => changeMode("systems")}>⚙ Центр систем</button>
+            </div>}
+          </div>
         </nav>
         <div className="cm-sidebar-bottom">
           <button type="button" className="cm-profile-shortcut" onClick={() => changeMode("profile")}>
