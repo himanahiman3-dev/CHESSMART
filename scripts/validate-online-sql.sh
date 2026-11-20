@@ -26,7 +26,8 @@ create table storage.buckets (
 );
 create function auth.uid() returns uuid
 language sql stable
-as $$ select null::uuid $$;
+as $ select null::uuid $;
+create publication supabase_realtime;
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
 SQL
@@ -38,6 +39,7 @@ psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170002_player_progress_sync
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261117150407_fix_matchmaking_pgcrypto_search_path.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611200001_puzzle_battles.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611200002_puzzle_battle_ratings_seasons.sql
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261120210843_enable_online_game_realtime.sql
 
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
@@ -56,6 +58,25 @@ insert into public.online_profiles(user_id, username) values
 ('00000000-0000-0000-0000-000000000004', 'delta'),
 ('00000000-0000-0000-0000-000000000005', 'echo'),
 ('00000000-0000-0000-0000-000000000006', 'foxtrot');
+
+-- Active online games must be part of the Realtime publication, while RLS remains enabled.
+do $online_realtime_test$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'online_games'
+  ) then raise exception 'online_games must be published to Supabase Realtime'; end if;
+  if not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'online_games' and c.relrowsecurity
+  ) then raise exception 'online_games must keep RLS enabled'; end if;
+  if not has_table_privilege('authenticated', 'public.online_games', 'SELECT') then
+    raise exception 'Authenticated participants need SELECT privilege for Realtime'; end if;
+end;
+$online_realtime_test$;
 
 -- Avatar schema and public storage bucket must be ready for authenticated uploads.
 do $avatar_test$
