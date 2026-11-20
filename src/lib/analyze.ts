@@ -190,9 +190,9 @@ export async function evaluatePosition(
   const cached = await getCachedPosition(fen, depth, multipv, historyKey);
   // A quick-pass cache must not silently satisfy a user request for a much deeper search.
   // For high target depths, accept only a result that reached at least 75% of the target.
-  const requiredCacheDepth = Math.max(
-    MINIMUM_ANALYSIS_DEPTH,
-    Math.min(depth, Math.max(CACHE_ACCEPT_DEPTH, Math.floor(depth * 0.75)))
+  const requiredCacheDepth = Math.min(
+    depth,
+    Math.max(MINIMUM_ANALYSIS_DEPTH, CACHE_ACCEPT_DEPTH, Math.floor(depth * 0.75))
   );
   if (cached && cached.depth >= requiredCacheDepth) return { evalResult: cached, fromCache: true };
   const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history, ...searchPolicy });
@@ -426,7 +426,7 @@ export async function reviewGame(
   for (let i = 0; i <= N; i++) {
     if (signal?.aborted) throw new Error("cancelled");
     const fen = game.fens[i];
-    // Время на эту позицию: остаток бюджета / число оставшихся позиций (экономия переходит дальше).
+    // The slot is extra deepening time after all principal variations reach the mandatory depth 41.
     const slot = moveTimeMs ?? slotForPosition(budgetMs, now() - startedAt, total - i);
     onProgress({
       done: i,
