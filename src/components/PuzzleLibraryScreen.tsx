@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chess } from "chess.js";
 import type { PlayerProfile, PuzzleRatingEntry } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
+import { playSound, soundForSan } from "../lib/sound";
 
 interface Puzzle {
   id: string;
@@ -281,18 +282,21 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
   const handleMove = useCallback((move: BoardMove): boolean => {
     if (!current || feedback === "solved" || feedback === "revealed" || !playerMove) return false;
     if (move.uci !== playerMove) {
+      playSound("wrong");
       setFeedback("wrong");
       setStats((previous) => ({ ...previous, attempts: previous.attempts + 1, streak: 0 }));
       return false;
     }
     try {
       const chess = new Chess(position);
-      chess.move({ from: move.from as never, to: move.to as never, promotion: (move.uci[4] ?? "q") as never });
+      const played = chess.move({ from: move.from as never, to: move.to as never, promotion: (move.uci[4] ?? "q") as never });
+      if (played) playSound(soundForSan(played.san));
       let nextIndex = solutionIndex + 1;
       // Ответный ход из решения Lichess автоматически проигрывается приложением.
       if (current.moves[nextIndex]) {
         const reply = current.moves[nextIndex];
-        chess.move({ from: reply.slice(0, 2) as never, to: reply.slice(2, 4) as never, promotion: (reply[4] ?? "q") as never });
+        const replyPlayed = chess.move({ from: reply.slice(0, 2) as never, to: reply.slice(2, 4) as never, promotion: (reply[4] ?? "q") as never });
+        if (replyPlayed) playSound(soundForSan(replyPlayed.san, chess.isGameOver(), undefined, "opponent"));
         nextIndex++;
       }
       setPosition(chess.fen());
