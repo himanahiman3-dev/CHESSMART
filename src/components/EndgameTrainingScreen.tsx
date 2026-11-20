@@ -33,6 +33,34 @@ const ENDGAMES = [
     fen: "8/P7/8/8/4k3/8/4K3/8 w - - 0 1",
     goal: "promotion" as const,
   },
+  {
+    id: "connected-pawns",
+    title: "Две связанные проходные",
+    description: "Используй взаимную поддержку пешек и проведи хотя бы одну из них в ферзи.",
+    fen: "8/1PP5/8/8/4k3/8/4K3/8 w - - 0 1",
+    goal: "promotion" as const,
+  },
+  {
+    id: "queen-technique",
+    title: "Мат ферзём с активным королём",
+    description: "Сократи пространство короля и поставь мат, не допуская пата.",
+    fen: "7k/8/5K2/8/8/8/8/6Q1 w - - 0 1",
+    goal: "mate" as const,
+  },
+  {
+    id: "rook-pawn-mate",
+    title: "Ладья и проходная пешка",
+    description: "Используй ладью и короля, чтобы создать матовую сеть.",
+    fen: "7k/8/5K2/8/8/8/6P1/6R1 w - - 0 1",
+    goal: "mate" as const,
+  },
+  {
+    id: "outside-passer",
+    title: "Дальняя проходная",
+    description: "Продвинь пешку на фланге, пока король соперника далеко.",
+    fen: "8/8/P7/1K6/3k4/8/8/8 w - - 0 1",
+    goal: "promotion" as const,
+  },
 ];
 
 type Result = "success" | "failed" | null;
@@ -44,6 +72,12 @@ export function EndgameTrainingScreen({ engine, profile, onChange, onBack }: Pro
   const [started, setStarted] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [result, setResult] = useState<Result>(null);
+  const [challengeQueue, setChallengeQueue] = useState<string[]>([]);
+  const [challengeIndex, setChallengeIndex] = useState(0);
+  const [challengeResults, setChallengeResults] = useState<Exclude<Result, null>[]>([]);
+  const [challengeActive, setChallengeActive] = useState(false);
+  const [challengeFinished, setChallengeFinished] = useState(false);
+  const [challengeStartedAt, setChallengeStartedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const generation = useRef(0);
@@ -75,25 +109,75 @@ export function EndgameTrainingScreen({ engine, profile, onChange, onBack }: Pro
       correctMoves: outcome === "success" ? 1 : 0,
       accuracy: outcome === "success" ? 100 : 0,
     };
-    onChange({
-      ...profile,
-      trainingSessions: [...(profile.trainingSessions ?? []), summary].slice(-100),
-    });
+    const trainingSessions = [...(profile.trainingSessions ?? []), summary];
+    if (challengeActive) {
+      const results = [...challengeResults, outcome];
+      setChallengeResults(results);
+      if (challengeIndex === challengeQueue.length - 1) {
+        const challengeStarted = challengeStartedAt ?? active.startedAt;
+        const solved = results.filter((item) => item === "success").length;
+        trainingSessions.push({
+          id: `endgame-challenge:${challengeStarted}`,
+          category: "endgame",
+          label: "Эндшпильный вызов · 5 позиций",
+          startedAt: challengeStarted,
+          durationMs: Math.max(0, completedAt - challengeStarted),
+          total: challengeQueue.length,
+          solved,
+          attempts: challengeQueue.length,
+          correctMoves: solved,
+          accuracy: Math.round(solved / Math.max(1, challengeQueue.length) * 100),
+        });
+        setChallengeActive(false);
+        setChallengeFinished(true);
+      }
+    }
+    onChange({ ...profile, trainingSessions: trainingSessions.slice(-100) });
     sessionRef.current = null;
-  }, [onChange, profile, task.title]);
+  }, [onChange, profile, task.title, challengeActive, challengeResults, challengeIndex, challengeQueue.length, challengeStartedAt]);
 
-  const reset = () => {
+  const startTask = (nextTask: typeof ENDGAMES[number], challenge = false) => {
     generation.current++;
     const startedAt = Date.now();
-    sessionRef.current = { id: `endgame:${task.id}:${startedAt}`, startedAt };
+    sessionRef.current = { id: `endgame:${nextTask.id}:${startedAt}`, startedAt };
     resultRef.current = null;
-    setFen(task.fen);
+    setTaskId(nextTask.id);
+    setFen(nextTask.fen);
     setStarted(true);
     setThinking(false);
     setResult(null);
     setError(null);
     setLastMove(null);
+    if (!challenge) {
+      setChallengeActive(false);
+      setChallengeFinished(false);
+      setChallengeQueue([]);
+      setChallengeResults([]);
+    }
     engine.newGame();
+  };
+
+  const reset = () => startTask(task);
+
+  const startChallenge = () => {
+    const selected = [...ENDGAMES].sort(() => Math.random() - 0.5).slice(0, 5);
+    if (selected.length < 5) return;
+    setChallengeQueue(selected.map((item) => item.id));
+    setChallengeIndex(0);
+    setChallengeResults([]);
+    setChallengeStartedAt(Date.now());
+    setChallengeActive(true);
+    setChallengeFinished(false);
+    startTask(selected[0], true);
+  };
+
+  const nextChallengePosition = () => {
+    const nextIndex = challengeIndex + 1;
+    if (!challengeActive || nextIndex >= challengeQueue.length) return;
+    const nextTask = ENDGAMES.find((item) => item.id === challengeQueue[nextIndex]);
+    if (!nextTask) return;
+    setChallengeIndex(nextIndex);
+    startTask(nextTask, true);
   };
 
   useEffect(() => {
@@ -164,6 +248,10 @@ export function EndgameTrainingScreen({ engine, profile, onChange, onBack }: Pro
     generation.current++;
     sessionRef.current = null;
     resultRef.current = null;
+    setChallengeActive(false);
+    setChallengeFinished(false);
+    setChallengeQueue([]);
+    setChallengeResults([]);
     setTaskId(id);
     setFen(next.fen);
     setStarted(false);
@@ -188,7 +276,7 @@ export function EndgameTrainingScreen({ engine, profile, onChange, onBack }: Pro
           <section className="rounded-2xl bg-[#262421] p-3 sm:p-4">
             <div className="mb-3 flex items-center justify-between text-sm">
               <span className="font-bold">Ты — белыми</span>
-              <span className="text-xs text-[#a7a6a2]">{thinking ? "Stockfish думает…" : started ? "Твой ход" : "Позиция готова"}</span>
+              <span className="text-xs text-[#a7a6a2]">{challengeActive ? `Вызов · ${challengeIndex + 1}/5` : thinking ? "Stockfish думает…" : started ? "Твой ход" : "Позиция готова"}</span>
             </div>
             <GameBoard
               fen={fen}
@@ -205,11 +293,27 @@ export function EndgameTrainingScreen({ engine, profile, onChange, onBack }: Pro
               </div>
             )}
             {error && <div className="mt-3 rounded-lg bg-[#4a2927] p-3 text-sm text-[#ffb4b2]">{error}</div>}
+            {challengeActive && result && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6b8052] bg-[#2b3827] p-3">
+                <div className="text-xs text-[#d5e5c9]">Позиция {challengeIndex + 1} из 5 · Верно: {challengeResults.filter((item) => item === "success").length} из {challengeResults.length}</div>
+                <button onClick={nextChallengePosition} className="rounded-lg bg-[#9bc96e] px-4 py-2 text-xs font-black text-[#192415]">Следующая позиция →</button>
+              </div>
+            )}
+            {challengeFinished && (
+              <div className="mt-3 rounded-xl border border-[#718e55] bg-[#30442b] p-3">
+                <div className="text-sm font-black text-[#d7edc3]">Пятиступенчатый вызов завершён</div>
+                <div className="mt-1 text-xs text-[#c2d6b4]">Решено {challengeResults.filter((item) => item === "success").length} из 5. Результат записан в статистику эндшпиля.</div>
+              </div>
+            )}
           </section>
 
           <aside className="space-y-3">
             <section className="rounded-2xl bg-[#262421] p-4">
               <div className="mb-2 text-sm font-extrabold">Выбери упражнение</div>
+              <button onClick={startChallenge} className="mb-3 w-full rounded-xl border border-[#759657] bg-gradient-to-r from-[#405b32] to-[#31442c] p-3 text-left hover:from-[#4b683b] hover:to-[#3b5232]">
+                <div className="text-sm font-black text-[#e0efd5]">Вызов · 5 позиций</div>
+                <div className="mt-1 text-[10px] text-[#b7c9a9]">Пять случайных эндшпилей подряд. Результат попадёт в твою статистику.</div>
+              </button>
               <div className="space-y-2">
                 {ENDGAMES.map((item) => (
                   <button key={item.id} onClick={() => changeTask(item.id)} className={`w-full rounded-lg border p-3 text-left ${taskId === item.id ? "border-[#81b64c] bg-[#2f3a28]" : "border-[#3d3a37] bg-[#2b2926] hover:bg-[#35322e]"}`}>
