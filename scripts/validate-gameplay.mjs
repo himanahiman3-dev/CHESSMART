@@ -71,6 +71,14 @@ assert.equal(replayed.turn(), "b");
 assert.equal(replayUciHistory([{ uci: "e2e4" }, { uci: "e7e5" }]).history().length, 2);
 assert.equal(getLegalMoveCount(start), 20);
 assert.equal(getGamePhase(start), "opening");
+const phaseBoundary = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 11";
+const materialBoundary = "r2nk2r/8/8/8/8/8/8/R1N1K2R w - - 0 20";
+assert.equal(classifyGamePhase(phaseBoundary), "middlegame");
+assert.equal(getGamePhase(phaseBoundary), classifyGamePhase(phaseBoundary),
+  "Position Lab and learning statistics must agree at the opening boundary.");
+assert.equal(classifyGamePhase(materialBoundary), "middlegame");
+assert.equal(getGamePhase(materialBoundary), classifyGamePhase(materialBoundary),
+  "Position Lab and learning statistics must use the same endgame material threshold.");
 assert.equal(gamePhaseLabel("endgame"), "Эндшпиль");
 assert.equal(getHalfmoveClock(start), 0);
 assert.equal(isNearFiftyMoveRule("8/8/8/8/8/8/8/K6k w - - 85 70"), true);
