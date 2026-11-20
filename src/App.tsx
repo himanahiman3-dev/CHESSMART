@@ -278,8 +278,6 @@ function Main() {
     { id: "news", label: "Новости", icon: "📰" },
   ];
   const communityActive = mode === "online" || mode === "battle";
-  const change = (next: ShellRoute | "daily" | "mistakes" | "endgame" | "lab" | "diagnostics" | "systems") => changeMode(next);
-
   return (
     <div className="cm-app-shell">
       <aside className="cm-sidebar">
