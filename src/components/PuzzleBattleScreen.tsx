@@ -44,6 +44,56 @@ interface BattleLeader {
   draws: number;
   best_win_streak: number;
 }
+interface BattleHistoryEntry {
+  id: string;
+  result: "win" | "loss" | "draw";
+  opponent: {
+    user_id: string;
+    username: string;
+    avatar_url: string | null;
+    puzzle_battle_rating: number;
+    puzzle_battle_games: number;
+    puzzle_battle_wins: number;
+    puzzle_battle_losses: number;
+    puzzle_battle_draws: number;
+    puzzle_battle_best_win_streak: number;
+  };
+  my_score: number;
+  opponent_score: number;
+  my_mistakes: number;
+  opponent_mistakes: number;
+  finished_at: string;
+  finish_reason: string | null;
+  rating_before: number;
+  rating_after: number;
+  rating_delta: number;
+  season_points: number;
+}
+interface BattleProfileSummary {
+  username: string;
+  avatar_url: string | null;
+  puzzle_battle_rating: number;
+  games: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  win_streak: number;
+  best_win_streak: number;
+}
+interface BattleSeasonSummary {
+  season_start: string;
+  points: number;
+  battles: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  best_win_streak: number;
+}
+interface BattleHistoryResponse {
+  profile: BattleProfileSummary;
+  season: BattleSeasonSummary;
+  history: BattleHistoryEntry[];
+}
 interface BattleSnapshot {
   status: "active" | "completed" | "cancelled";
   battle: {
@@ -88,6 +138,9 @@ interface BattleResponse {
   my_rank?: number | null;
   season_start?: string;
   sort?: "points" | "rating";
+  profile?: BattleProfileSummary;
+  season?: BattleSeasonSummary;
+  history?: BattleHistoryEntry[];
   error?: string;
 }
 const SESSION_KEY = "chessmart:account-session:v2";
@@ -165,8 +218,13 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
   const [leaderboardBusy, setLeaderboardBusy] = useState(false);
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
   const [seasonStart, setSeasonStart] = useState("");
+  const [battleProfile, setBattleProfile] = useState<BattleProfileSummary | null>(null);
+  const [battleSeason, setBattleSeason] = useState<BattleSeasonSummary | null>(null);
+  const [battleHistory, setBattleHistory] = useState<BattleHistoryEntry[]>([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const leaderboardRequest = useRef(0);
+  const historyRequest = useRef(0);
   const polling = useRef(false);
   const currentSession = session;
 
@@ -258,6 +316,36 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     if (phase === "completed") void loadLeaderboard(leaderboardSort);
   }, [phase, leaderboardSort]);
+
+  const loadBattleHistory = useCallback(async () => {
+    if (!session) return;
+    const requestId = ++historyRequest.current;
+    setHistoryBusy(true);
+    try {
+      const response = await battleAction(session, "history");
+      const data = response.data as unknown as BattleHistoryResponse;
+      const fresh = response.session;
+      if (requestId !== historyRequest.current) return;
+      setSession(fresh);
+      setBattleProfile(data.profile);
+      setBattleSeason(data.season);
+      setBattleHistory(data.history ?? []);
+    } catch (reason) {
+      if (requestId === historyRequest.current) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
+    } finally {
+      if (requestId === historyRequest.current) setHistoryBusy(false);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    if (session) void loadBattleHistory();
+  }, [session, loadBattleHistory]);
+
+  useEffect(() => {
+    if (phase === "completed") void loadBattleHistory();
+  }, [phase, loadBattleHistory]);
 
   const startQueue = async () => {
     if (!session || busy) return;
@@ -400,6 +488,100 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                     <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#adbaa4]">Подбираем игрока по отдельному Puzzle Battle Elo. Вы получаете одинаковые пять задач из проверенной базы. За каждую решённую задачу — очко и сезонный прогресс; победные серии усиливают награду. При равных очках выигрывает тот, кто допустил меньше ошибок.</p>
                     <button onClick={startQueue} disabled={busy} className="mt-5 rounded-xl bg-[#a5d17c] px-6 py-3 text-sm font-black text-[#172315] hover:bg-[#b7e28e] disabled:opacity-50">{busy ? "Подготовка…" : "Найти соперника"}</button>
                     <p className="mt-2 text-[10px] text-[#879781]">Без входного рейтинга, ставок и платных ограничений.</p>
+                    <div className="mt-5 space-y-3">
+                      <section className="rounded-2xl border border-white/[.08] bg-black/[.13] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-[9px] font-black uppercase tracking-[.18em] text-[#91a481]">ТВОЙ ПРОФИЛЬ АРЕНЫ</div>
+                            <div className="mt-1 text-lg font-black text-[#e2edd9]">{battleProfile?.username ?? "Игрок"}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[9px] font-bold uppercase text-[#879781]">Puzzle Battle Elo</div>
+                            <div className="text-2xl font-black tabular-nums text-[#d4ebbd]">{battleProfile?.puzzle_battle_rating ?? 1200}</div>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {[
+                            [String(battleProfile?.games ?? 0), "Матчей"],
+                            [String(battleProfile?.wins ?? 0), "Побед"],
+                            [String(battleProfile?.losses ?? 0), "Поражений"],
+                            [String(battleProfile?.draws ?? 0), "Ничьих"],
+                          ].map(([value, label]) => (
+                            <div key={label} className="rounded-xl bg-white/[.045] p-2.5">
+                              <div className="text-xl font-black tabular-nums">{value}</div>
+                              <div className="text-[9px] font-bold uppercase text-[#82917a]">{label}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[#a7b59e]">
+                          <span>Текущая серия: <b className="text-[#d3e5c4]">{battleProfile?.win_streak ?? 0}</b></span>
+                          <span>Лучшая серия: <b className="text-[#d3e5c4]">{battleProfile?.best_win_streak ?? 0}</b></span>
+                        </div>
+                      </section>
+
+                      <section className="rounded-2xl border border-white/[.08] bg-black/[.13] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-sm font-black">Текущий сезон</div>
+                          <div className="rounded-md bg-[#35452d] px-2 py-1 text-[9px] font-black text-[#c7dfb1]">{battleSeason?.points ?? 0} очков</div>
+                        </div>
+                        <div className="mt-1 text-[9px] text-[#82927a]">{battleSeason?.season_start ? "С " + new Date(battleSeason.season_start + "T00:00:00").toLocaleDateString("ru-RU") : "Месячный зачёт"}</div>
+                        <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+                          {[
+                            [String(battleSeason?.battles ?? 0), "Игр"],
+                            [String(battleSeason?.wins ?? 0), "Побед"],
+                            [String(battleSeason?.losses ?? 0), "Пораж."],
+                            [String(battleSeason?.draws ?? 0), "Ничьих"],
+                          ].map(([value, label]) => (
+                            <div key={label} className="rounded-lg bg-white/[.04] p-2">
+                              <div className="text-base font-black tabular-nums">{value}</div>
+                              <div className="text-[8px] font-bold uppercase text-[#82917a]">{label}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section className="rounded-2xl border border-white/[.08] bg-black/[.13] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-sm font-black">Последние дуэли</div>
+                          <button onClick={() => void loadBattleHistory()} disabled={historyBusy} className="text-[9px] font-bold text-[#a9c68d] disabled:opacity-40">{historyBusy ? "Обновляем…" : "Обновить"}</button>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          {battleHistory.slice(0, 8).map((entry) => {
+                            const resultLabel = entry.result === "win" ? "Победа" : entry.result === "loss" ? "Поражение" : "Ничья";
+                            const resultClass = entry.result === "win"
+                              ? "border-[#526e43] bg-[#2d4028]"
+                              : entry.result === "loss"
+                                ? "border-[#765047] bg-[#3a2c29]"
+                                : "border-white/[.10] bg-white/[.045]";
+                            const deltaClass = entry.rating_delta > 0 ? "text-[#bfe39f]" : entry.rating_delta < 0 ? "text-[#e3a99b]" : "text-[#a5b39a]";
+                            return (
+                              <div key={entry.id} className={"rounded-xl border p-3 " + resultClass}>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-xs font-extrabold">{entry.opponent.username}</div>
+                                    <div className="mt-0.5 text-[9px] text-[#9aa890]">{new Date(entry.finished_at).toLocaleDateString("ru-RU")} · {entry.opponent.puzzle_battle_rating} Battle Elo соперника</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-[9px] font-black uppercase tracking-wider">{resultLabel}</div>
+                                    <div className="text-base font-black tabular-nums">{entry.my_score} : {entry.opponent_score}</div>
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex flex-wrap justify-between gap-2 text-[9px] text-[#9aa890]">
+                                  <span>Ошибки {entry.my_mistakes} : {entry.opponent_mistakes}</span>
+                                  <span className={deltaClass}>Elo {entry.rating_delta > 0 ? "+" : ""}{entry.rating_delta}</span>
+                                  <span className="text-[#b7c9a7]">Сезон +{entry.season_points}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {!battleHistory.length && (
+                            <div className="rounded-xl bg-white/[.035] px-3 py-5 text-center text-[10px] text-[#82917a]">
+                              {historyBusy ? "Загружаем историю…" : "Сыграй первую дуэль — здесь появится результат."}
+                            </div>
+                          )}
+                        </div>
+                      </section>
+                    </div>
                   </div>
                   <aside className="space-y-3">
                     <div className="grid grid-cols-2 gap-2">
@@ -485,7 +667,10 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                       </div>
                       <p className="mt-2 text-xs text-[#9eb48c]">{battle.battle.finish_reason === "time" ? "Время вышло. Результат зафиксирован сервером." : "Оба игрока завершили серию или исчерпали ошибки."}</p>
                       <div className="mt-2 text-[10px] text-[#b2c5a5]">Твоя серия побед: {battle.me.puzzle_battle_win_streak} · лучший рекорд: {battle.me.puzzle_battle_best_win_streak}</div>
-                      <button onClick={startQueue} disabled={busy} className="mt-4 rounded-xl bg-[#a5d17c] px-4 py-3 text-xs font-black text-[#172315]">Новая дуэль →</button>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button onClick={() => { setBattle(null); setLocalFen(""); setPhase("idle"); void loadBattleHistory(); void loadLeaderboard(leaderboardSort); }} className="rounded-xl border border-white/[.14] px-4 py-3 text-xs font-bold text-[#c8d7bd]">К арене</button>
+                        <button onClick={startQueue} disabled={busy} className="rounded-xl bg-[#a5d17c] px-4 py-3 text-xs font-black text-[#172315]">Новая дуэль →</button>
+                      </div>
                     </div>
                   ) : battle.me.completed ? (
                     <div className="mt-5 rounded-2xl border border-[#6a8053] bg-[#2e3d2a] p-5">
