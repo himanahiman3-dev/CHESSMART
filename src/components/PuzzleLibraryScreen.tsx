@@ -84,7 +84,7 @@ function readStats(): PuzzleStats {
   } catch { return EMPTY_STATS; }
 }
 function saveStats(stats: PuzzleStats) {
-  try { localStorage.setItem(STATS_KEY, JSON.stringify({ ...stats, solved: stats.solved.slice(-5000) })); } catch { /* storage is optional */ }
+  try { localStorage.setItem(STATS_KEY, JSON.stringify({ ...stats, solved: stats.solved.slice(-5000), ratedSolved: stats.ratedSolved.slice(-5000) })); } catch { /* storage is optional */ }
 }
 function validPuzzle(row: Record<string, unknown>): Puzzle | null {
   const id = String(row.PuzzleId ?? "");
@@ -272,7 +272,7 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
     setHint(false);
     setJourneyReward(null);
     puzzleStartedAt.current = Date.now();
-  }, [mode, stats.lastDaily, stats.solved]);
+  }, [mode, stats.lastDaily, stats.solved, stats.ratedSolved]);
 
   const finishPuzzle = useCallback((puzzle: Puzzle, wasRevealed: boolean) => {
     const alreadySolved = stats.solved.includes(puzzle.id);
