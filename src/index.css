@@ -954,11 +954,11 @@ button:not(:disabled):hover {
 /* Main play canvas */
 .cm-home-screen {
   display: grid;
-  width: min(100%, 1180px);
+  width: min(1180px, calc(100% - clamp(24px, 8vw, 174px) - 20px));
   grid-template-columns: minmax(0, 1fr) 330px;
   align-items: start;
   gap: 22px;
-  margin: 0 auto;
+  margin: 0 0 0 clamp(24px, 8vw, 174px);
   padding: 11px 12px 24px;
 }
 .cm-home-board-column { min-width: 0; }
