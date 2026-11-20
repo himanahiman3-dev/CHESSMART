@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { PlayerProfile } from "../lib/playerProfile";
+import { buildTrainingRecommendations, type AcademyDestination } from "../lib/trainingAcademy";
 import {
   applySuitePreferences,
   buildSuiteDashboard,
@@ -35,7 +36,7 @@ import {
 } from "../lib/systemsSuite";
 
 type HubTab = "overview" | "analysis" | "quests" | "cache" | "network" | "settings";
-type HubDestination = "review" | "puzzles" | "mistakes" | "play" | "academy" | "online" | "profile";
+type HubDestination = AcademyDestination | "play" | "online" | "profile";
 
 const TABS: Array<{ id: HubTab; label: string }> = [
   { id: "overview", label: "Обзор" },
@@ -150,6 +151,7 @@ export function SystemsHubScreen({ profile, onBack, onNavigate }: {
   const [notice, setNotice] = useState<string | null>(null);
 
   const dashboard = useMemo(() => buildSuiteDashboard(profile, Date.now(), settings), [profile, settings]);
+  const nextRecommendation = useMemo(() => buildTrainingRecommendations(profile)[0] ?? null, [profile]);
   const level = useMemo(() => getQuestLevel(settings.totalXp), [settings.totalXp]);
 
   useEffect(() => {
@@ -295,9 +297,9 @@ export function SystemsHubScreen({ profile, onBack, onNavigate }: {
                 <ActionButton secondary onClick={() => setTab("quests")}>Открыть все миссии</ActionButton>
               </Panel>
               <Panel title="Следующий шаг" eyebrow="Персональная подсказка">
-                <p className="text-sm leading-relaxed text-[#dce6d3]">{dashboard.nextStep}</p>
+                <p className="text-sm leading-relaxed text-[#dce6d3]">{nextRecommendation?.reason ?? dashboard.nextStep}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <ActionButton onClick={() => openDestination(weakest ? "review" : dashboard.metrics.puzzleBacklog ? "mistakes" : "review")}>Начать работу</ActionButton>
+                  <ActionButton onClick={() => openDestination(nextRecommendation?.destination ?? "review")}>{nextRecommendation ? "Начать · " + nextRecommendation.durationMinutes + " мин." : "Начать анализ"}</ActionButton>
                   <ActionButton secondary onClick={() => setTab("analysis")}>Подробнее</ActionButton>
                 </div>
                 <div className="mt-5 border-t border-white/[0.06] pt-4">
