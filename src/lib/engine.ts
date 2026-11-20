@@ -34,6 +34,10 @@ export interface SearchOptions {
   multipv: number;
   /** Жёсткий лимит времени поиска (мс). */
   movetimeMs?: number;
+  /** Не останавливать поиск, пока все MultiPV-линии не достигнут этой глубины. */
+  minimumDepth?: number;
+  /** Дополнительное время поиска после достижения minimumDepth (мс). */
+  movetimeAfterMinimumDepthMs?: number;
   onInfo?: (lines: EngineLine[]) => void;
   /** Если не задано, движок сбрасывается на максимальную силу. */
   strength?: EngineStrength;
@@ -228,7 +232,22 @@ export class StockfishEngine {
               const parsed = parseInfo(line, turn);
               if (parsed) {
                 lines.set(parsed.multipv, parsed);
-                options.onInfo?.(sorted());
+                const currentLines = sorted();
+                options.onInfo?.(currentLines);
+
+                // For the main review, the search clock starts only after every
+                // requested principal variation has reached the mandatory depth.
+                const minimumDepth = options.minimumDepth;
+                const afterMinimumMs = options.movetimeAfterMinimumDepthMs;
+                const minimumReached = minimumDepth !== undefined
+                  && afterMinimumMs !== undefined
+                  && currentLines.length >= options.multipv
+                  && currentLines.slice(0, options.multipv).every((entry) => entry.depth >= minimumDepth);
+                if (minimumReached && !watchdog) {
+                  watchdog = setTimeout(() => {
+                    if (active) this.send("stop");
+                  }, Math.max(0, Math.floor(afterMinimumMs!)));
+                }
               } else {
                 const bound = parseInfo(line, turn, true);
                 if (bound && !lines.has(bound.multipv)) lines.set(bound.multipv, bound);
@@ -245,8 +264,15 @@ export class StockfishEngine {
             this.lastMultiPv = options.multipv;
           }
           this.send(buildPositionCommand(options.fen, options.history));
-          const limit = options.movetimeMs && options.movetimeMs > 0 ? Math.round(options.movetimeMs) : 0;
-          this.send(limit ? `go depth ${options.depth} movetime ${limit}` : `go depth ${options.depth}`);
+          const deferredLimit = options.minimumDepth !== undefined
+            && options.movetimeAfterMinimumDepthMs !== undefined;
+          const limit = !deferredLimit && options.movetimeMs && options.movetimeMs > 0
+            ? Math.round(options.movetimeMs)
+            : 0;
+          const requestedDepth = Math.max(1, Math.floor(options.depth), Math.floor(options.minimumDepth ?? 1));
+          this.send(limit
+            ? `go depth ${requestedDepth} movetime ${limit}`
+            : `go depth ${requestedDepth}`);
           if (this.dead) return;
           if (limit) {
             watchdog = setTimeout(() => {
