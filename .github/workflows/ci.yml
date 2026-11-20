@@ -74,7 +74,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Typecheck Supabase Edge Function
-        run: deno check --node-modules-dir=auto --no-lock supabase/functions/game-action/index.ts
+        run: deno check --node-modules-dir=auto --no-lock supabase/functions/game-action/index.ts supabase/functions/puzzle-battle/index.ts
       - name: Validate online SQL migrations and matchmaking
         env:
           PGHOST: 127.0.0.1
