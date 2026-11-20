@@ -11,6 +11,7 @@ import { buildPgnFromUci, copyText, downloadTextFile, formatSanMoveList, pgnFile
 import { replayUciHistory, getPositionInsights, formatMaterialBalance, gamePhaseLabel, terminalStateLabel, isNearFiftyMoveRule } from "../lib/gameInsights";
 import { getOnlinePollDelay } from "../lib/systemsSuite";
 import { subscribeToOnlineGameRealtime } from "../lib/onlineGameRealtime";
+import { loadSavedOnlineRated, loadSavedOnlineTimeControl, saveOnlineRated, saveOnlineTimeControl, type OnlineTimeControl } from "../lib/onlinePreferences";
 
 interface OnlineSession {
   access_token: string;
@@ -183,8 +184,8 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   const [inviteUsername, setInviteUsername] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [inviteTarget, setInviteTarget] = useState("");
-  const [timeControl, setTimeControl] = useState("5+0");
-  const [rated, setRated] = useState(true);
+  const [timeControl, setTimeControl] = useState<OnlineTimeControl>(loadSavedOnlineTimeControl);
+  const [rated, setRated] = useState(loadSavedOnlineRated);
   const [busy, setBusy] = useState(false);
   const [movePending, setMovePending] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -423,6 +424,8 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   }, [session, game?.id, game?.status, url, key]);
 
   useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
+  useEffect(() => { saveOnlineTimeControl(timeControl); }, [timeControl]);
+  useEffect(() => { saveOnlineRated(rated); }, [rated]);
 
   const updatePreference = <K extends keyof GameplayPreferences>(key: K, value: GameplayPreferences[K]) => {
     const next = updateGameplayPreferences(preferences, { [key]: value });
@@ -945,7 +948,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
                 <div><h2 className="text-sm font-extrabold">Контроль времени</h2><p className="mt-1 text-[10px] text-[#93928b]">Для поиска соперника и вызова по нику</p></div>
                 <label className="flex items-center gap-2 text-xs text-[#bdbcb5]"><input type="checkbox" checked={rated} onChange={(e) => setRated(e.target.checked)} className="accent-[#81b64c]" /> Рейтинговая</label>
               </div>
-              <select value={timeControl} onChange={(e) => setTimeControl(e.target.value)} disabled={searching} className="w-full rounded-lg border border-[#4a4942] bg-[#242520] px-3 py-3 text-sm sm:max-w-xs">
+              <select value={timeControl} onChange={(e) => setTimeControl(e.target.value as OnlineTimeControl)} disabled={searching} className="w-full rounded-lg border border-[#4a4942] bg-[#242520] px-3 py-3 text-sm sm:max-w-xs">
                 {["1+0", "2+1", "3+0", "3+2", "5+0", "5+3", "10+0", "10+5", "15+10"].map((value) => <option key={value} value={value}>{value.replace("+", " + ")} · {Number(value.split("+")[0]) < 3 ? "Bullet" : Number(value.split("+")[0]) < 10 ? "Blitz" : "Rapid"}</option>)}
               </select>
             </section>
