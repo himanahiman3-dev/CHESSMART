@@ -19,6 +19,7 @@ import { PersonalCoachScreen } from "./components/PersonalCoachScreen";
 import { SystemsHubScreen } from "./components/SystemsHubScreen";
 import { applySuitePreferences, loadSuiteSettings } from "./lib/systemsSuite";
 import { MotivationBanner } from "./components/MotivationBanner";
+import { buildTrainingRecommendations } from "./lib/trainingAcademy";
 import { reviewGame, type AnalyzeProgress } from "./lib/analyze";
 import {
   loadPlayerProfile,
@@ -83,7 +84,7 @@ function BrandMark() {
 }
 
 function Main() {
-  const { engine, status, computeProfile } = useEngine();
+  const { engine, computeProfile } = useEngine();
   const [stage, setStage] = useState<Stage>("import");
   const [mode, setMode] = useState<MainMode>("review");
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null);
@@ -208,20 +209,25 @@ function Main() {
     setError(null);
   }, []);
 
-  if (status !== "ready" || !engine) return <EngineLoader />;
   if (stage === "analyzing") return <AnalyzingScreen progress={progress} onCancel={() => abortRef.current?.abort()} />;
 
   let page = null;
-  if (mode === "play") page = <PlayScreen engine={engine} profile={profile} onFinished={setProfile} onBack={() => changeMode("review")} />;
+  if (mode === "play") page = engine
+    ? <PlayScreen engine={engine} profile={profile} onFinished={setProfile} onBack={() => changeMode("review")} />
+    : <EngineLoader />;
   else if (mode === "online") page = <OnlinePlayScreen onBack={() => changeMode("review")} />;
   else if (mode === "profile") page = <ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} onOpenAccount={() => changeMode("online")} />;
   else if (mode === "puzzles") page = <PuzzleLibraryScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "mistakes") page = <MistakeTrainerScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "coach") page = <PersonalCoachScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "academy") page = <TrainingAcademyScreen profile={profile} onBack={() => changeMode("review")} onNavigate={changeMode} />;
-  else if (mode === "endgame") page = <EndgameTrainingScreen engine={engine} profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
+  else if (mode === "endgame") page = engine
+    ? <EndgameTrainingScreen engine={engine} profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />
+    : <EngineLoader />;
   else if (mode === "openings") page = <OpeningExplorerScreen onBack={() => changeMode("review")} />;
-  else if (mode === "lab") page = <PositionLabScreen engine={engine} onBack={() => changeMode("review")} />;
+  else if (mode === "lab") page = engine
+    ? <PositionLabScreen engine={engine} onBack={() => changeMode("review")} />
+    : <EngineLoader />;
   else if (mode === "diagnostics") page = <Grandmaster300Screen onBack={() => changeMode("review")} />;
   else if (mode === "systems") page = <SystemsHubScreen profile={profile} onBack={() => changeMode("review")} onNavigate={changeMode} />;
   else if (stage === "review" && review) page = (
@@ -239,14 +245,29 @@ function Main() {
     />
   );
   else {
+    const nextRecommendation = buildTrainingRecommendations(profile)[0] ?? null;
     page = (
       <>
         {error && <div className="mx-auto mt-3 max-w-5xl rounded-lg border border-[#8c5049] bg-[#3e2926] px-4 py-2 text-sm text-[#ffd2cd]">Ошибка анализа: {error}</div>}
         <div className="mx-auto max-w-5xl px-4 pt-5 sm:px-6">
           <MotivationBanner />
+          {engine && nextRecommendation && nextRecommendation.destination !== "review" && (
+            <section className="mb-5 rounded-2xl border border-[#8eaf68]/25 bg-gradient-to-br from-[#2b3526] to-[#242b21] p-4 sm:p-5" aria-label="Персональная рекомендация">
+              <div className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#9fbd82]">Следующий шаг · {nextRecommendation.durationMinutes} минут</div>
+              <div className="mt-1 text-sm font-black text-white">{nextRecommendation.title}</div>
+              <p className="mt-1 text-xs leading-relaxed text-[#b2bea8]">{nextRecommendation.reason}</p>
+              <button type="button" onClick={() => changeMode(nextRecommendation.destination)} className="mt-3 rounded-lg bg-[#91bd69] px-3.5 py-2 text-xs font-extrabold text-[#172113] transition hover:bg-[#a5ce7f]">
+                Начать тренировку →
+              </button>
+            </section>
+          )}
         </div>
-        <ImportScreen onStart={(pgn, depth) => void start(pgn, depth)} />
-        <ProfileGamesPanel onSelectGame={(pgn) => void start(pgn, 14)} />
+        {engine
+          ? <>
+              <ImportScreen onStart={(pgn, depth) => void start(pgn, depth)} />
+              <ProfileGamesPanel onSelectGame={(pgn) => void start(pgn, 14)} />
+            </>
+          : <EngineLoader />}
       </>
     );
   }
