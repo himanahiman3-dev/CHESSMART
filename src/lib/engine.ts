@@ -32,12 +32,8 @@ export interface SearchOptions {
   history?: PositionHistory;
   depth: number;
   multipv: number;
-  /** Жёсткий лимит времени поиска (мс). */
+  /** UCI wall-clock search budget for this position (ms). */
   movetimeMs?: number;
-  /** Не останавливать поиск, пока все MultiPV-линии не достигнут этой глубины. */
-  minimumDepth?: number;
-  /** Дополнительное время поиска после достижения minimumDepth (мс). */
-  movetimeAfterMinimumDepthMs?: number;
   onInfo?: (lines: EngineLine[]) => void;
   /** Если не задано, движок сбрасывается на максимальную силу. */
   strength?: EngineStrength;
@@ -49,7 +45,7 @@ export function buildPositionCommand(fen: string, history?: PositionHistory): st
   return `position fen ${history.startFen}${moves}`;
 }
 
-const WATCHDOG_GRACE_MS = 1500;
+const WATCHDOG_GRACE_MS = 250;
 const ENGINE_ERROR_PREFIX = "\u0000stockfish-error:";
 
 function releaseBundleUrls(bundle: EngineBundle): void {
@@ -235,19 +231,8 @@ export class StockfishEngine {
                 const currentLines = sorted();
                 options.onInfo?.(currentLines);
 
-                // For the main review, the search clock starts only after every
-                // requested principal variation has reached the mandatory depth.
-                const minimumDepth = options.minimumDepth;
-                const afterMinimumMs = options.movetimeAfterMinimumDepthMs;
-                const minimumReached = minimumDepth !== undefined
-                  && afterMinimumMs !== undefined
-                  && currentLines.length >= options.multipv
-                  && currentLines.slice(0, options.multipv).every((entry) => entry.depth >= minimumDepth);
-                if (minimumReached && !watchdog) {
-                  watchdog = setTimeout(() => {
-                    if (active) this.send("stop");
-                  }, Math.max(0, Math.floor(afterMinimumMs!)));
-                }
+                // Preserve the latest completed info line for every MultiPV index.
+                // If UCI movetime expires mid-iteration, the last completed line remains usable.
               } else {
                 const bound = parseInfo(line, turn, true);
                 if (bound && !lines.has(bound.multipv)) lines.set(bound.multipv, bound);
@@ -264,17 +249,18 @@ export class StockfishEngine {
             this.lastMultiPv = options.multipv;
           }
           this.send(buildPositionCommand(options.fen, options.history));
-          const deferredLimit = options.minimumDepth !== undefined
-            && options.movetimeAfterMinimumDepthMs !== undefined;
-          const limit = !deferredLimit && options.movetimeMs && options.movetimeMs > 0
-            ? Math.round(options.movetimeMs)
+          const limit = options.movetimeMs && options.movetimeMs > 0
+            ? Math.max(1, Math.round(options.movetimeMs))
             : 0;
-          const requestedDepth = Math.max(1, Math.floor(options.depth), Math.floor(options.minimumDepth ?? 1));
+          const requestedDepth = Math.max(1, Math.floor(options.depth));
+          // UCI stops when either depth or movetime is reached, whichever comes first.
           this.send(limit
             ? `go depth ${requestedDepth} movetime ${limit}`
             : `go depth ${requestedDepth}`);
           if (this.dead) return;
           if (limit) {
+            // UCI movetime normally sends bestmove itself. This is a safety watchdog
+            // in case a worker stalls; all info lines already received remain cached.
             watchdog = setTimeout(() => {
               if (active) this.send("stop");
             }, limit + WATCHDOG_GRACE_MS);
