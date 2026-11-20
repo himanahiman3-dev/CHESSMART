@@ -116,7 +116,14 @@ export function awardPuzzleJourneyPoints(input: PuzzleSolveJourneyInput): Puzzle
 
   // Repeated tasks and revealed answers can still be practised, but cannot farm journey XP.
   if (!input.firstSolve) {
-    return { state: refreshedState, pointsAwarded: 0, bonuses: [] };
+    return {
+      state: {
+        ...refreshedState,
+        bestStreak: Math.max(refreshedState.bestStreak, safeNonNegativeInteger(input.streak)),
+      },
+      pointsAwarded: 0,
+      bonuses: [],
+    };
   }
 
   const puzzleRating = Math.max(0, safeNonNegativeInteger(input.puzzleRating));
