@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { PlayerProfile } from "../lib/playerProfile";
 import type { AccountProfile } from "../lib/accountProfile";
 import type { ShellRoute } from "./ChessmartShellScreens";
@@ -40,7 +41,7 @@ function PageHeading({ eyebrow, title, subtitle, action }: {
   eyebrow: string;
   title: string;
   subtitle: string;
-  action?: React.ReactNode;
+  action?: ReactNode;
 }) {
   return (
     <header className="cm-replica-page-heading">
@@ -86,7 +87,7 @@ export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
               animations={false}
             />
           </div>
-          <div className="cm-replica-player-strip cm-own-player-strip">
+          <div className="cm-replica-player-strip cm-replica-own-player-strip">
             <Avatar accountProfile={accountProfile} name={profile.name} size="small" />
             <div className="cm-replica-player-copy"><strong>{username}</strong><small>{accountProfile ? "CHESSMART member" : "Локальный игрок"}</small></div>
             <span className="cm-replica-rating">{accountProfile?.rapid_rating ?? profile.rating}</span>
