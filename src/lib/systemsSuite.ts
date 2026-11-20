@@ -598,14 +598,14 @@ export async function checkOnlineServices(supabaseUrl: string): Promise<NetworkD
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
   if (!online) return { checkedAt: Date.now(), online: false, endpoints: [] };
   const siteUrl = typeof window !== "undefined" ? window.location.origin + "/" : "/";
-  const endpoints: EndpointHealth[] = [];
-  endpoints.push(await measureEndpoint("website", "Сайт CHESSMART", siteUrl, { method: "HEAD" }));
   const base = supabaseUrl.trim().replace(/\/+$/, "");
-  if (base) {
-    endpoints.push(await measureEndpoint("online-api", "Сервер онлайн-игры", base + "/functions/v1/game-action", {
-      method: "OPTIONS",
-    }));
-  }
+  const checks = [
+    measureEndpoint("website", "Сайт CHESSMART", siteUrl, { method: "HEAD" }),
+    ...(base
+      ? [measureEndpoint("online-api", "Сервер онлайн-игры", base + "/functions/v1/game-action", { method: "OPTIONS" })]
+      : []),
+  ];
+  const endpoints = await Promise.all(checks);
   return { checkedAt: Date.now(), online: endpoints.some((item) => item.ok), endpoints };
 }
 
