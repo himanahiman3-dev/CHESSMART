@@ -74,12 +74,14 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
   const { info } = useEngine();
   const [pgn, setPgn] = useState("");
   const [link, setLink] = useState("");
-  const [depthId, setDepthId] = useState<(typeof DEPTHS)[number]["id"]>(() => {
+  const [depth, setDepth] = useState<number>(() => {
     try {
       const saved = localStorage.getItem("chess-review:analysis-depth");
-      return DEPTHS.find((item) => item.id === saved)?.id ?? "fast";
+      const numeric = saved === null ? NaN : Number(saved);
+      if (Number.isFinite(numeric) && numeric >= 8 && numeric <= 245) return Math.round(numeric);
+      return DEPTHS.find((item) => item.id === saved)?.depth ?? 14;
     } catch {
-      return "fast";
+      return 14;
     }
   });
   const [error, setError] = useState<string | null>(null);
@@ -106,13 +108,14 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
 
   useEffect(() => {
     try {
-      localStorage.setItem("chess-review:analysis-depth", depthId);
+      localStorage.setItem("chess-review:analysis-depth", String(depth));
     } catch {
       // Настройка необязательна и не должна мешать анализу.
     }
-  }, [depthId]);
+  }, [depth]);
 
-  const selectedDepth = DEPTHS.find((item) => item.id === depthId) ?? DEPTHS[0];
+  const selectedDepth = DEPTHS.find((item) => item.depth === depth);
+
   const game = parsed.game;
   const displayError = error || (pgn.trim() ? parsed.error : null);
 
@@ -162,7 +165,7 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
       return;
     }
     setError(null);
-    onStart(pgn, selectedDepth.depth);
+    onStart(pgn, depth);
   };
 
   const chooseSample = (samplePgn: string) => {
@@ -387,12 +390,12 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
               </div>
               <div className="space-y-2">
                 {DEPTHS.map((item) => {
-                  const active = depthId === item.id;
+                  const active = depth === item.depth;
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setDepthId(item.id)}
+                      onClick={() => setDepth(item.depth)}
                       aria-pressed={active}
                       className={`group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${active ? "border-[#8eaf68] bg-gradient-to-r from-[#3b4d31] to-[#303b2a] shadow-[inset_0_0_0_1px_rgba(169,210,128,.08)]" : "border-[#434b3e] bg-[#222620] hover:border-[#69785b] hover:bg-[#2c3328]"}`}
                     >
@@ -412,16 +415,39 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number
                 })}
               </div>
 
+              <div className="mt-4 rounded-xl border border-[#8eaf68]/20 bg-[#20241e] px-3.5 py-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="review-depth-slider" className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa58f]">Точная глубина</label>
+                  <span className="font-mono text-base font-black tabular-nums text-[#c5e3a4]">{depth}<span className="ml-1 text-[9px] font-bold uppercase tracking-wider text-[#87947c]">/ 245</span></span>
+                </div>
+                <input
+                  id="review-depth-slider"
+                  aria-label="Целевая глубина анализа"
+                  type="range"
+                  min={8}
+                  max={245}
+                  step={1}
+                  value={depth}
+                  onChange={(event) => setDepth(Number(event.target.value))}
+                  className="mt-3 w-full cursor-pointer accent-[#a7cb7d]"
+                />
+                <div className="mt-1 flex justify-between text-[9px] font-semibold text-[#77816f]">
+                  <span>8 · быстрее</span>
+                  <span>245 · предел Stockfish</span>
+                </div>
+                <p className="mt-2 text-[10px] leading-relaxed text-[#77816f]">Это целевая глубина, а не обещание достигнуть её: движок остановится по лимиту времени или при достижении глубины.</p>
+              </div>
+
               <div className="mt-4 rounded-xl border border-white/[0.06] bg-[#20241e] px-3.5 py-3">
                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa58f]">
                   <SparkIcon className="h-3.5 w-3.5 text-[#a8ce7e]" />
                   Выбранный режим
                 </div>
                 <div className="mt-1.5 flex items-end justify-between gap-2">
-                  <div className="text-sm font-extrabold text-white">{selectedDepth.title}</div>
-                  <div className="font-mono text-lg font-black tabular-nums text-[#b5d98e]">{selectedDepth.depth}<span className="ml-1 text-[9px] font-bold uppercase tracking-wider text-[#87947c]">depth</span></div>
+                  <div className="text-sm font-extrabold text-white">{selectedDepth?.title ?? "Пользовательская"}</div>
+                  <div className="font-mono text-lg font-black tabular-nums text-[#b5d98e]">{depth}<span className="ml-1 text-[9px] font-bold uppercase tracking-wider text-[#87947c]">depth</span></div>
                 </div>
-                <div className="mt-1 text-[10px] text-[#87917e]">{selectedDepth.note}</div>
+                <div className="mt-1 text-[10px] text-[#87917e]">{selectedDepth?.note ?? "Глубина настроена вручную"}</div>
               </div>
 
               <button
