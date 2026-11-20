@@ -644,10 +644,8 @@ export function getOnlinePollDelay(policy: {
   if (!policy.online || !policy.visible) return 5000;
   const failures = clampSuiteNumber(policy.consecutiveFailures, 0, 12, 0);
   if (failures > 0) return getRetryDelay(failures - 1, 800, 12_000);
-  // Active chess games are latency-sensitive: short, non-overlapping polling catches
-  // opponent moves quickly without keeping the previous one-second idle cadence.
-  // Realtime is the primary live path. These very short intervals are only
-  // used while the WebSocket is connecting or temporarily unavailable.
+  // Realtime push is the primary live path. These short, non-overlapping
+  // intervals are only used while the WebSocket is connecting or unavailable.
   return policy.urgent ? 50 : 100;
 }
 
