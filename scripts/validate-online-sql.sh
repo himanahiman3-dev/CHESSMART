@@ -36,6 +36,7 @@ psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611160002_accounts_matchmaking
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170001_account_avatars.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170002_player_progress_sync.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261117150407_fix_matchmaking_pgcrypto_search_path.sql
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611200001_puzzle_battles.sql
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
 insert into auth.users(id) values
@@ -235,5 +236,122 @@ begin
 end;
 $progress_sync_test$;
 
-select 'Online SQL migrations, matchmaking, and cloud progress tests passed.' as result;
+-- Puzzle Battle: server-only answer keys, matchmaking, automatic replies, and score.
+do $battle_security_test$
+declare
+  table_name text;
+begin
+  foreach table_name in array array[
+    'puzzle_battles',
+    'puzzle_battle_queue',
+    'puzzle_battle_queue_packs',
+    'puzzle_battle_rounds',
+    'puzzle_battle_solutions',
+    'puzzle_battle_players'
+  ] loop
+    if not exists (
+      select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relname = table_name and c.relrowsecurity
+    ) then raise exception 'RLS must be enabled on %', table_name; end if;
+  end loop;
+
+  if has_table_privilege('authenticated', 'public.puzzle_battle_solutions', 'SELECT')
+    or has_table_privilege('authenticated', 'public.puzzle_battle_queue_packs', 'SELECT')
+    or has_table_privilege('anon', 'public.puzzle_battle_solutions', 'SELECT')
+    or has_table_privilege('anon', 'public.puzzle_battle_queue_packs', 'SELECT') then
+    raise exception 'Browser roles must never read answer keys or queued puzzle packs'; end if;
+  if not has_table_privilege('authenticated', 'public.puzzle_battles', 'SELECT')
+    or not has_table_privilege('authenticated', 'public.puzzle_battle_rounds', 'SELECT')
+    or not has_table_privilege('authenticated', 'public.puzzle_battle_players', 'SELECT') then
+    raise exception 'Participants need read access to public battle state'; end if;
+  if has_function_privilege('authenticated', 'public.join_puzzle_battle_queue(uuid,integer,jsonb)', 'EXECUTE')
+    or has_function_privilege('authenticated', 'public.submit_puzzle_battle_answer(uuid,uuid,text)', 'EXECUTE')
+    or has_function_privilege('anon', 'public.join_puzzle_battle_queue(uuid,integer,jsonb)', 'EXECUTE')
+    or has_function_privilege('anon', 'public.submit_puzzle_battle_answer(uuid,uuid,text)', 'EXECUTE') then
+    raise exception 'Battle RPCs must be server-only'; end if;
+  if not has_function_privilege('service_role', 'public.join_puzzle_battle_queue(uuid,integer,jsonb)', 'EXECUTE')
+    or not has_function_privilege('service_role', 'public.submit_puzzle_battle_answer(uuid,uuid,text)', 'EXECUTE') then
+    raise exception 'service_role needs permission to run battle RPCs'; end if;
+end;
+$battle_security_test$;
+
+do $battle_flow_test$
+declare
+  puzzle_pack jsonb;
+  first_join jsonb;
+  second_join jsonb;
+  answer jsonb;
+  battle_id uuid;
+  player_score integer;
+  player_mistakes integer;
+  player_completed boolean;
+  battle_status text;
+  winner uuid;
+  i integer;
+begin
+  puzzle_pack := jsonb_build_array(
+    jsonb_build_object('id','ci-puzzle-1','fen','rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1','color','w','rating',1200,'themes',jsonb_build_array('fork'),'moves',jsonb_build_array('e2e4','e7e5','g1f3')),
+    jsonb_build_object('id','ci-puzzle-2','fen','rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1','color','w','rating',1200,'themes',jsonb_build_array('fork'),'moves',jsonb_build_array('e2e4','e7e5','g1f3')),
+    jsonb_build_object('id','ci-puzzle-3','fen','rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1','color','w','rating',1200,'themes',jsonb_build_array('fork'),'moves',jsonb_build_array('e2e4','e7e5','g1f3')),
+    jsonb_build_object('id','ci-puzzle-4','fen','rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1','color','w','rating',1200,'themes',jsonb_build_array('fork'),'moves',jsonb_build_array('e2e4','e7e5','g1f3')),
+    jsonb_build_object('id','ci-puzzle-5','fen','rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1','color','w','rating',1200,'themes',jsonb_build_array('fork'),'moves',jsonb_build_array('e2e4','e7e5','g1f3'))
+  );
+
+  select public.join_puzzle_battle_queue('00000000-0000-0000-0000-000000000001', 1200, puzzle_pack) into first_join;
+  if first_join->>'queued' <> 'true' then raise exception 'First battle player should wait in queue'; end if;
+
+  select public.join_puzzle_battle_queue('00000000-0000-0000-0000-000000000002', 1200, puzzle_pack) into second_join;
+  if second_join->>'queued' <> 'false' then raise exception 'Second battle player should be matched immediately'; end if;
+  battle_id := (second_join->>'battle_id')::uuid;
+
+  if (select count(*) from public.puzzle_battle_rounds where puzzle_battle_rounds.battle_id = battle_id) <> 5 then
+    raise exception 'Battle must contain exactly five rounds'; end if;
+  if (select count(*) from public.puzzle_battle_solutions where puzzle_battle_solutions.battle_id = battle_id) <> 5 then
+    raise exception 'Server must retain five hidden answer keys'; end if;
+  if (select count(*) from public.puzzle_battle_players where puzzle_battle_players.battle_id = battle_id) <> 2 then
+    raise exception 'Battle must have two player state rows'; end if;
+
+  select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000001', 'e2e4') into answer;
+  if answer->>'correct' <> 'true' or answer->>'opponent_reply' <> 'e7e5' or answer->>'puzzle_completed' <> 'false' then
+    raise exception 'Correct answer must return the automatic opponent reply'; end if;
+  select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000001', 'g1f3') into answer;
+  if answer->>'correct' <> 'true' or answer->>'puzzle_completed' <> 'true' or (answer->>'score')::integer <> 1 then
+    raise exception 'Completing a puzzle must award exactly one point'; end if;
+
+  for i in 1..3 loop
+    select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000002', 'a2a3') into answer;
+  end loop;
+  if answer->>'correct' <> 'false' or answer->>'completed' <> 'true' then
+    raise exception 'Three incorrect answers must end the player series'; end if;
+  select mistakes, completed into player_mistakes, player_completed
+    from public.puzzle_battle_players
+    where puzzle_battle_players.battle_id = battle_flow_test.battle_id
+      and user_id = '00000000-0000-0000-0000-000000000002';
+  if player_mistakes <> 3 or not player_completed then
+    raise exception 'Three strikes must be persisted server-side'; end if;
+
+  for i in 2..5 loop
+    select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000001', 'e2e4') into answer;
+    if answer->>'correct' <> 'true' then raise exception 'Correct puzzle opener rejected on round %', i; end if;
+    select public.submit_puzzle_battle_answer(battle_id, '00000000-0000-0000-0000-000000000001', 'g1f3') into answer;
+    if answer->>'correct' <> 'true' or answer->>'puzzle_completed' <> 'true' then
+      raise exception 'Final puzzle move failed on round %', i; end if;
+  end loop;
+
+  select status, winner_id into battle_status, winner from public.puzzle_battles where id = battle_id;
+  select score, completed into player_score, player_completed
+    from public.puzzle_battle_players
+    where puzzle_battle_players.battle_id = battle_flow_test.battle_id
+      and user_id = '00000000-0000-0000-0000-000000000001';
+  if battle_status <> 'completed'
+    or winner <> '00000000-0000-0000-0000-000000000001'
+    or player_score <> 5
+    or not player_completed then
+    raise exception 'Final server result is wrong: status %, winner %, score %, completed %',
+      battle_status, winner, player_score, player_completed;
+  end if;
+end;
+$battle_flow_test$;
+
+select 'Online SQL migrations, matchmaking, cloud progress, and puzzle battle tests passed.' as result;
 SQL
