@@ -203,27 +203,9 @@ async function getQueueState(userId: string) {
   if (!data) return { status: "idle" };
 
   if (data.status === "waiting" || !data.battle_id) {
-    // Retry the atomic match operation while waiting. This closes the race where
-    // two queue requests arrive at almost the same time and both initially wait.
-    const [{ data: profile, error: profileError }, { data: packRow, error: packError }] = await Promise.all([
-      admin.from("online_profiles").select("blitz_rating").eq("user_id", userId).maybeSingle(),
-      admin.from("puzzle_battle_queue_packs").select("puzzles").eq("user_id", userId).maybeSingle(),
-    ]);
-    if (profileError || !profile) throw new Error("Не удалось загрузить рейтинг игрока.");
-    if (packError || !Array.isArray(packRow?.puzzles) || packRow.puzzles.length !== 5) {
-      await admin.from("puzzle_battle_queue").delete().eq("user_id", userId).eq("status", "waiting");
-      await admin.from("puzzle_battle_queue_packs").delete().eq("user_id", userId);
-      return { status: "idle" };
-    }
-    const { data: match, error: matchError } = await admin.rpc("join_puzzle_battle_queue", {
-      p_user_id: userId,
-      p_rating: profile.blitz_rating,
-      p_puzzles: packRow.puzzles,
-    });
-    if (matchError) throw new Error("Не удалось обновить поиск соперника: " + matchError.message);
-    if (match?.queued) return { status: "queued", queued_at: data.queued_at };
-    if (typeof match?.battle_id !== "string") throw new Error("Сервер не вернул идентификатор дуэли.");
-    return await battleState(match.battle_id, userId);
+    // The player who joins next performs matchmaking under the DB advisory lock.
+    // Polling only reads the queue; it must not delete/reinsert the same row.
+    return { status: "queued", queued_at: data.queued_at };
   }
 
   return await battleState(data.battle_id, userId);
