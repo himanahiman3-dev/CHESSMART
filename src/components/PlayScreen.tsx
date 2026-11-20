@@ -442,7 +442,6 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
           playerColor={playerColor}
           onAnalyzed={onPersonalReviewReady}
           onOpenReview={onOpenReview}
-          onClose={() => setCompletedPgn(null)}
         />
       )}
     </div>
