@@ -55,8 +55,8 @@ interface BattleSnapshot {
     finished_at: string | null;
     winner_id: string | null;
     finish_reason: string | null;
-    player_one_rating: number;
-    player_two_rating: number;
+    player_one_rating: number | null;
+    player_two_rating: number | null;
     player_one_rating_after: number | null;
     player_two_rating_after: number | null;
     season_points_one: number;
@@ -347,6 +347,22 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
     : battle?.battle.winner_id === battle?.me.user_id ? "Ты победил!" : "Победил соперник";
   const myProgress = battle?.me.round_index ?? 0;
   const opponentProgress = battle?.opponent.round_index ?? 0;
+  const myRatingBefore = battle
+    ? (battle.battle.player_one_id === battle.me.user_id
+      ? battle.battle.player_one_rating
+      : battle.battle.player_two_rating) ?? battle.me.puzzle_battle_rating
+    : 1200;
+  const myRatingAfter = battle
+    ? (battle.battle.player_one_id === battle.me.user_id
+      ? battle.battle.player_one_rating_after
+      : battle.battle.player_two_rating_after) ?? battle.me.puzzle_battle_rating
+    : 1200;
+  const myRatingDelta = myRatingAfter - myRatingBefore;
+  const mySeasonPoints = battle
+    ? battle.battle.player_one_id === battle.me.user_id
+      ? battle.battle.season_points_one
+      : battle.battle.season_points_two
+    : 0;
 
   return (
     <div className="min-h-screen bg-[#1b241c] p-4 text-[#edf3e8] sm:p-7">
@@ -455,9 +471,9 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                         <div className="rounded-lg bg-black/[.14] p-2">
                           <div className="text-[#879781]">Твой Battle Elo</div>
                           <b className="text-[#d7edc3]">{battle.me.puzzle_battle_rating}</b>
-                          <span className="ml-1 text-[#a3b996]">· {((battle.battle.player_one_id === battle.me.user_id ? battle.battle.player_one_rating_after : battle.battle.player_two_rating_after) ?? battle.me.puzzle_battle_rating) - (battle.battle.player_one_id === battle.me.user_id ? battle.battle.player_one_rating : battle.battle.player_two_rating) >= 0 ? "+" : ""}{((battle.battle.player_one_id === battle.me.user_id ? battle.battle.player_one_rating_after : battle.battle.player_two_rating_after) ?? battle.me.puzzle_battle_rating) - (battle.battle.player_one_id === battle.me.user_id ? battle.battle.player_one_rating : battle.battle.player_two_rating)}</span>
+                          <span className="ml-1 text-[#a3b996]">· {myRatingDelta >= 0 ? "+" : ""}{myRatingDelta}</span>
                         </div>
-                        <div className="rounded-lg bg-black/[.14] p-2"><div className="text-[#879781]">Сезонные очки</div><b className="text-[#d7edc3]">+{battle.battle.player_one_id === battle.me.user_id ? battle.battle.season_points_one : battle.battle.season_points_two}</b></div>
+                        <div className="rounded-lg bg-black/[.14] p-2"><div className="text-[#879781]">Сезонные очки</div><b className="text-[#d7edc3]">+{mySeasonPoints}</b></div>
                       </div>
                       <p className="mt-2 text-xs text-[#9eb48c]">{battle.battle.finish_reason === "time" ? "Время вышло. Результат зафиксирован сервером." : "Оба игрока завершили серию или исчерпали ошибки."}</p>
                       <button onClick={startQueue} disabled={busy} className="mt-4 rounded-xl bg-[#a5d17c] px-4 py-3 text-xs font-black text-[#172315]">Новая дуэль →</button>
