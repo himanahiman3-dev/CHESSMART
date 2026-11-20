@@ -51,7 +51,7 @@ interface Props {
 export type BoardTheme = GameBoardTheme;
 
 const BOARD_PALETTES: Record<BoardTheme, { light: string; dark: string; accent: string }> = {
-  classic: { light: "#ebecd0", dark: "#779556", accent: "#a3d160" },
+  classic: { light: "#EBECD0", dark: "#739552", accent: "#81B64C" },
   blue: { light: "#e8edf5", dark: "#6b83a5", accent: "#8fb5e8" },
   walnut: { light: "#ead7ba", dark: "#9a6748", accent: "#d9aa72" },
   violet: { light: "#ece4f4", dark: "#856a9b", accent: "#c19cde" },
