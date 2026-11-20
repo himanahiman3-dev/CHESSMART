@@ -109,7 +109,8 @@ export function EndgameTrainingScreen({ engine, profile, onChange, onBack }: Pro
       correctMoves: outcome === "success" ? 1 : 0,
       accuracy: outcome === "success" ? 100 : 0,
     };
-    const trainingSessions = [...(profile.trainingSessions ?? []), summary];
+    const trainingSessions = [...(profile.trainingSessions ?? [])];
+    if (!challengeActive) trainingSessions.push(summary);
     if (challengeActive) {
       const results = [...challengeResults, outcome];
       setChallengeResults(results);
