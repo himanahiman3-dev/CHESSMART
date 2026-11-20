@@ -75,6 +75,7 @@ export function parseGame(pgnText: string): ParsedGame {
 
 import { gameBudgetMs, slotForPosition, TIME_PER_MOVE_MS, timePerMoveForDepth, MAX_ANALYSIS_DEPTH, MINIMUM_ANALYSIS_DEPTH } from "./analysisBudget";
 import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
+import { forcedMoveClass } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
@@ -761,7 +762,8 @@ export function buildReview(
     const playedIsBest = bestUci === m.uci;
     const isBook = book.isBook[i];
     const legal = legalMoveCount(m.fenBefore);
-    const isForced = legal === 1;
+    const forcedClass = forcedMoveClass(legal);
+    const isForced = forcedClass === "forced";
 
     const scoreBefore = top.score;
     // При лимите времени позиции считаются до разной глубины. Если сыгран ход со 2-й линии,
@@ -825,8 +827,8 @@ export function buildReview(
       continuation: isDeferredBrilliant,
     });
 
-    if (isForced) {
-      cls = "forced";
+    if (forcedClass) {
+      cls = forcedClass;
     } else if (isBook) {
       cls = "book";
     } else if (isBrilliant) {
