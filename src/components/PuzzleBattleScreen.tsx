@@ -322,10 +322,9 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
     const requestId = ++historyRequest.current;
     setHistoryBusy(true);
     try {
-      const { data, session: fresh } = await battleAction(session, "history") as {
-        data: BattleHistoryResponse;
-        session: BattleSession;
-      };
+      const response = await battleAction(session, "history");
+      const data = response.data as unknown as BattleHistoryResponse;
+      const fresh = response.session;
       if (requestId !== historyRequest.current) return;
       setSession(fresh);
       setBattleProfile(data.profile);
