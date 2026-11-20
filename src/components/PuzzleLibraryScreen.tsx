@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import type { PlayerProfile, PuzzleRatingEntry } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
 import { playSound, soundForSan } from "../lib/sound";
+import { awardPuzzleJourneyPoints, getPuzzleJourneyProgress } from "../lib/puzzleJourney";
 
 export interface Puzzle {
   id: string;
@@ -15,10 +16,17 @@ export interface Puzzle {
 interface PuzzleStats {
   rating: number;
   solved: string[];
+  ratedSolved: string[];
   attempts: number;
   correct: number;
   streak: number;
   lastDaily: string;
+  journeyPoints: number;
+  dailyQuestDate: string;
+  dailyQuestSolved: number;
+  hardestPuzzleRating: number;
+  bestStreak: number;
+  journeyMilestones: number[];
 }
 type Mode = "rated" | "daily" | "themes";
 type Mission = "mixed" | "mate1" | "mate2" | "mate3" | "punish" | "fork" | "defend" | "hanging";
@@ -40,7 +48,11 @@ const CACHE_KEY = "chessmart:puzzle-bank:3500:v1";
 const STATS_KEY = "chessmart:puzzle-stats:v1";
 const PAGE_SIZE = 100;
 const TARGET = 3500;
-const EMPTY_STATS: PuzzleStats = { rating: 1200, solved: [], attempts: 0, correct: 0, streak: 0, lastDaily: "" };
+const EMPTY_STATS: PuzzleStats = {
+  rating: 1200, solved: [], ratedSolved: [], attempts: 0, correct: 0, streak: 0, lastDaily: "",
+  journeyPoints: 0, dailyQuestDate: "", dailyQuestSolved: 0,
+  hardestPuzzleRating: 0, bestStreak: 0, journeyMilestones: [],
+};
 const THEME_LABELS: Record<string, string> = {
   mateIn1: "Мат в 1", mateIn2: "Мат в 2", mateIn3: "Мат в 3", mate: "Мат",
   fork: "Вилка", pin: "Связка", skewer: "Шпажка", doubleCheck: "Двойной шах",
@@ -55,11 +67,24 @@ const THEME_LABELS: Record<string, string> = {
 function readStats(): PuzzleStats {
   try {
     const value = JSON.parse(localStorage.getItem(STATS_KEY) ?? "null") as Partial<PuzzleStats> | null;
-    return { ...EMPTY_STATS, ...value, solved: Array.isArray(value?.solved) ? value.solved : [] };
+    return {
+      ...EMPTY_STATS,
+      ...value,
+      solved: Array.isArray(value?.solved) ? value.solved : [],
+      ratedSolved: Array.isArray(value?.ratedSolved) ? value.ratedSolved : [],
+      journeyPoints: Number.isFinite(value?.journeyPoints) ? Math.max(0, Math.floor(value!.journeyPoints!)) : 0,
+      dailyQuestDate: typeof value?.dailyQuestDate === "string" ? value.dailyQuestDate : "",
+      dailyQuestSolved: Number.isFinite(value?.dailyQuestSolved) ? Math.max(0, Math.min(3, Math.floor(value!.dailyQuestSolved!))) : 0,
+      hardestPuzzleRating: Number.isFinite(value?.hardestPuzzleRating) ? Math.max(0, Math.floor(value!.hardestPuzzleRating!)) : 0,
+      bestStreak: Number.isFinite(value?.bestStreak) ? Math.max(0, Math.floor(value!.bestStreak!)) : 0,
+      journeyMilestones: Array.isArray(value?.journeyMilestones)
+        ? value.journeyMilestones.filter((item): item is number => Number.isInteger(item) && item > 0)
+        : [],
+    };
   } catch { return EMPTY_STATS; }
 }
 function saveStats(stats: PuzzleStats) {
-  try { localStorage.setItem(STATS_KEY, JSON.stringify({ ...stats, solved: stats.solved.slice(-5000) })); } catch { /* storage is optional */ }
+  try { localStorage.setItem(STATS_KEY, JSON.stringify({ ...stats, solved: stats.solved.slice(-5000), ratedSolved: stats.ratedSolved.slice(-5000) })); } catch { /* storage is optional */ }
 }
 function validPuzzle(row: Record<string, unknown>): Puzzle | null {
   const id = String(row.PuzzleId ?? "");
@@ -157,6 +182,8 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
   const [feedback, setFeedback] = useState<"idle" | "wrong" | "solved" | "revealed">("idle");
   const [hint, setHint] = useState(false);
   const [rushCount, setRushCount] = useState(0);
+  const [journeyReward, setJourneyReward] = useState<{ points: number; bonuses: string[] } | null>(null);
+  const puzzleStartedAt = useRef(Date.now());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -214,7 +241,11 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
   const today = localDateKey();
   const dailyDone = stats.lastDaily === today;
   // Ежедневная задача имеет собственный статус: решение той же позиции в обычной тренировке не должно блокировать daily streak.
-  const solved = mode === "daily" ? dailyDone : stats.solved.includes(current?.id ?? "");
+  const solved = mode === "daily"
+    ? dailyDone
+    : mode === "rated"
+      ? stats.ratedSolved.includes(current?.id ?? "")
+      : stats.solved.includes(current?.id ?? "");
   const playerMove = current?.moves[solutionIndex] ?? "";
   const currentThemes = current?.themes ?? [];
   const currentMission = MISSIONS.find((item) => item.id === mission) ?? MISSIONS[0];
@@ -225,8 +256,10 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
     setSolutionIndex(0);
     setFeedback(mode === "daily"
       ? (stats.lastDaily === localDateKey() ? "solved" : "idle")
-      : (stats.solved.includes(current.id) ? "solved" : "idle"));
+      : (mode === "rated" ? stats.ratedSolved.includes(current.id) : stats.solved.includes(current.id)) ? "solved" : "idle");
     setHint(false);
+    setJourneyReward(null);
+    puzzleStartedAt.current = Date.now();
   }, [current?.id, current?.fen, mode]);
 
   const selectPuzzle = useCallback((puzzle: Puzzle) => {
@@ -235,18 +268,24 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
     setSolutionIndex(0);
     setFeedback(mode === "daily"
       ? (stats.lastDaily === localDateKey() ? "solved" : "idle")
-      : (stats.solved.includes(puzzle.id) ? "solved" : "idle"));
+      : (mode === "rated" ? stats.ratedSolved.includes(puzzle.id) : stats.solved.includes(puzzle.id)) ? "solved" : "idle");
     setHint(false);
-  }, [mode, stats.lastDaily, stats.solved]);
+    setJourneyReward(null);
+    puzzleStartedAt.current = Date.now();
+  }, [mode, stats.lastDaily, stats.solved, stats.ratedSolved]);
 
   const finishPuzzle = useCallback((puzzle: Puzzle, wasRevealed: boolean) => {
     const alreadySolved = stats.solved.includes(puzzle.id);
-    const nextRating = Math.max(400, Math.min(3200, Math.round(stats.rating + 24 * ((wasRevealed ? 0 : 1) - expectedScore(stats.rating, puzzle.rating)))));
+    const alreadyRated = stats.ratedSolved.includes(puzzle.id);
+    const ratedMode = mode === "rated";
+    const nextRating = ratedMode && !wasRevealed
+      ? Math.max(400, Math.min(3200, Math.round(stats.rating + 24 * (1 - expectedScore(stats.rating, puzzle.rating)))))
+      : stats.rating;
     const completedAt = Date.now();
     const today = localDateKey(new Date(completedAt));
     const now = new Date(completedAt);
     const yesterday = localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
-    const ratingAfter = alreadySolved ? stats.rating : nextRating;
+    const ratingAfter = alreadyRated ? stats.rating : nextRating;
     const ratingEntry: PuzzleRatingEntry = {
       at: completedAt,
       puzzleId: puzzle.id,
@@ -260,24 +299,58 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
       puzzleRating: ratingAfter,
       puzzleRatingHistory: [...profile.puzzleRatingHistory, ratingEntry].slice(-180),
     });
+
+    const newlySolved = !wasRevealed && !alreadySolved;
+    const nextStreak = wasRevealed ? 0 : stats.streak + 1;
+    const solveSeconds = Math.max(0, Math.round((completedAt - puzzleStartedAt.current) / 1000));
+    const journey = awardPuzzleJourneyPoints({
+      state: {
+        journeyPoints: stats.journeyPoints,
+        dailyQuestDate: stats.dailyQuestDate,
+        dailyQuestSolved: stats.dailyQuestSolved,
+        hardestPuzzleRating: stats.hardestPuzzleRating,
+        bestStreak: stats.bestStreak,
+        journeyMilestones: stats.journeyMilestones,
+      },
+      puzzleRating: puzzle.rating,
+      playerRating: stats.rating,
+      solveSeconds,
+      dateKey: today,
+      uniqueSolvedCount: stats.solved.length + (newlySolved ? 1 : 0),
+      streak: nextStreak,
+      firstSolve: newlySolved,
+    });
+    setJourneyReward(journey.pointsAwarded > 0
+      ? { points: journey.pointsAwarded, bonuses: journey.bonuses }
+      : null);
+
     setStats((previous) => {
       const completedDailyToday = mode === "daily" && !wasRevealed && previous.lastDaily !== today;
       const nextDailyStreak = previous.lastDaily === yesterday ? previous.streak + 1 : 1;
       return {
         ...previous,
-        rating: alreadySolved ? previous.rating : nextRating,
+        rating: ratedMode && !alreadyRated && !wasRevealed ? nextRating : previous.rating,
         solved: alreadySolved ? previous.solved : [...previous.solved, puzzle.id],
+        ratedSolved: ratedMode && !alreadyRated && !wasRevealed
+          ? [...previous.ratedSolved, puzzle.id]
+          : previous.ratedSolved,
         attempts: previous.attempts + 1,
         correct: previous.correct + (wasRevealed ? 0 : 1),
         streak: mode === "daily"
           ? (completedDailyToday ? nextDailyStreak : previous.streak)
-          : (wasRevealed ? 0 : previous.streak + 1),
+          : nextStreak,
         lastDaily: completedDailyToday ? today : previous.lastDaily,
+        journeyPoints: journey.state.journeyPoints,
+        dailyQuestDate: journey.state.dailyQuestDate,
+        dailyQuestSolved: journey.state.dailyQuestSolved,
+        hardestPuzzleRating: journey.state.hardestPuzzleRating,
+        bestStreak: journey.state.bestStreak,
+        journeyMilestones: journey.state.journeyMilestones,
       };
     });
     if (mode === "rated" && !wasRevealed) setRushCount((value) => value + 1);
     setFeedback(wasRevealed ? "revealed" : "solved");
-  }, [stats.solved, stats.rating, stats.lastDaily, mode, profile, onChange]);
+  }, [stats, mode, profile, onChange]);
 
   const handleMove = useCallback((move: BoardMove): boolean => {
     if (!current || feedback === "solved" || feedback === "revealed" || !playerMove) return false;
@@ -317,6 +390,7 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
   };
   const showAnswer = () => {
     if (!current) return;
+    setJourneyReward(null);
     setHint(true);
     setFeedback("revealed");
     const at = Date.now();
@@ -335,6 +409,8 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
     });
     setStats((previous) => ({ ...previous, attempts: previous.attempts + 1 }));
   };
+  const journeyProgress = getPuzzleJourneyProgress(stats.journeyPoints);
+  const dailyQuestSolved = stats.dailyQuestDate === today ? Math.min(3, stats.dailyQuestSolved) : 0;
   const isConfigured = bank.length > 0;
 
   return (
@@ -362,6 +438,49 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
               <div className="mt-0.5 text-[10px] text-[#77766f]">{sub}</div>
             </div>
           ))}
+        </section>
+
+        <section className="mb-4 rounded-2xl border border-[#4b5e3d] bg-gradient-to-br from-[#34442d] via-[#2c3828] to-[#252d22] p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="text-[9px] font-black uppercase tracking-[.2em] text-[#b8d69a]">CHESSMART PUZZLE JOURNEY</div>
+              <div className="mt-1 flex flex-wrap items-baseline gap-2">
+                <h2 className="text-lg font-black text-[#f0f5e9]">Путь тактики</h2>
+                <span className="rounded-md border border-[#8daa70]/40 bg-[#1e2a1d]/60 px-2 py-1 text-[10px] font-extrabold text-[#cbe4b3]">{journeyProgress.tierName}</span>
+                <span className="text-[10px] font-bold text-[#aab9a0]">Уровень {journeyProgress.level}/20</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-[10px] font-bold text-[#b7c7ac]">
+                <span>Прогресс уровня</span>
+                <span className="tabular-nums">{journeyProgress.pointsInLevel.toLocaleString("ru-RU")} / {journeyProgress.pointsForLevel.toLocaleString("ru-RU")} XP</span>
+              </div>
+              <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[#172018]/75">
+                <div className="h-full rounded-full bg-[#a6d179] transition-all" style={{ width: journeyProgress.progressPercent + "%" }} />
+              </div>
+              <div className="mt-1 text-[9px] text-[#8fa087]">{journeyProgress.completed ? "Все 160 уровней пройдены — предел тактического пути!" : "Очки начисляются за новые решения, скорость, серии и сложные позиции."}</div>
+            </div>
+            <div className="min-w-[120px] rounded-xl border border-white/[.08] bg-black/[.16] p-3 text-right">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[#9eaf91]">Всего XP</div>
+              <div className="mt-1 text-2xl font-black tabular-nums text-[#e2f3cf]">{stats.journeyPoints.toLocaleString("ru-RU")}</div>
+              <div className="text-[9px] text-[#91a087]">Тактический опыт</div>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 border-t border-white/[.08] pt-3 sm:grid-cols-[1fr_1fr]">
+            <div>
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-extrabold text-[#e5eedc]">Ежедневная цель</span>
+                <span className="font-black tabular-nums text-[#cce6b1]">{dailyQuestSolved}/3</span>
+              </div>
+              <div className="mt-2 flex gap-1.5">
+                {Array.from({ length: 3 }, (_, index) => <span key={index} className={"h-2 flex-1 rounded-full " + (index < dailyQuestSolved ? "bg-[#a6d179]" : "bg-white/[.10]")} />)}
+              </div>
+              <div className="mt-1 text-[9px] text-[#95a58b]">{dailyQuestSolved >= 3 ? "Цель выполнена · +40 XP получено" : "Реши три новые задачи за день и получи +40 XP"}</div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-[10px] text-[#a7b59e]">
+              <span>Личный рекорд сложности: <b className="text-[#e2eed8]">{stats.hardestPuzzleRating || "—"}</b></span>
+              <span>Лучшая серия: <b className="text-[#e2eed8]">{stats.bestStreak}</b></span>
+              <span>Рубежи: <b className="text-[#e2eed8]">{stats.journeyMilestones.length}/7</b></span>
+            </div>
+          </div>
         </section>
 
         <div className="mb-4 flex flex-wrap gap-2">
@@ -430,6 +549,17 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
               <div className={"mt-3 rounded-lg border p-3 text-sm " + (feedback === "solved" || solved ? "border-[#557b3d] bg-[#293a25] text-[#d7edbd]" : feedback === "wrong" ? "border-[#81504a] bg-[#402b28] text-[#ffd2cd]" : "border-[#45443e] bg-[#272823] text-[#d6d5ce]")}>
                 {feedback === "solved" || solved ? "Верно. Отличный расчёт — задача засчитана." : feedback === "revealed" ? "Решение: " + current.moves.map((m) => m.slice(0, 2) + "–" + m.slice(2, 4)).join(", ") : feedback === "wrong" ? "Это не лучший ход. Попробуй ещё раз." : mission === "mate1" ? "Проверь все шахи и найди ход, который сразу завершает партию." : mission === "mate2" || mission === "mate3" ? "Рассчитай ответ соперника. После каждого его хода найди продолжение матовой атаки." : mission === "punish" ? "Соперник оставил слабость. Найди тактический способ наказать ошибку." : mission === "defend" ? "Позиция под угрозой. Найди ход, который удерживает её." : mission === "fork" ? "Ищи ход с двойным нападением на две цели." : mission === "hanging" ? "Найди выигрыш фигуры с помощью связки, шпажки или атаки." : "Найди тактический удар или единственный сильный ход."}
               </div>
+              {journeyReward && (feedback === "solved" || solved) && (
+                <div className="mt-3 rounded-lg border border-[#6d8c51] bg-[#263b24] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#c3dfa8]">Путь тактики</span>
+                    <span className="text-lg font-black tabular-nums text-[#d9f1c3]">+{journeyReward.points} XP</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    {journeyReward.bonuses.map((bonus) => <span key={bonus} className="text-[9px] font-bold text-[#aebf9f]">{bonus}</span>)}
+                  </div>
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button onClick={() => setHint(true)} disabled={hint || feedback !== "idle"} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2 text-xs font-bold disabled:opacity-40">Подсказка</button>
                 <button onClick={showAnswer} disabled={feedback === "solved" || feedback === "revealed" || solved} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2 text-xs font-bold disabled:opacity-40">Показать решение</button>
