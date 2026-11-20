@@ -303,6 +303,11 @@ export function GameBoard({
                   tryMove(selected, square);
                   return;
                 }
+                if (!piece || piece.pieceType[0] !== (movingPiece?.color === "w" ? "w" : "b")) {
+                  playSound("illegal");
+                  setSelected(null);
+                  return;
+                }
               }
             }
             if (piece) {
