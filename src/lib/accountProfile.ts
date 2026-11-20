@@ -8,6 +8,7 @@ export interface AccountProfile {
   bullet_games: number;
   blitz_games: number;
   rapid_games: number;
+  created_at?: string;
 }
 
 export const ACCOUNT_PROFILE_KEY = "chessmart:account-profile:v1";
