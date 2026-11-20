@@ -4,12 +4,13 @@ import { fenKey } from "../src/lib/format.ts";
 import { positionKey } from "../src/lib/db.ts";
 import { buildPositionCommand } from "../src/lib/engine.ts";
 import { qBalance } from "../src/lib/see.ts";
-import { gameBudgetMs, slotForPosition, timePerMoveForDepth } from "../src/lib/analysisBudget.ts";
+import { gameBudgetMs, slotForPosition, timePerMoveForDepth, MINIMUM_ANALYSIS_DEPTH } from "../src/lib/analysisBudget.ts";
 
 assert.equal(gameBudgetMs(10), 4000, "A ten-ply game gets the configured base budget");
 assert.equal(gameBudgetMs(10, 1400), 14000, "A desktop profile receives a larger per-move budget");
 assert.equal(gameBudgetMs(10, 80), 1320, "Low requested budgets still reserve the minimum for every position");
 assert.equal(gameBudgetMs(1), 400, "A one-ply game still budgets both evaluated positions");
+assert.equal(MINIMUM_ANALYSIS_DEPTH, 41, "Every non-terminal position must reach depth 41 before the review advances.");
 assert.equal(timePerMoveForDepth(14, 1000, 4750), 1000, "Existing quick presets keep their original response time");
 assert.equal(timePerMoveForDepth(245, 1000, 4750), 4750, "Depth 245 receives the desktop high-depth budget");
 assert.ok(timePerMoveForDepth(120, 1000, 4750) > 1000, "Higher target depths receive progressively more search time");

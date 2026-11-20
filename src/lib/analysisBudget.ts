@@ -10,6 +10,9 @@ export const TIME_PER_MOVE_MS = 400;
 /** Minimum search slot per evaluated position, in milliseconds. */
 const MIN_POSITION_MS = 120;
 
+/** Every non-terminal game position must reach this depth before the review advances. */
+export const MINIMUM_ANALYSIS_DEPTH = 41;
+
 /** Maximum user-selectable Stockfish search depth supported by the bundled UCI engine. */
 export const MAX_ANALYSIS_DEPTH = 245;
 
