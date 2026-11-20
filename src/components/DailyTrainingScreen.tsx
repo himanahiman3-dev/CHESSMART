@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import { GameBoard, type BoardMove } from "./GameBoard";
 import { loadPuzzleBank, type Puzzle } from "./PuzzleLibraryScreen";
+import { getRushTargetRating, selectRushPuzzle, type PuzzleRushAttempt } from "../lib/puzzleRush";
 
 type Tab = "daily" | "rush" | "custom";
 type RushMode = "3m" | "5m" | "survival";
@@ -9,10 +10,11 @@ interface SavedProgress {
   completedDates: string[];
   heartsByDate: Record<string, number>;
   rushBest: Record<RushMode, number>;
+  rushHistory: PuzzleRushAttempt[];
   hardMode: boolean;
 }
 const STORAGE_KEY = "chessmart:daily-rush-progress:v1";
-const EMPTY: SavedProgress = { completedDates: [], heartsByDate: {}, rushBest: { "3m": 0, "5m": 0, survival: 0 }, hardMode: false };
+const EMPTY: SavedProgress = { completedDates: [], heartsByDate: {}, rushBest: { "3m": 0, "5m": 0, survival: 0 }, rushHistory: [], hardMode: false };
 const THEMES: Array<[string, string]> = [
   ["fork", "Вилки"], ["pin", "Связки"], ["skewer", "Шпажки"], ["mateIn1", "Мат в 1"],
   ["mateIn2", "Мат в 2"], ["mateIn3", "Мат в 3"], ["hangingPiece", "Выигрыш фигуры"],
@@ -28,6 +30,15 @@ function readProgress(): SavedProgress {
       completedDates: Array.isArray(saved?.completedDates) ? saved.completedDates.filter((value): value is string => typeof value === "string") : [],
       heartsByDate: saved?.heartsByDate && typeof saved.heartsByDate === "object" ? saved.heartsByDate : {},
       rushBest: { ...EMPTY.rushBest, ...(saved?.rushBest ?? {}) },
+      rushHistory: Array.isArray(saved?.rushHistory)
+        ? saved.rushHistory.filter((item): item is PuzzleRushAttempt =>
+          !!item && typeof item.id === "string"
+          && (item.mode === "3m" || item.mode === "5m" || item.mode === "survival")
+          && typeof item.playedAt === "string"
+          && Number.isFinite(item.score) && Number.isFinite(item.mistakes)
+          && Number.isFinite(item.maxPuzzleRating)
+        ).slice(0, 20)
+        : [],
       hardMode: typeof saved?.hardMode === "boolean" ? saved.hardMode : false,
     };
   } catch { return EMPTY; }
@@ -91,6 +102,11 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
   const [rushPuzzle, setRushPuzzle] = useState<Puzzle | null>(null);
   const [rushFen, setRushFen] = useState("");
   const [rushIndex, setRushIndex] = useState(0);
+  const [rushSeen, setRushSeen] = useState<string[]>([]);
+  const [rushHighestRating, setRushHighestRating] = useState(0);
+  const rushStartedAt = useRef<number | null>(null);
+  const rushSessionNumber = useRef(0);
+  const rushRecordedId = useRef<string | null>(null);
   const [customTheme, setCustomTheme] = useState("fork");
   const [customLevel, setCustomLevel] = useState("all");
   const [customPuzzle, setCustomPuzzle] = useState<Puzzle | null>(null);
@@ -218,16 +234,21 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
   }, [customPuzzle, customFen, customIndex]);
 
   const beginRush = () => {
-    const next = randomItem(bank);
+    const next = selectRushPuzzle(bank, 0, []);
     setRushPuzzle(next);
     setRushFen(next?.fen ?? "");
     setRushIndex(0);
     setRushScore(0);
     setRushMistakes(0);
+    setRushSeen(next ? [next.id] : []);
+    setRushHighestRating(next?.rating ?? 0);
     setRushTime(rushMode === "3m" ? 180 : rushMode === "5m" ? 300 : 0);
     setRushFinished(false);
+    rushSessionNumber.current += 1;
+    rushStartedAt.current = Date.now();
     setRushRunning(!!next);
   };
+
   const onRushMove = useCallback((move: BoardMove): boolean => {
     if (!rushPuzzle || !rushRunning) return false;
     const result = advancePuzzle(rushPuzzle, rushFen, rushIndex, move);
@@ -240,14 +261,22 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
     setRushFen(result.fen);
     setRushIndex(result.index);
     if (result.done) {
-      setRushScore((value) => value + 1);
-      const next = randomItem(bank.filter((puzzle) => puzzle.id !== rushPuzzle.id)) ?? randomItem(bank);
+      const nextScore = rushScore + 1;
+      const nextSeen = [...rushSeen, rushPuzzle.id];
+      setRushScore(nextScore);
+      setRushSeen(nextSeen);
+      setRushHighestRating((value) => Math.max(value, rushPuzzle.rating));
+      const next = selectRushPuzzle(bank, nextScore, nextSeen);
       setRushPuzzle(next);
       setRushFen(next?.fen ?? "");
       setRushIndex(0);
+      if (!next) {
+        setRushRunning(false);
+        setRushFinished(true);
+      }
     }
     return true;
-  }, [rushPuzzle, rushRunning, rushFen, rushIndex, rushMistakes, bank]);
+  }, [rushPuzzle, rushRunning, rushFen, rushIndex, rushMistakes, rushScore, rushSeen, bank]);
 
   useEffect(() => {
     if (!rushRunning || rushMode === "survival") return;
@@ -261,14 +290,30 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
   }, [rushRunning, rushMode]);
 
   useEffect(() => {
-    if (!rushFinished) return;
+    if (!rushFinished || rushStartedAt.current === null) return;
+    const runId = rushStartedAt.current + "-" + rushSessionNumber.current;
+    if (rushRecordedId.current === runId) return;
+    rushRecordedId.current = runId;
+    const record: PuzzleRushAttempt = {
+      id: runId,
+      mode: rushMode,
+      playedAt: new Date(rushStartedAt.current).toISOString(),
+      score: rushScore,
+      mistakes: rushMistakes,
+      maxPuzzleRating: rushHighestRating,
+    };
     setSaved((previous) => {
       const best = Math.max(previous.rushBest[rushMode] ?? 0, rushScore);
-      const next = { ...previous, rushBest: { ...previous.rushBest, [rushMode]: best } };
+      const next = {
+        ...previous,
+        rushBest: { ...previous.rushBest, [rushMode]: best },
+        rushHistory: [record, ...previous.rushHistory.filter((item) => item.id !== runId)].slice(0, 20),
+      };
       saveProgress(next);
       return next;
     });
   }, [rushFinished]);
+
 
   const shareDailyResult = async () => {
     const result = [
