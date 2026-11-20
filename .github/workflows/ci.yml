@@ -67,6 +67,8 @@ jobs:
         run: npm run validate:endgames
       - name: Validate Puzzle Journey levels and scoring
         run: npm run validate:puzzle-journey
+      - name: Validate Puzzle Rush difficulty progression
+        run: npm run validate:puzzle-rush
       - name: Validate Training Academy and 15,000 scenarios
         run: npm run validate:training-academy
       - name: Validate CHESSMART Systems Hub and 15,000 scenarios
