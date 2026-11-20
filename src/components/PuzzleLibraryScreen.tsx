@@ -16,6 +16,7 @@ export interface Puzzle {
 interface PuzzleStats {
   rating: number;
   solved: string[];
+  ratedSolved: string[];
   attempts: number;
   correct: number;
   streak: number;
@@ -48,7 +49,7 @@ const STATS_KEY = "chessmart:puzzle-stats:v1";
 const PAGE_SIZE = 100;
 const TARGET = 3500;
 const EMPTY_STATS: PuzzleStats = {
-  rating: 1200, solved: [], attempts: 0, correct: 0, streak: 0, lastDaily: "",
+  rating: 1200, solved: [], ratedSolved: [], attempts: 0, correct: 0, streak: 0, lastDaily: "",
   journeyPoints: 0, dailyQuestDate: "", dailyQuestSolved: 0,
   hardestPuzzleRating: 0, bestStreak: 0, journeyMilestones: [],
 };
@@ -70,6 +71,7 @@ function readStats(): PuzzleStats {
       ...EMPTY_STATS,
       ...value,
       solved: Array.isArray(value?.solved) ? value.solved : [],
+      ratedSolved: Array.isArray(value?.ratedSolved) ? value.ratedSolved : [],
       journeyPoints: Number.isFinite(value?.journeyPoints) ? Math.max(0, Math.floor(value!.journeyPoints!)) : 0,
       dailyQuestDate: typeof value?.dailyQuestDate === "string" ? value.dailyQuestDate : "",
       dailyQuestSolved: Number.isFinite(value?.dailyQuestSolved) ? Math.max(0, Math.min(3, Math.floor(value!.dailyQuestSolved!))) : 0,
@@ -239,7 +241,11 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
   const today = localDateKey();
   const dailyDone = stats.lastDaily === today;
   // Ежедневная задача имеет собственный статус: решение той же позиции в обычной тренировке не должно блокировать daily streak.
-  const solved = mode === "daily" ? dailyDone : stats.solved.includes(current?.id ?? "");
+  const solved = mode === "daily"
+    ? dailyDone
+    : mode === "rated"
+      ? stats.ratedSolved.includes(current?.id ?? "")
+      : stats.solved.includes(current?.id ?? "");
   const playerMove = current?.moves[solutionIndex] ?? "";
   const currentThemes = current?.themes ?? [];
   const currentMission = MISSIONS.find((item) => item.id === mission) ?? MISSIONS[0];
@@ -250,7 +256,7 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
     setSolutionIndex(0);
     setFeedback(mode === "daily"
       ? (stats.lastDaily === localDateKey() ? "solved" : "idle")
-      : (stats.solved.includes(current.id) ? "solved" : "idle"));
+      : (mode === "rated" ? stats.ratedSolved.includes(current.id) : stats.solved.includes(current.id)) ? "solved" : "idle");
     setHint(false);
     setJourneyReward(null);
     puzzleStartedAt.current = Date.now();
@@ -262,7 +268,7 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
     setSolutionIndex(0);
     setFeedback(mode === "daily"
       ? (stats.lastDaily === localDateKey() ? "solved" : "idle")
-      : (stats.solved.includes(puzzle.id) ? "solved" : "idle"));
+      : (mode === "rated" ? stats.ratedSolved.includes(puzzle.id) : stats.solved.includes(puzzle.id)) ? "solved" : "idle");
     setHint(false);
     setJourneyReward(null);
     puzzleStartedAt.current = Date.now();
@@ -270,6 +276,7 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
 
   const finishPuzzle = useCallback((puzzle: Puzzle, wasRevealed: boolean) => {
     const alreadySolved = stats.solved.includes(puzzle.id);
+    const alreadyRated = stats.ratedSolved.includes(puzzle.id);
     const ratedMode = mode === "rated";
     const nextRating = ratedMode && !wasRevealed
       ? Math.max(400, Math.min(3200, Math.round(stats.rating + 24 * (1 - expectedScore(stats.rating, puzzle.rating)))))
@@ -278,7 +285,7 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
     const today = localDateKey(new Date(completedAt));
     const now = new Date(completedAt);
     const yesterday = localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
-    const ratingAfter = alreadySolved ? stats.rating : nextRating;
+    const ratingAfter = alreadyRated ? stats.rating : nextRating;
     const ratingEntry: PuzzleRatingEntry = {
       at: completedAt,
       puzzleId: puzzle.id,
@@ -322,8 +329,11 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
       const nextDailyStreak = previous.lastDaily === yesterday ? previous.streak + 1 : 1;
       return {
         ...previous,
-        rating: ratedMode && !alreadySolved ? nextRating : previous.rating,
+        rating: ratedMode && !alreadyRated && !wasRevealed ? nextRating : previous.rating,
         solved: alreadySolved ? previous.solved : [...previous.solved, puzzle.id],
+        ratedSolved: ratedMode && !alreadyRated && !wasRevealed
+          ? [...previous.ratedSolved, puzzle.id]
+          : previous.ratedSolved,
         attempts: previous.attempts + 1,
         correct: previous.correct + (wasRevealed ? 0 : 1),
         streak: mode === "daily"
