@@ -20,12 +20,22 @@ export function GameFinishedReviewOverlay({
   onOpenReview,
   onClose,
 }: Props) {
-  const { engine, computeProfile } = useEngine();
+  const { engine, status, start, computeProfile } = useEngine();
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null);
   const [review, setReview] = useState<GameReview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Онлайн-игра не обязана заранее загружать Stockfish. Поднимем движок,
+    // когда открылся послематчевый экран.
+    if (!engine && status === "idle") void start();
+  }, [engine, status, start]);
+
+  useEffect(() => {
+    if (status === "error" && !engine) {
+      setError("Stockfish не загрузился. Перезапусти страницу и открой анализ ещё раз.");
+      return;
+    }
     if (!engine || !pgn.trim()) return;
     const controller = new AbortController();
     let current = true;
@@ -91,7 +101,7 @@ export function GameFinishedReviewOverlay({
           <span className="cm-game-review-spark">✦</span>
           <div>
             <strong>{review ? "Предварительный анализ готов" : "Разбираем твои ходы"}</strong>
-            <p>{review ? "Вот качество твоей игры в этой партии." : "Stockfish проверяет только твои ходы. Кнопка станет доступна сразу после проверки."}</p>
+            <p>{review ? "Вот качество твоей игры в этой партии." : status === "idle" || status === "checking" || status === "loading" ? "Подготавливаем Stockfish и проверяем только твои ходы." : "Stockfish проверяет только твои ходы. Кнопка станет доступна сразу после проверки."}</p>
           </div>
         </div>
 
