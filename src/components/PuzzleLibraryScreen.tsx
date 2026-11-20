@@ -380,6 +380,7 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
   };
   const showAnswer = () => {
     if (!current) return;
+    setJourneyReward(null);
     setHint(true);
     setFeedback("revealed");
     const at = Date.now();
@@ -398,6 +399,8 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
     });
     setStats((previous) => ({ ...previous, attempts: previous.attempts + 1 }));
   };
+  const journeyProgress = getPuzzleJourneyProgress(stats.journeyPoints);
+  const dailyQuestSolved = stats.dailyQuestDate === today ? Math.min(3, stats.dailyQuestSolved) : 0;
   const isConfigured = bank.length > 0;
 
   return (
@@ -425,6 +428,49 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
               <div className="mt-0.5 text-[10px] text-[#77766f]">{sub}</div>
             </div>
           ))}
+        </section>
+
+        <section className="mb-4 rounded-2xl border border-[#4b5e3d] bg-gradient-to-br from-[#34442d] via-[#2c3828] to-[#252d22] p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="text-[9px] font-black uppercase tracking-[.2em] text-[#b8d69a]">CHESSMART PUZZLE JOURNEY</div>
+              <div className="mt-1 flex flex-wrap items-baseline gap-2">
+                <h2 className="text-lg font-black text-[#f0f5e9]">Путь тактики</h2>
+                <span className="rounded-md border border-[#8daa70]/40 bg-[#1e2a1d]/60 px-2 py-1 text-[10px] font-extrabold text-[#cbe4b3]">{journeyProgress.tierName}</span>
+                <span className="text-[10px] font-bold text-[#aab9a0]">Уровень {journeyProgress.level}/20</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-[10px] font-bold text-[#b7c7ac]">
+                <span>Прогресс уровня</span>
+                <span className="tabular-nums">{journeyProgress.pointsInLevel.toLocaleString("ru-RU")} / {journeyProgress.pointsForLevel.toLocaleString("ru-RU")} XP</span>
+              </div>
+              <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[#172018]/75">
+                <div className="h-full rounded-full bg-[#a6d179] transition-all" style={{ width: journeyProgress.progressPercent + "%" }} />
+              </div>
+              <div className="mt-1 text-[9px] text-[#8fa087]">{journeyProgress.completed ? "Все 160 уровней пройдены — предел тактического пути!" : "Очки начисляются за новые решения, скорость, серии и сложные позиции."}</div>
+            </div>
+            <div className="min-w-[120px] rounded-xl border border-white/[.08] bg-black/[.16] p-3 text-right">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[#9eaf91]">Всего XP</div>
+              <div className="mt-1 text-2xl font-black tabular-nums text-[#e2f3cf]">{stats.journeyPoints.toLocaleString("ru-RU")}</div>
+              <div className="text-[9px] text-[#91a087]">Тактический опыт</div>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 border-t border-white/[.08] pt-3 sm:grid-cols-[1fr_1fr]">
+            <div>
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-extrabold text-[#e5eedc]">Ежедневная цель</span>
+                <span className="font-black tabular-nums text-[#cce6b1]">{dailyQuestSolved}/3</span>
+              </div>
+              <div className="mt-2 flex gap-1.5">
+                {Array.from({ length: 3 }, (_, index) => <span key={index} className={"h-2 flex-1 rounded-full " + (index < dailyQuestSolved ? "bg-[#a6d179]" : "bg-white/[.10]")} />)}
+              </div>
+              <div className="mt-1 text-[9px] text-[#95a58b]">{dailyQuestSolved >= 3 ? "Цель выполнена · +40 XP получено" : "Реши три новые задачи за день и получи +40 XP"}</div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-[10px] text-[#a7b59e]">
+              <span>Личный рекорд сложности: <b className="text-[#e2eed8]">{stats.hardestPuzzleRating || "—"}</b></span>
+              <span>Лучшая серия: <b className="text-[#e2eed8]">{stats.bestStreak}</b></span>
+              <span>Рубежи: <b className="text-[#e2eed8]">{stats.journeyMilestones.length}/7</b></span>
+            </div>
+          </div>
         </section>
 
         <div className="mb-4 flex flex-wrap gap-2">
@@ -493,6 +539,17 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
               <div className={"mt-3 rounded-lg border p-3 text-sm " + (feedback === "solved" || solved ? "border-[#557b3d] bg-[#293a25] text-[#d7edbd]" : feedback === "wrong" ? "border-[#81504a] bg-[#402b28] text-[#ffd2cd]" : "border-[#45443e] bg-[#272823] text-[#d6d5ce]")}>
                 {feedback === "solved" || solved ? "Верно. Отличный расчёт — задача засчитана." : feedback === "revealed" ? "Решение: " + current.moves.map((m) => m.slice(0, 2) + "–" + m.slice(2, 4)).join(", ") : feedback === "wrong" ? "Это не лучший ход. Попробуй ещё раз." : mission === "mate1" ? "Проверь все шахи и найди ход, который сразу завершает партию." : mission === "mate2" || mission === "mate3" ? "Рассчитай ответ соперника. После каждого его хода найди продолжение матовой атаки." : mission === "punish" ? "Соперник оставил слабость. Найди тактический способ наказать ошибку." : mission === "defend" ? "Позиция под угрозой. Найди ход, который удерживает её." : mission === "fork" ? "Ищи ход с двойным нападением на две цели." : mission === "hanging" ? "Найди выигрыш фигуры с помощью связки, шпажки или атаки." : "Найди тактический удар или единственный сильный ход."}
               </div>
+              {journeyReward && (feedback === "solved" || solved) && (
+                <div className="mt-3 rounded-lg border border-[#6d8c51] bg-[#263b24] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#c3dfa8]">Путь тактики</span>
+                    <span className="text-lg font-black tabular-nums text-[#d9f1c3]">+{journeyReward.points} XP</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    {journeyReward.bonuses.map((bonus) => <span key={bonus} className="text-[9px] font-bold text-[#aebf9f]">{bonus}</span>)}
+                  </div>
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button onClick={() => setHint(true)} disabled={hint || feedback !== "idle"} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2 text-xs font-bold disabled:opacity-40">Подсказка</button>
                 <button onClick={showAnswer} disabled={feedback === "solved" || feedback === "revealed" || solved} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2 text-xs font-bold disabled:opacity-40">Показать решение</button>
