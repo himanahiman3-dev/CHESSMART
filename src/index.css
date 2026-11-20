@@ -1245,3 +1245,39 @@ button:not(:disabled):hover {
 .chessmart-large-text .cm-app-shell { font-size: 1.08rem; }
 .chessmart-compact .cm-play-action { min-height: 55px; }
 .chessmart-compact .cm-content-page { padding-top: 16px; }
+
+
+/* Safe, dependency-free board preview on the home screen. */
+.cm-preview-board {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  overflow: hidden;
+  border-radius: 3px;
+  box-shadow: 0 16px 42px rgba(0,0,0,.35);
+}
+.cm-preview-square {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  aspect-ratio: 1;
+}
+.cm-preview-piece {
+  display: block;
+  font-family: "Segoe UI Symbol", "DejaVu Sans", "Arial Unicode MS", serif;
+  font-size: clamp(20px, 5.4vw, 64px);
+  line-height: 1;
+  user-select: none;
+}
+.cm-preview-piece-black {
+  color: #20201e;
+  text-shadow: 0 1px 0 rgba(255,255,255,.5), 0 2px 2px rgba(0,0,0,.18);
+}
+.cm-preview-piece-white {
+  color: #f7f5ea;
+  -webkit-text-stroke: .5px rgba(31,31,28,.62);
+  text-shadow: 0 1px 1px rgba(0,0,0,.35);
+}
