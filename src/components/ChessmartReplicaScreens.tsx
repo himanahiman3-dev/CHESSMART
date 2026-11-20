@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { PlayerProfile } from "../lib/playerProfile";
 import type { Cls } from "../types";
 import type { AccountProfile } from "../lib/accountProfile";
@@ -53,96 +53,77 @@ function PageHeading({ eyebrow, title, subtitle, action }: {
   );
 }
 
-/** Chess.com-inspired /play layout: full-size board with true SVG chess pieces and a separate game-mode panel. */
+/** Strict two-column chess play workspace. */
 export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
   profile: PlayerProfile;
   accountProfile: AccountProfile | null;
   onNavigate: Navigate;
 }) {
   const preferences = loadGameplayPreferences();
-  const [timeControl, setTimeControl] = useState(loadSavedOnlineTimeControl);
-  const [rated, setRated] = useState(loadSavedOnlineRated);
   const username = accountProfile?.username ?? profile.name;
 
   return (
     <div className="cm-replica-page cm-play-page">
-      <PageHeading
-        eyebrow="CHESSMART PLAY"
-        title="Играть в шахматы"
-        subtitle="Выбери режим, настрой контроль времени и начинай партию."
-        action={<button type="button" className="cm-replica-secondary-button" onClick={() => onNavigate("settings")}>⚙ Настройки доски</button>}
-      />
       <div className="cm-replica-play-layout">
-        <section className="cm-replica-board-column" aria-label="Предпросмотр шахматной партии">
+        <section className="cm-replica-board-column" aria-label="Шахматная доска">
           <div className="cm-replica-player-strip cm-opponent-strip">
-            <div className="cm-replica-opponent-avatar">♟</div>
-            <div className="cm-replica-player-copy"><strong>Соперник</strong><small>Ожидает начала партии</small></div>
-            <span className="cm-replica-rating">—</span>
-            <span className="cm-replica-clock">10:00</span>
+            <span className="cm-play-square-avatar cm-play-square-avatar-empty" aria-hidden="true">♟</span>
+            <div className="cm-replica-player-copy"><strong>Противник</strong></div>
           </div>
           <div className="cm-replica-board-frame">
             <GameBoard
               fen={START_FEN}
               orientation="white"
               interactive={false}
-              theme={preferences.boardTheme}
+              theme="classic"
               showLegalMoves={false}
               highlightLastMove={false}
               animations={false}
             />
           </div>
           <div className="cm-replica-player-strip cm-replica-own-player-strip">
-            <Avatar accountProfile={accountProfile} name={profile.name} size="small" />
-            <div className="cm-replica-player-copy"><strong>{username}</strong><small>{accountProfile ? "CHESSMART member" : "Локальный игрок"}</small></div>
+            {accountProfile?.avatar_url
+              ? <img className="cm-play-square-avatar" src={accountProfile.avatar_url} alt="" />
+              : <span className="cm-play-square-avatar cm-play-square-avatar-own" aria-hidden="true">{username.slice(0, 1).toUpperCase()}</span>}
+            <div className="cm-replica-player-copy"><strong>{username}</strong></div>
             <span className="cm-replica-rating">{accountProfile?.rapid_rating ?? profile.rating}</span>
-            <span className="cm-replica-clock">10:00</span>
-          </div>
-          <div className="cm-replica-board-tools">
-            <span>Доска-превью</span>
-            <span>Фигуры и цвета настраиваются в параметрах</span>
           </div>
         </section>
+
         <aside className="cm-replica-play-panel">
           <div className="cm-replica-play-panel-heading">
-            <span className="cm-replica-panel-kicker">CHESSMART</span>
-            <h2>Play Chess</h2>
-            <p>Найди соперника или выбери свой способ игры.</p>
+            <span aria-hidden="true">♟</span>
+            <h1>Играть в шахматы</h1>
           </div>
-          <section className="cm-replica-quick-settings" aria-label="Настройки быстрой онлайн-партии">
-            <div className="cm-replica-quick-settings-heading">
-              <div><strong>Контроль времени</strong><small>Сразу применится к поиску и приглашению</small></div>
-              <span>{timeControl.replace("+", " + ")}</span>
-            </div>
-            <div className="cm-replica-time-control-grid">
-              {ONLINE_TIME_CONTROL_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={timeControl === option.value ? "active" : ""}
-                  aria-pressed={timeControl === option.value}
-                  onClick={() => { setTimeControl(option.value); saveOnlineTimeControl(option.value); }}
-                >
-                  <strong>{option.value.replace("+", " + ")}</strong>
-                  <small>{option.type}</small>
-                </button>
-              ))}
-            </div>
-            <label className="cm-replica-rated-toggle">
-              <input type="checkbox" checked={rated} onChange={(event) => { setRated(event.target.checked); saveOnlineRated(event.target.checked); }} />
-              <span><strong>Рейтинговая игра</strong><small>Учитывать результат в сетевом Elo</small></span>
-            </label>
-          </section>
           <div className="cm-replica-play-actions">
-            <PlayAction icon="⚡" title="Играть онлайн" subtitle="Соперник твоего уровня" featured onClick={() => onNavigate("online")} />
-            <PlayAction icon="♞" title="Играть с ботом" subtitle="От новичка до мастера" onClick={() => onNavigate("play")} />
-            <PlayAction icon="🤝" title="Играть с другом" subtitle="Пригласи друга по ссылке" onClick={() => onNavigate("online")} />
-            <PlayAction icon="🎓" title="Играть с тренером" subtitle="Подсказки и разбор ходов" onClick={() => onNavigate("coach")} />
-            <PlayAction icon="🏆" title="Puzzle Battle" subtitle="Соревнование по решению задач" onClick={() => onNavigate("battle")} />
-            <PlayAction icon="📖" title="Дебюты и позиции" subtitle="Изучай планы и варианты" onClick={() => onNavigate("openings")} />
+            <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("online")}>
+              <span className="cm-replica-action-icon cm-play-icon-yellow" aria-hidden="true">⚡</span>
+              <span className="cm-replica-action-copy"><strong>Играть по сети</strong><small>Играть с противником того же уровня</small></span>
+            </button>
+            <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("play")}>
+              <span className="cm-replica-action-icon cm-play-icon-blue" aria-hidden="true">♟</span>
+              <span className="cm-replica-action-copy"><strong>Боты</strong><small>Играть с ботами от начинающих до мастеров</small></span>
+            </button>
+            <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("coach")}>
+              <span className="cm-replica-action-icon cm-play-icon-green" aria-hidden="true">♙</span>
+              <span className="cm-replica-action-copy"><strong>Играть с тренером</strong><small>Учиться, играя и рассуждая с тренером</small></span>
+            </button>
+            <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("online")}>
+              <span className="cm-replica-action-icon cm-play-icon-purple" aria-hidden="true">♟</span>
+              <span className="cm-replica-action-copy"><strong>Играть с другом</strong><small>Пригласить друга на партию в шахматы</small></span>
+            </button>
+            <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("battle")}>
+              <span className="cm-replica-action-icon cm-play-icon-orange" aria-hidden="true">🏆</span>
+              <span className="cm-replica-action-copy"><strong>Турниры</strong><small>Присоединиться к арене, где победа означает многое</small></span>
+            </button>
+            <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("openings")}>
+              <span className="cm-replica-action-icon cm-play-icon-cyan" aria-hidden="true">◆</span>
+              <span className="cm-replica-action-copy"><strong>Варианты шахмат</strong><small>Откройте для себя новые виды шахмат</small></span>
+            </button>
           </div>
           <div className="cm-replica-panel-footer">
-            <button type="button" onClick={() => onNavigate("profileDetails")}>История партий</button>
-            <button type="button" onClick={() => onNavigate("stats")}>Статистика</button>
+            <button type="button" onClick={() => onNavigate("profile")}>▤ Архив партий</button>
+            <button type="button" onClick={() => onNavigate("battle")}>♜ Таблица лидеров</button>
           </div>
         </aside>
       </div>
@@ -150,327 +131,508 @@ export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
   );
 }
 
-/** Chess.com-inspired home dashboard with quick pairing, recent games, training and personal stats. */
-export function HomeDashboardScreen({ profile, accountProfile, onNavigate }: {
-  profile: PlayerProfile;
-  accountProfile: AccountProfile | null;
-  onNavigate: Navigate;
-}) {
-  const username = accountProfile?.username ?? profile.name;
-  const recentGames = [...(profile.history ?? [])].sort((a, b) => b.at - a.at).slice(0, 5);
-  const solvedPuzzles = (profile.puzzles ?? []).filter((puzzle) => !!puzzle.solvedAt).length;
-  const games = profile.wins + profile.losses + profile.draws;
-  const winRate = games ? Math.round(profile.wins / games * 100) : 0;
-  const onlineGames = accountProfile
-    ? accountProfile.bullet_games + accountProfile.blitz_games + accountProfile.rapid_games
-    : 0;
+type ProfileTab = "overview" | "games" | "stats" | "friends" | "awards" | "clubs";
+
+interface OnlineArchiveGame {
+  id: string;
+  white_id: string;
+  black_id: string | null;
+  white_name: string;
+  black_name: string | null;
+  minutes: number;
+  increment_seconds: number;
+  rated: boolean;
+  rating_type: "bullet" | "blitz" | "rapid";
+  result: "white_win" | "black_win" | "draw" | null;
+  reason: string | null;
+  white_rating: number | null;
+  black_rating: number | null;
+  moves: Array<{ uci?: string; san?: string; color?: "w" | "b" }>;
+  created_at: string;
+}
+
+function formatProfileDate(value: string | number | null | undefined, withTime = false): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleString("ru-RU", withTime
+    ? { dateStyle: "medium", timeStyle: "short" }
+    : { day: "numeric", month: "long", year: "numeric" });
+}
+
+function profileRatingClass(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "empty";
+  return value >= 85 ? "good" : value >= 70 ? "average" : "poor";
+}
+
+function averagePhaseAccuracy(
+  records: NonNullable<PlayerProfile["personalReviews"]>,
+  phase: "opening" | "middlegame" | "endgame",
+  ratingType?: "bullet" | "blitz" | "rapid",
+): number | null {
+  const relevant = records.filter((record) =>
+    (!ratingType || record.ratingType === ratingType)
+    && Number.isFinite(record.phaseAccuracy?.[phase]?.accuracy)
+    && (record.phaseAccuracy?.[phase]?.moves ?? 0) > 0
+  );
+  if (!relevant.length) return null;
+  const totalMoves = relevant.reduce((sum, record) => sum + (record.phaseAccuracy?.[phase]?.moves ?? 0), 0);
+  if (!totalMoves) return null;
+  return relevant.reduce((sum, record) =>
+    sum + (record.phaseAccuracy?.[phase]?.accuracy ?? 0) * (record.phaseAccuracy?.[phase]?.moves ?? 0), 0
+  ) / totalMoves;
+}
+
+function averageOverallAccuracy(
+  records: NonNullable<PlayerProfile["personalReviews"]>,
+  ratingType?: "bullet" | "blitz" | "rapid",
+): number | null {
+  const relevant = records.filter((record) => (!ratingType || record.ratingType === ratingType) && record.moves > 0);
+  if (!relevant.length) return null;
+  const moves = relevant.reduce((sum, record) => sum + record.moves, 0);
+  return relevant.reduce((sum, record) => sum + record.accuracy * record.moves, 0) / moves;
+}
+
+function AccuracyValue({ value }: { value: number | null }) {
+  if (value === null) return <span className="cm-accuracy-empty">—</span>;
+  return <span className={"cm-accuracy-value " + profileRatingClass(value)}>{value.toFixed(1)}%</span>;
+}
+
+function ProfileStatsTab({ profile, accountProfile }: { profile: PlayerProfile; accountProfile: AccountProfile | null }) {
+  const [period, setPeriod] = useState<"90" | "30" | "all">("90");
+  const [filter, setFilter] = useState("all");
+  const [expanded, setExpanded] = useState(false);
+  const cutoff = period === "all" ? 0 : Date.now() - Number(period) * 86_400_000;
+  const records = (profile.personalReviews ?? []).filter((record) => record.at >= cutoff);
+  const variants = [
+    { id: "bullet" as const, label: "Пуля", icon: "●", rating: accountProfile?.bullet_rating ?? null },
+    { id: "rapid" as const, label: "Рапид", icon: "◷", rating: accountProfile?.rapid_rating ?? null },
+    { id: "blitz" as const, label: "Блиц", icon: "⚡", rating: accountProfile?.blitz_rating ?? null },
+  ];
+  const brilliant = records.reduce((sum, record) => sum + (record.counts.brilliant ?? 0), 0);
+  const brilliantByPhase = {
+    opening: records.reduce((sum, record) => sum + (record.phaseBrilliant?.opening ?? 0), 0),
+    middlegame: records.reduce((sum, record) => sum + (record.phaseBrilliant?.middlegame ?? 0), 0),
+    endgame: records.reduce((sum, record) => sum + (record.phaseBrilliant?.endgame ?? 0), 0),
+  };
+  const qualityKeys = [
+    ["best", "Лучшие"],
+    ["brilliant", "Блестящие"],
+    ["great", "Сильные"],
+    ["good", "Хорошие"],
+    ["inaccuracy", "Неточности"],
+    ["miss", "Упущенные возможности"],
+    ["mistake", "Ошибки"],
+    ["blunder", "Зевки"],
+  ] as const;
+  const showAccuracy = filter === "all" || filter === "accuracy";
+  const showQuality = filter === "all" || filter === "quality";
 
   return (
-    <div className="cm-replica-page cm-dashboard-page">
-      <header className="cm-dashboard-welcome">
-        <div className="cm-dashboard-identity">
-          <Avatar accountProfile={accountProfile} name={profile.name} size="large" />
-          <div><span className="cm-replica-eyebrow">ТВОЯ ШАХМАТНАЯ ПЛАТФОРМА</span><h1>С возвращением, {username}</h1><p>Готов сыграть ещё одну партию?</p></div>
+    <section className="cm-profile-stats-tab">
+      <div className="cm-profile-stats-filters">
+        <select value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Вид статистики">
+          <option value="all">Полная статистика</option>
+          <option value="accuracy">Точность</option>
+          <option value="quality">Качество ходов</option>
+        </select>
+        <div className="cm-profile-period">
+          <button type="button" className={period === "90" ? "active" : ""} onClick={() => setPeriod("90")}>90 дней</button>
+          <button type="button" className={period === "30" ? "active" : ""} onClick={() => setPeriod("30")}>30 дней</button>
+          <button type="button" className={period === "all" ? "active" : ""} onClick={() => setPeriod("all")}>Всё время</button>
         </div>
-        <div className="cm-dashboard-top-stats">
-          <div><strong>{accountProfile?.rapid_rating ?? profile.rating}</strong><span>{accountProfile ? "Rapid" : "Локальный Elo"}</span></div>
-          <div><strong>{profile.puzzleRating}</strong><span>Puzzle Rating</span></div>
-          <div><strong>{accountProfile ? onlineGames : games}</strong><span>{accountProfile ? "Онлайн-партий" : "Партий против бота"}</span></div>
-        </div>
-      </header>
-
-      <div className="cm-dashboard-layout">
-        <main className="cm-dashboard-main">
-          <section className="cm-replica-card cm-dashboard-quick-card">
-            <div className="cm-replica-section-heading">
-              <div><h2>Начать игру</h2><p>Выбери режим или запусти быструю партию</p></div>
-              <button type="button" className="cm-replica-text-button" onClick={() => onNavigate("playHub")}>Все режимы →</button>
-            </div>
-            <div className="cm-dashboard-quick-grid">
-              <button type="button" className="cm-dashboard-quick-tile tile-featured" onClick={() => onNavigate("online")}>
-                <span className="cm-dashboard-tile-art">⚡</span><span className="cm-dashboard-tile-title">Играть 10 мин</span><small>Быстрый поиск соперника</small>
-              </button>
-              <button type="button" className="cm-dashboard-quick-tile" onClick={() => onNavigate("playHub")}>
-                <span className="cm-dashboard-tile-art">♟</span><span className="cm-dashboard-tile-title">Новая партия</span><small>Выбрать контроль времени</small>
-              </button>
-              <button type="button" className="cm-dashboard-quick-tile" onClick={() => onNavigate("play")}>
-                <span className="cm-dashboard-tile-art">♞</span><span className="cm-dashboard-tile-title">Против бота</span><small>Настроить силу Stockfish</small>
-              </button>
-              <button type="button" className="cm-dashboard-quick-tile" onClick={() => onNavigate("online")}>
-                <span className="cm-dashboard-tile-art">♙</span><span className="cm-dashboard-tile-title">С другом</span><small>Создать приглашение</small>
-              </button>
-            </div>
-          </section>
-
-          <section className="cm-replica-card cm-dashboard-games-card">
-            <div className="cm-replica-section-heading">
-              <div><h2>Последние партии</h2><p>Твоя недавняя игровая активность</p></div>
-              <button type="button" className="cm-replica-text-button" onClick={() => onNavigate("profileDetails")}>Все партии →</button>
-            </div>
-            {recentGames.length ? (
-              <div className="cm-dashboard-game-list">
-                {recentGames.map((game, index) => (
-                  <div className="cm-dashboard-game-row" key={`${game.at}-${index}`}>
-                    <span className={`cm-dashboard-result-dot ${game.result}`} />
-                    <div className="cm-dashboard-game-opponent"><strong>Stockfish · {game.botElo}</strong><small>{new Date(game.at).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" })}</small></div>
-                    <span className={`cm-dashboard-result-label ${game.result}`}>{game.result === "win" ? "Победа" : game.result === "loss" ? "Поражение" : "Ничья"}</span>
-                    <strong className="cm-dashboard-game-rating">{game.ratingAfter}</strong>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="cm-dashboard-empty-games"><span>♟</span><div><strong>Здесь появятся твои партии</strong><small>Сыграй первую игру против Stockfish или найди соперника онлайн.</small></div><button type="button" onClick={() => onNavigate("playHub")}>Начать игру</button></div>
-            )}
-          </section>
-
-          <section className="cm-replica-card cm-dashboard-progress-card">
-            <div className="cm-replica-section-heading"><div><h2>Твой прогресс</h2><p>Личные результаты и тренировки</p></div><button type="button" className="cm-replica-text-button" onClick={() => onNavigate("stats")}>Статистика →</button></div>
-            <div className="cm-dashboard-progress-grid">
-              <div><span>Победы</span><strong>{profile.wins}</strong><small>{winRate}% от локальных партий</small></div>
-              <div><span>Разобрано партий</span><strong>{profile.reviews?.length ?? 0}</strong><small>Stockfish Review</small></div>
-              <div><span>Решено задач</span><strong>{solvedPuzzles}</strong><small>Puzzle Library</small></div>
-              <div><span>Блестящие ходы</span><strong>{(profile.reviews ?? []).reduce((sum, review) => sum + review.brilliantMoves.length, 0)}</strong><small>В разобранных партиях</small></div>
-            </div>
-          </section>
-        </main>
-
-        <aside className="cm-dashboard-aside">
-          <section className="cm-replica-card cm-dashboard-daily-card">
-            <div className="cm-replica-section-heading"><div><h2>Тренировка дня</h2><p>Поддерживай игровую форму</p></div><span className="cm-dashboard-daily-icon">♞</span></div>
-            <div className="cm-dashboard-daily-stat"><strong>{solvedPuzzles}</strong><span>решённых задач</span></div>
-            <p>Тактика, Puzzle Rush и персональные задания помогут закрепить навыки.</p>
-            <button type="button" className="cm-replica-primary-button" onClick={() => onNavigate("puzzles")}>Решать задачи</button>
-            <button type="button" className="cm-replica-secondary-wide" onClick={() => onNavigate("daily")}>Задача дня и Puzzle Rush</button>
-          </section>
-
-          <section className="cm-replica-card cm-dashboard-rating-card">
-            <div className="cm-replica-section-heading"><div><h2>Рейтинги</h2><p>{accountProfile ? "Онлайн и локальная игра" : "Твой локальный рейтинг"}</p></div></div>
-            {accountProfile ? (
-              <div className="cm-dashboard-rating-list">
-                <div><span>Bullet</span><strong>{accountProfile.bullet_rating}</strong></div>
-                <div><span>Blitz</span><strong>{accountProfile.blitz_rating}</strong></div>
-                <div><span>Rapid</span><strong>{accountProfile.rapid_rating}</strong></div>
-              </div>
-            ) : (
-              <div className="cm-dashboard-rating-list">
-                <div><span>Локальный Elo</span><strong>{profile.rating}</strong></div>
-                <div><span>Puzzle Rating</span><strong>{profile.puzzleRating}</strong></div>
-              </div>
-            )}
-            <button type="button" className="cm-replica-text-button" onClick={() => onNavigate("profile")}>Открыть профиль →</button>
-          </section>
-
-          <section className="cm-replica-card cm-dashboard-news-card">
-            <div className="cm-replica-section-heading"><div><h2>Обновления CHESSMART</h2><p>Изменения проекта на GitHub</p></div></div>
-            <p>Новые функции, исправления и улучшения платформы.</p>
-            <button type="button" className="cm-replica-secondary-wide" onClick={() => onNavigate("news")}>Смотреть последние изменения</button>
-          </section>
-        </aside>
       </div>
-    </div>
+
+      {showAccuracy && (
+        <div className="cm-profile-stats-table-wrap">
+          <table className="cm-profile-stats-table">
+            <thead><tr>
+              <th>Вариант</th><th>Рейтинг</th><th>Дебют</th><th>Миттельшпиль / Комбинации</th><th>Стратегия</th><th>Эндшпиль</th>
+            </tr></thead>
+            <tbody>
+              {variants.map((variant) => (
+                <tr key={variant.id}>
+                  <th><span className={"cm-variant-icon cm-variant-" + variant.id}>{variant.icon}</span>{variant.label}</th>
+                  <td>{variant.rating ?? "—"}</td>
+                  <td><AccuracyValue value={averagePhaseAccuracy(records, "opening", variant.id)} /></td>
+                  <td><AccuracyValue value={averagePhaseAccuracy(records, "middlegame", variant.id)} /></td>
+                  <td><AccuracyValue value={averageOverallAccuracy(records, variant.id)} /></td>
+                  <td><AccuracyValue value={averagePhaseAccuracy(records, "endgame", variant.id)} /></td>
+                </tr>
+              ))}
+              <tr className="cm-brilliant-stat-row">
+                <th><span className="cm-variant-icon cm-variant-brilliant">✦</span>Блестящие ходы</th>
+                <td>{brilliant}</td>
+                <td>{brilliantByPhase.opening || "—"}</td>
+                <td>{brilliantByPhase.middlegame || "—"}</td>
+                <td>—</td>
+                <td>{brilliantByPhase.endgame || "—"}</td>
+              </tr>
+            </tbody>
+          </table>
+          {!records.length && <p className="cm-profile-stats-note">После разбора сетевых партий здесь появится реальная точность по дебюту, миттельшпилю и эндшпилю. Рейтинги отображаются отдельно от статистики точности.</p>}
+        </div>
+      )}
+
+      {showQuality && (
+        <section className="cm-profile-quality-breakdown">
+          <h2>Качество ходов</h2>
+          <div className="cm-profile-quality-grid">
+            {qualityKeys.map(([key, label]) => (
+              <div key={key}><span>{label}</span><strong>{records.reduce((sum, record) => sum + (record.counts[key] ?? 0), 0)}</strong></div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <button type="button" className="cm-profile-show-more" onClick={() => setExpanded((value) => !value)}>
+        {expanded ? "Скрыть дополнительную статистику" : "Показать больше статистики"}
+      </button>
+      {expanded && (
+        <div className="cm-profile-stats-extra">
+          <div><span>Разобрано сетевых партий</span><strong>{records.length}</strong></div>
+          <div><span>Ходов проанализировано</span><strong>{records.reduce((sum, record) => sum + record.moves, 0)}</strong></div>
+          <div><span>Средняя точность</span><strong>{records.length
+            ? (records.reduce((sum, record) => sum + record.accuracy * record.moves, 0) / Math.max(1, records.reduce((sum, record) => sum + record.moves, 0))).toFixed(1) + "%"
+            : "—"}</strong></div>
+          <div><span>Всего блестящих ходов</span><strong>{brilliant}</strong></div>
+        </div>
+      )}
+    </section>
   );
 }
 
-/** Chess.com-style member page: identity, quick ratings, tabs, recent games and a stats rail. */
-export function ProfileHubScreen({ profile, accountProfile, onNavigate }: {
+function ProfileEmptyTab({ title, message, action, onAction }: {
+  title: string;
+  message: string;
+  action: string;
+  onAction: () => void;
+}) {
+  return (
+    <section className="cm-profile-empty-tab">
+      <h2>{title}</h2><p>{message}</p>
+      <button type="button" className="cm-replica-secondary-button" onClick={onAction}>{action}</button>
+    </section>
+  );
+}
+
+/** Account profile, archive and statistics laid out in the requested classic chess profile structure. */
+export function ProfileHubScreen({ profile, accountProfile, onNavigate, initialTab = "overview" }: {
   profile: PlayerProfile;
   accountProfile: AccountProfile | null;
   onNavigate: Navigate;
+  initialTab?: ProfileTab;
 }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "games" | "awards">("overview");
+  const [activeTab, setActiveTab] = useState<ProfileTab>(initialTab);
+  const [friendSearch, setFriendSearch] = useState("");
+  const [onlineGames, setOnlineGames] = useState<OnlineArchiveGame[]>([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
   const username = accountProfile?.username ?? profile.name;
-  const allGames = [...(profile.history ?? [])].sort((a, b) => b.at - a.at);
-  const recentGames = allGames.slice(0, 8);
-  const solvedPuzzles = (profile.puzzles ?? []).filter((puzzle) => !!puzzle.solvedAt).length;
-  const totalOnlineGames = accountProfile
-    ? accountProfile.bullet_games + accountProfile.blitz_games + accountProfile.rapid_games
-    : 0;
-  const games = profile.wins + profile.losses + profile.draws;
-  const winRate = games ? Math.round(profile.wins / games * 100) : 0;
-  const qualityTotals: Record<"best" | "brilliant" | "great" | "good" | "inaccuracy" | "miss" | "mistake" | "blunder", number> = {
-    best: 0, brilliant: 0, great: 0, good: 0, inaccuracy: 0, miss: 0, mistake: 0, blunder: 0,
+  const preferences = loadGameplayPreferences();
+  const themeColors: Record<string, { light: string; dark: string }> = {
+    classic: { light: "#EBECD0", dark: "#739552" },
+    blue: { light: "#E8EDF5", dark: "#6B83A5" },
+    walnut: { light: "#EAD7BA", dark: "#9A6748" },
+    violet: { light: "#ECE4F4", dark: "#856A9B" },
   };
-  for (const report of profile.personalReviews ?? []) {
-    for (const key of Object.keys(qualityTotals) as Array<keyof typeof qualityTotals>) {
-      qualityTotals[key] += report.counts[key] ?? 0;
+  const boardColors = themeColors[preferences.boardTheme] ?? themeColors.classic;
+  const solvedPuzzles = (profile.puzzles ?? []).filter((puzzle) => !!puzzle.solvedAt).length;
+  const qualityTotals = (profile.personalReviews ?? []).reduce((total, record) => {
+    for (const key of Object.keys(total) as Array<keyof typeof total>) total[key] += record.counts[key] ?? 0;
+    return total;
+  }, { best: 0, brilliant: 0, great: 0, good: 0, excellent: 0, book: 0, forced: 0, inaccuracy: 0, miss: 0, mistake: 0, blunder: 0 });
+  const localGames = [...(profile.history ?? [])].sort((a, b) => b.at - a.at);
+  const archiveCount = localGames.length + onlineGames.length;
+
+  useEffect(() => {
+    if (!accountProfile?.user_id) {
+      setOnlineGames([]);
+      return;
     }
+    const controller = new AbortController();
+    const loadArchive = async () => {
+      setArchiveLoading(true);
+      try {
+        const configuredUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
+        const url = configuredUrl.replace(/\/$/, "");
+        const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? "";
+        if (!url || !key) return;
+        const raw = localStorage.getItem("chessmart:account-session:v2");
+        if (!raw) return;
+        let saved = JSON.parse(raw) as { access_token: string; refresh_token: string; expires_at: number };
+        if (!saved.access_token) return;
+        if (saved.expires_at <= Date.now() + 60_000 && saved.refresh_token) {
+          const refreshedResponse = await fetch(url + "/auth/v1/token?grant_type=refresh_token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: key },
+            body: JSON.stringify({ refresh_token: saved.refresh_token }),
+            signal: controller.signal,
+          });
+          const refreshed = await refreshedResponse.json();
+          if (!refreshedResponse.ok || !refreshed.access_token) return;
+          saved = { ...refreshed, expires_at: Date.now() + (refreshed.expires_in ?? 3600) * 1000 };
+          localStorage.setItem("chessmart:account-session:v2", JSON.stringify(saved));
+        }
+        const response = await fetch(url + "/functions/v1/game-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: key, Authorization: "Bearer " + saved.access_token },
+          body: JSON.stringify({ action: "archive" }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Не удалось загрузить архив");
+        const data = await response.json() as { games?: OnlineArchiveGame[] };
+        if (!controller.signal.aborted) setOnlineGames(Array.isArray(data.games) ? data.games : []);
+      } catch {
+        // The profile remains usable when the optional online archive cannot be loaded.
+      } finally {
+        if (!controller.signal.aborted) setArchiveLoading(false);
+      }
+    };
+    void loadArchive();
+    return () => controller.abort();
+  }, [accountProfile?.user_id]);
+
+  const activityDays = new Set([
+    ...localGames.map((game) => new Date(game.at).toDateString()),
+    ...(profile.personalReviews ?? []).map((record) => new Date(record.at).toDateString()),
+    ...(profile.puzzles ?? []).filter((puzzle) => puzzle.solvedAt).map((puzzle) => new Date(puzzle.solvedAt as number).toDateString()),
+  ]);
+  const today = new Date();
+  const todayKey = today.toDateString();
+  const cursor = new Date(today);
+  if (!activityDays.has(todayKey)) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (activityDays.has(cursor.toDateString()) && streak < 3650) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
   }
-  const qualityItems: Array<{ key: Cls; label: string; value: number }> = [
-    { key: "best", label: "Лучшие", value: qualityTotals.best },
-    { key: "brilliant", label: "Блестящие", value: qualityTotals.brilliant },
-    { key: "great", label: "Сильные", value: qualityTotals.great },
-    { key: "good", label: "Хорошие", value: qualityTotals.good },
-    { key: "inaccuracy", label: "Неточности", value: qualityTotals.inaccuracy },
-    { key: "miss", label: "Упущенные возможности", value: qualityTotals.miss },
-    { key: "mistake", label: "Ошибки", value: qualityTotals.mistake },
-    { key: "blunder", label: "Зевки", value: qualityTotals.blunder },
-  ];
+
+  const onlineRows = onlineGames.map((game) => {
+    const isWhite = game.white_id === accountProfile?.user_id;
+    const opponent = isWhite ? (game.black_name ?? "Соперник") : game.white_name;
+    const ownScore = game.result === "draw" ? "½" : (isWhite ? game.result === "white_win" : game.result === "black_win") ? "1" : "0";
+    const opponentScore = game.result === "draw" ? "½" : ownScore === "1" ? "0" : "1";
+    const report = (profile.personalReviews ?? []).find((record) =>
+      record.opponent.toLowerCase() === opponent.toLowerCase()
+      && record.ratingType === game.rating_type
+      && Math.abs(record.at - new Date(game.created_at).getTime()) < 86_400_000
+    );
+    return {
+      id: game.id,
+      control: game.minutes + " мин" + (game.increment_seconds ? " +" + game.increment_seconds : ""),
+      mode: game.rating_type === "bullet" ? "Пуля" : game.rating_type === "rapid" ? "Рапид" : "Блиц",
+      whiteName: game.white_name,
+      blackName: game.black_name ?? "Соперник",
+      whiteRating: game.white_rating,
+      blackRating: game.black_rating,
+      whiteScore: isWhite ? ownScore : opponentScore,
+      blackScore: isWhite ? opponentScore : ownScore,
+      accuracy: report?.accuracy ?? null,
+      moves: Array.isArray(game.moves) ? game.moves.length : 0,
+      date: game.created_at,
+      online: true,
+      won: ownScore === "1",
+    };
+  });
+  const localRows = localGames.map((game, index) => {
+    const report = (profile.personalReviews ?? [])
+      .filter((record) => Math.abs(record.at - game.at) < 86_400_000)
+      .sort((a, b) => Math.abs(a.at - game.at) - Math.abs(b.at - game.at))[0];
+    const opponent = report?.opponent ?? ("Stockfish · " + game.botElo);
+    const ownWhite = report?.color !== "b";
+    const ownScore = game.result === "draw" ? "½" : game.result === "win" ? "1" : "0";
+    const opponentScore = game.result === "draw" ? "½" : ownScore === "1" ? "0" : "1";
+    return {
+      id: "local-" + game.at + "-" + index,
+      control: "—",
+      mode: "Боты",
+      whiteName: ownWhite ? username : opponent,
+      blackName: ownWhite ? opponent : username,
+      whiteRating: ownWhite ? game.ratingAfter : game.botElo,
+      blackRating: ownWhite ? game.botElo : game.ratingAfter,
+      whiteScore: ownWhite ? ownScore : opponentScore,
+      blackScore: ownWhite ? opponentScore : ownScore,
+      accuracy: report?.accuracy ?? null,
+      moves: report?.moves ?? 0,
+      date: new Date(game.at).toISOString(),
+      online: false,
+      won: game.result === "win",
+    };
+  });
+  const archiveRows = [...onlineRows, ...localRows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const awards = [
-    { id: "first-game", icon: "♟", title: "Первая партия", detail: "Сыграй свою первую партию", value: games, goal: 1 },
-    { id: "ten-games", icon: "⚔", title: "Боец", detail: "Сыграй 10 партий", value: games, goal: 10 },
-    { id: "fifty-games", icon: "🏆", title: "Постоянство", detail: "Сыграй 50 партий", value: games, goal: 50 },
+    { id: "first-game", icon: "♟", title: "Первая партия", detail: "Сыграй свою первую партию", value: profile.games + onlineGames.length, goal: 1 },
+    { id: "ten-games", icon: "⚔", title: "Боец", detail: "Сыграй 10 партий", value: profile.games + onlineGames.length, goal: 10 },
+    { id: "fifty-games", icon: "🏆", title: "Постоянство", detail: "Сыграй 50 партий", value: profile.games + onlineGames.length, goal: 50 },
     { id: "first-win", icon: "♛", title: "Первая победа", detail: "Одержи первую победу", value: profile.wins, goal: 1 },
     { id: "puzzles", icon: "◆", title: "Тактик", detail: "Реши 10 шахматных задач", value: solvedPuzzles, goal: 10 },
     { id: "brilliant", icon: "✦", title: "Блестящая идея", detail: "Найди блестящий ход в разборе", value: qualityTotals.brilliant, goal: 1 },
-    { id: "reviewer", icon: "⌕", title: "Аналитик", detail: "Разбери 10 партий", value: profile.reviews?.length ?? 0, goal: 10 },
-    { id: "accuracy", icon: "◎", title: "Точность", detail: "Сохрани 25 лучших ходов", value: qualityTotals.best, goal: 25 },
   ];
   const earnedAwards = awards.filter((award) => award.value >= award.goal).length;
 
+  const renderArchiveRows = () => archiveRows.slice(0, 8).map((game) => (
+    <tr key={game.id}>
+      <td><div className="cm-archive-mode"><span className="cm-archive-mode-icon">{game.online ? "♟" : "♞"}</span><span><strong>{game.mode}</strong><small>{game.control}</small></span></div></td>
+      <td><div className="cm-archive-players">
+        <span><i className="cm-piece-mark white" />{game.whiteName}<small>{game.whiteRating ?? "—"}</small></span>
+        <span><i className="cm-piece-mark black" />{game.blackName}<small>{game.blackRating ?? "—"}</small></span>
+      </div></td>
+      <td><div className="cm-archive-score">
+        <span><i className={game.whiteScore === "1" ? "win" : game.whiteScore === "0" ? "loss" : "draw"} />{game.whiteScore}</span>
+        <span><i className={game.blackScore === "1" ? "win" : game.blackScore === "0" ? "loss" : "draw"} />{game.blackScore}</span>
+      </div></td>
+      <td><div className="cm-archive-report"><span>{game.accuracy === null ? "—" : game.accuracy.toFixed(1) + "%"}</span><button type="button" onClick={() => onNavigate("profileDetails")}>Отчёт</button></div></td>
+      <td>{game.moves || "—"}</td>
+      <td>{formatProfileDate(game.date)}</td>
+    </tr>
+  ));
+
   return (
-    <div className="cm-replica-page cm-member-page">
-      <section className="cm-member-hero">
-        <Avatar accountProfile={accountProfile} name={profile.name} size="large" />
-        <div className="cm-member-identity">
-          <span className="cm-replica-eyebrow">CHESSMART MEMBER</span>
-          <h1>{username}</h1>
-          <p>{accountProfile ? "Онлайн-игрок CHESSMART" : "Локальный профиль · данные сохранены на этом устройстве"}</p>
-          <div className="cm-member-meta">
-            <span>♟ {accountProfile ? `${totalOnlineGames} онлайн-партий` : `${games} партий против бота`}</span>
-            <span>♙ {solvedPuzzles} решённых задач</span>
-            <span>✦ {earnedAwards} наград</span>
+    <div className="cm-profile-page">
+      <section className="cm-profile-header">
+        <div className="cm-profile-avatar">
+          {accountProfile?.avatar_url
+            ? <img src={accountProfile.avatar_url} alt={"Аватар " + username} />
+            : <span aria-hidden="true">♟</span>}
+        </div>
+        <div className="cm-profile-identity">
+          <div className="cm-profile-name-row">
+            <h1>{username}</h1><span className="cm-country-mark" title="Страна не указана">◎</span>
+            <button type="button" className="cm-profile-emblem" onClick={() => onNavigate("settings")}>Добавить эмблему</button>
+          </div>
+          <button type="button" className="cm-profile-status" onClick={() => onNavigate("settings")}>Введите статус</button>
+          <div className="cm-profile-meta">
+            <span>Дата регистрации: {accountProfile?.created_at ? formatProfileDate(accountProfile.created_at) : "—"}</span>
+            <span>0 друзей</span><span>Просмотры: —</span>
+            <span className="cm-profile-online"><i />Сейчас онлайн</span>
           </div>
         </div>
-        <div className="cm-member-actions">
-          <button type="button" className="cm-replica-primary-button" onClick={() => onNavigate("online")}>Играть онлайн</button>
-          <button type="button" className="cm-replica-secondary-button" onClick={() => onNavigate("settings")}>Настроить профиль</button>
-        </div>
+        <button type="button" className="cm-replica-secondary-button cm-profile-edit" onClick={() => onNavigate("settings")}>Редактировать профиль</button>
       </section>
 
-      <nav className="cm-member-tabs" aria-label="Разделы профиля">
-        <button type="button" className={activeTab === "overview" ? "active" : ""} aria-current={activeTab === "overview" ? "page" : undefined} onClick={() => setActiveTab("overview")}>Обзор</button>
-        <button type="button" className={activeTab === "games" ? "active" : ""} aria-current={activeTab === "games" ? "page" : undefined} onClick={() => setActiveTab("games")}>Партии</button>
-        <button type="button" onClick={() => onNavigate("stats")}>Статистика</button>
-        <button type="button" className={activeTab === "awards" ? "active" : ""} aria-current={activeTab === "awards" ? "page" : undefined} onClick={() => setActiveTab("awards")}>Награды <span className="cm-member-tab-count">{earnedAwards}</span></button>
+      <nav className="cm-profile-tabs" aria-label="Разделы профиля">
+        {([
+          ["overview", "Обзор"], ["games", "Партии"], ["stats", "Статистика"],
+          ["friends", "Друзья"], ["awards", "Награды"], ["clubs", "Клубы"],
+        ] as Array<[ProfileTab, string]>).map(([id, label]) => (
+          <button key={id} type="button" className={activeTab === id ? "active" : ""} aria-current={activeTab === id ? "page" : undefined} onClick={() => setActiveTab(id)}>{label}</button>
+        ))}
       </nav>
 
       {activeTab === "overview" && (
-        <div className="cm-member-layout">
-          <main className="cm-member-main">
-            <section className="cm-replica-card cm-member-ratings">
-              <div className="cm-replica-section-heading"><div><h2>Рейтинги</h2><p>Результаты по разным режимам игры</p></div><button type="button" className="cm-replica-text-button" onClick={() => onNavigate("stats")}>Все рейтинги →</button></div>
-              {accountProfile ? (
-                <div className="cm-member-rating-grid">
-                  <div><span>Bullet</span><strong>{accountProfile.bullet_rating}</strong><small>{accountProfile.bullet_games} партий</small></div>
-                  <div><span>Blitz</span><strong>{accountProfile.blitz_rating}</strong><small>{accountProfile.blitz_games} партий</small></div>
-                  <div><span>Rapid</span><strong>{accountProfile.rapid_rating}</strong><small>{accountProfile.rapid_games} партий</small></div>
-                </div>
-              ) : (
-                <div className="cm-member-rating-grid">
-                  <div><span>Локальный Elo</span><strong>{profile.rating}</strong><small>Против Stockfish</small></div>
-                  <div><span>Puzzle Rating</span><strong>{profile.puzzleRating}</strong><small>Решение задач</small></div>
-                  <div><span>Процент побед</span><strong>{winRate}%</strong><small>{games} партий</small></div>
-                </div>
-              )}
+        <div className="cm-profile-overview">
+          <main className="cm-profile-overview-main">
+            <section className="cm-profile-ratings">
+              {[
+                { id: "bullet", label: "Пуля", icon: "●", value: accountProfile?.bullet_rating },
+                { id: "rapid", label: "Рапид", icon: "◷", value: accountProfile?.rapid_rating },
+                { id: "blitz", label: "Блиц", icon: "⚡", value: accountProfile?.blitz_rating },
+              ].map((item) => (
+                <article className="cm-profile-rating-card" key={item.id}>
+                  <span className={"cm-profile-rating-icon " + item.id}>{item.icon}</span>
+                  <div><small>{item.label}</small><strong>{item.value ?? "—"}</strong></div>
+                  <span className="cm-profile-rating-delta">—</span>
+                </article>
+              ))}
             </section>
 
-            <section className="cm-replica-card cm-member-quality-card">
-              <div className="cm-replica-section-heading">
-                <div><h2>Качество твоих ходов</h2><p>Только твои ходы в сыгранных и разобранных партиях · {profile.personalReviews?.length ?? 0} партий</p></div>
-                <button type="button" className="cm-replica-text-button" onClick={() => onNavigate("stats")}>Статистика →</button>
-              </div>
-              <div className="cm-member-quality-grid">
-                {qualityItems.map((item) => (
-                  <div className={`cm-member-quality-item ${item.key}`} key={item.key}>
-                    <span>{item.label}</span><strong>{item.value}</strong>
-                  </div>
-                ))}
-              </div>
-              {!(profile.personalReviews?.length) && <p className="cm-member-quality-empty">Здесь появится статистика после первой сыгранной партии и её автоматического анализа.</p>}
+            <section className="cm-profile-panel cm-correspondence-panel">
+              <div className="cm-profile-panel-title"><h2>Заочные партии (0)</h2></div>
+              <div className="cm-correspondence-empty"><span>У тебя нет текущих заочных партий.</span><button type="button" onClick={() => onNavigate("online")}>Играть</button></div>
             </section>
 
-            <section className="cm-replica-card cm-member-recent-games">
-              <div className="cm-replica-section-heading"><div><h2>Последние партии</h2><p>История локальных партий против Stockfish</p></div><button type="button" className="cm-replica-text-button" onClick={() => setActiveTab("games")}>Все партии →</button></div>
-              {recentGames.length ? (
-                <div className="cm-dashboard-game-list">
-                  {recentGames.map((game, index) => (
-                    <div className="cm-dashboard-game-row" key={`${game.at}-${index}`}>
-                      <span className={`cm-dashboard-result-dot ${game.result}`} />
-                      <div className="cm-dashboard-game-opponent"><strong>Stockfish · {game.botElo}</strong><small>{new Date(game.at).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" })}</small></div>
-                      <span className={`cm-dashboard-result-label ${game.result}`}>{game.result === "win" ? "Победа" : game.result === "loss" ? "Поражение" : "Ничья"}</span>
-                      <strong className="cm-dashboard-game-rating">{game.ratingAfter}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="cm-dashboard-empty-games"><span>♟</span><div><strong>История пока пуста</strong><small>После первых партий здесь появятся соперники, результаты и рейтинг.</small></div><button type="button" onClick={() => onNavigate("playHub")}>Сыграть партию</button></div>
-              )}
+            <section className="cm-profile-panel cm-profile-archive">
+              <div className="cm-profile-panel-title"><h2>Архив партий ({archiveCount})</h2></div>
+              <div className="cm-profile-archive-wrap">
+                <table>
+                  <thead><tr><th>Режим</th><th>Игроки</th><th>Результат</th><th>Точность / отчёт</th><th>Ходы</th><th>Дата</th></tr></thead>
+                  <tbody>{renderArchiveRows()}</tbody>
+                </table>
+                {!archiveRows.length && <div className="cm-profile-archive-empty">{archiveLoading ? "Загружаем архив партий…" : "Здесь появятся сыгранные партии."}</div>}
+              </div>
+              <button type="button" className="cm-profile-more-link" onClick={() => setActiveTab("games")}>Подробнее &gt;</button>
             </section>
           </main>
 
-          <aside className="cm-member-aside">
-            <section className="cm-replica-card cm-member-stats-card">
-              <div className="cm-replica-section-heading"><div><h2>Статистика</h2><p>Личные показатели</p></div><button type="button" className="cm-replica-text-button" onClick={() => onNavigate("stats")}>Подробнее →</button></div>
-              <div className="cm-member-kpi"><span>Победы</span><strong>{profile.wins}</strong></div>
-              <div className="cm-member-kpi"><span>Ничьи</span><strong>{profile.draws}</strong></div>
-              <div className="cm-member-kpi"><span>Поражения</span><strong>{profile.losses}</strong></div>
-              <div className="cm-member-winbar"><span style={{ width: `${winRate}%` }} /></div>
-              <div className="cm-member-win-caption"><span>Процент побед</span><strong>{winRate}%</strong></div>
-              <div className="cm-member-kpi"><span>Разобрано партий</span><strong>{profile.reviews?.length ?? 0}</strong></div>
-              <div className="cm-member-kpi"><span>Блестящие ходы</span><strong>{qualityTotals.brilliant}</strong></div>
-              <div className="cm-member-kpi"><span>Зевки</span><strong>{qualityTotals.blunder}</strong></div>
+          <aside className="cm-profile-overview-aside">
+            <section className="cm-profile-panel cm-profile-streak">
+              <div><span className="cm-profile-widget-icon">♨</span><h2>{streak}-дневная серия</h2></div>
+              <p>Твоя активность в CHESSMART</p>
             </section>
-            <section className="cm-replica-card cm-member-training-card">
-              <div className="cm-replica-section-heading"><div><h2>Тренировка</h2><p>Задачи и прогресс</p></div></div>
-              <div className="cm-member-training-number">{solvedPuzzles}</div>
-              <p>Решённых задач</p>
-              <button type="button" className="cm-replica-secondary-wide" onClick={() => onNavigate("puzzles")}>Открыть Puzzle Library</button>
+            <section className="cm-profile-panel cm-profile-league">
+              <div><span className="cm-profile-widget-icon">⬡</span><h2>Stone лига</h2></div>
+              <p>Начни рейтинговые партии, чтобы подняться в лиге.</p>
             </section>
-            <section className="cm-replica-card cm-member-awards-preview">
-              <div className="cm-replica-section-heading"><div><h2>Награды</h2><p>{earnedAwards} из {awards.length} достижений</p></div><button type="button" className="cm-replica-text-button" onClick={() => setActiveTab("awards")}>Все →</button></div>
-              <div className="cm-awards-mini-row">{awards.filter((award) => award.value >= award.goal).slice(0, 4).map((award) => <span key={award.id} title={award.title}>{award.icon}</span>)}</div>
+            <section className="cm-profile-panel cm-profile-theme">
+              <h2>Твоя тема</h2>
+              <div className="cm-profile-theme-board" aria-label="Предпросмотр темы доски">
+                {[0, 1, 2, 3].map((square) => <span key={square} style={{ background: (Math.floor(square / 2) + square % 2) % 2 === 0 ? boardColors.light : boardColors.dark }} />)}
+              </div>
+              <small>Green · {preferences.boardTheme === "classic" ? "Классическая" : preferences.boardTheme}</small>
+            </section>
+            <section className="cm-profile-panel cm-profile-friends">
+              <h2>Друзья</h2>
+              <input value={friendSearch} onChange={(event) => setFriendSearch(event.target.value)} placeholder="Поиск друзей" aria-label="Поиск друзей" />
+              <button type="button" onClick={() => setActiveTab("friends")}>Добавить в друзья</button>
             </section>
           </aside>
         </div>
       )}
 
       {activeTab === "games" && (
-        <section className="cm-replica-card cm-member-tab-panel">
-          <div className="cm-replica-section-heading">
-            <div><h2>История партий</h2><p>Локальные партии против Stockfish · {allGames.length} записей</p></div>
-            <button type="button" className="cm-replica-primary-button" onClick={() => onNavigate("playHub")}>Новая партия</button>
+        <section className="cm-profile-panel cm-profile-games-tab">
+          <div className="cm-profile-panel-title"><h2>Архив партий ({archiveCount})</h2><button type="button" className="cm-replica-secondary-button" onClick={() => onNavigate("online")}>Играть онлайн</button></div>
+          <div className="cm-profile-archive-wrap">
+            <table>
+              <thead><tr><th>Режим</th><th>Игроки</th><th>Результат</th><th>Точность / отчёт</th><th>Ходы</th><th>Дата</th></tr></thead>
+              <tbody>{archiveRows.map((game) => (
+                <tr key={game.id}>
+                  <td><div className="cm-archive-mode"><span className="cm-archive-mode-icon">{game.online ? "♟" : "♞"}</span><span><strong>{game.mode}</strong><small>{game.control}</small></span></div></td>
+                  <td><div className="cm-archive-players"><span><i className="cm-piece-mark white" />{game.whiteName}<small>{game.whiteRating ?? "—"}</small></span><span><i className="cm-piece-mark black" />{game.blackName}<small>{game.blackRating ?? "—"}</small></span></div></td>
+                  <td><div className="cm-archive-score"><span><i className={game.whiteScore === "1" ? "win" : game.whiteScore === "0" ? "loss" : "draw"} />{game.whiteScore}</span><span><i className={game.blackScore === "1" ? "win" : game.blackScore === "0" ? "loss" : "draw"} />{game.blackScore}</span></div></td>
+                  <td><div className="cm-archive-report"><span>{game.accuracy === null ? "—" : game.accuracy.toFixed(1) + "%"}</span><button type="button" onClick={() => onNavigate("profileDetails")}>Отчёт</button></div></td>
+                  <td>{game.moves || "—"}</td><td>{formatProfileDate(game.date, true)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+            {!archiveRows.length && <div className="cm-profile-archive-empty">{archiveLoading ? "Загружаем архив партий…" : "Пока нет сохранённых партий."}</div>}
           </div>
-          {allGames.length ? (
-            <div className="cm-member-games-list">
-              {allGames.map((game, index) => (
-                <article className="cm-member-game-card" key={`${game.at}-${index}`}>
-                  <span className={`cm-dashboard-result-dot ${game.result}`} />
-                  <div className="cm-member-game-main">
-                    <strong>Stockfish · {game.botElo}</strong>
-                    <small>{new Date(game.at).toLocaleString("ru-RU", { dateStyle: "full", timeStyle: "short" })}</small>
-                  </div>
-                  <span className={`cm-dashboard-result-label ${game.result}`}>{game.result === "win" ? "Победа" : game.result === "loss" ? "Поражение" : "Ничья"}</span>
-                  <strong className="cm-member-game-rating">{game.ratingAfter} Elo</strong>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="cm-dashboard-empty-games"><span>♟</span><div><strong>Пока нет партий</strong><small>Сыграй первую партию, чтобы здесь появилась история результатов.</small></div><button type="button" onClick={() => onNavigate("playHub")}>Начать игру</button></div>
-          )}
-          <p className="cm-member-data-note">Онлайн-архив пока не подключён к этой ленте. Сетевые рейтинги и число онлайн-партий отображаются отдельно в профиле.</p>
+        </section>
+      )}
+
+      {activeTab === "stats" && <ProfileStatsTab profile={profile} accountProfile={accountProfile} />}
+
+      {activeTab === "friends" && (
+        <section className="cm-profile-panel cm-profile-empty-section">
+          <h2>Друзья</h2>
+          <p>У тебя пока нет друзей в CHESSMART.</p>
+          <div className="cm-profile-friend-search"><input value={friendSearch} onChange={(event) => setFriendSearch(event.target.value)} placeholder="Поиск игроков по нику" /><button type="button" onClick={() => onNavigate("online")}>Добавить в друзья</button></div>
+          <small>Поиск игроков и приглашения доступны в разделе «Играть по сети».</small>
         </section>
       )}
 
       {activeTab === "awards" && (
-        <section className="cm-replica-card cm-member-tab-panel">
-          <div className="cm-replica-section-heading">
-            <div><h2>Награды и достижения</h2><p>Прогресс рассчитывается из твоей сохранённой истории и разборов</p></div>
-            <span className="cm-member-awards-total">{earnedAwards}/{awards.length}</span>
-          </div>
+        <section className="cm-profile-panel cm-profile-awards-tab">
+          <div className="cm-profile-panel-title"><h2>Награды</h2><strong>{earnedAwards} / {awards.length}</strong></div>
           <div className="cm-achievement-grid">
             {awards.map((award) => {
               const earned = award.value >= award.goal;
               const progress = Math.min(award.value, award.goal);
-              return (
-                <article className={earned ? "cm-achievement-card earned" : "cm-achievement-card"} key={award.id}>
-                  <span className="cm-achievement-icon" aria-hidden="true">{award.icon}</span>
-                  <div className="cm-achievement-copy"><strong>{award.title}</strong><small>{award.detail}</small></div>
-                  <b className="cm-achievement-progress">{earned ? "Получено" : `${progress} / ${award.goal}`}</b>
-                  <span className="cm-achievement-track"><i style={{ width: `${Math.round(progress / award.goal * 100)}%` }} /></span>
-                </article>
-              );
+              return <article className={earned ? "cm-achievement-card earned" : "cm-achievement-card"} key={award.id}>
+                <span className="cm-achievement-icon" aria-hidden="true">{award.icon}</span>
+                <div className="cm-achievement-copy"><strong>{award.title}</strong><small>{award.detail}</small></div>
+                <b className="cm-achievement-progress">{earned ? "Получено" : progress + " / " + award.goal}</b>
+                <span className="cm-achievement-track"><i style={{ width: Math.round(progress / award.goal * 100) + "%" }} /></span>
+              </article>;
             })}
           </div>
+        </section>
+      )}
+
+      {activeTab === "clubs" && (
+        <section className="cm-profile-panel cm-profile-empty-section">
+          <h2>Клубы</h2><p>Ты пока не состоишь в клубах.</p>
+          <button type="button" className="cm-replica-secondary-button" onClick={() => onNavigate("battle")}>Посмотреть соревнования</button>
         </section>
       )}
     </div>
