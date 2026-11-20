@@ -28,6 +28,7 @@ import {
   loadPlayerProfile,
   savePlayerProfile,
   recordReviewedGame,
+  recordPersonalGameReview,
   type PlayerProfile,
 } from "./lib/playerProfile";
 import type { Color, GameReview } from "./types";
