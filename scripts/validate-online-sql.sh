@@ -457,7 +457,7 @@ begin
     or has_table_privilege('authenticated', 'public.puzzle_battle_season_stats', 'UPDATE')
     or has_table_privilege('anon', 'public.puzzle_battle_season_stats', 'SELECT') then
     raise exception 'Season leaderboard must be readable only to authenticated users'; end if;
-end;
+
   -- A second consecutive win increases the monthly points multiplier to x2.
   insert into public.puzzle_battles(
     player_one_id, player_two_id, duration_seconds, started_at, ends_at
@@ -493,7 +493,7 @@ end;
   if v_streak <> 2 or v_games <> 2 then
     raise exception 'Consecutive win streak did not increase to two: current %, best %', v_streak, v_games;
   end if;
-
+end;
 $battle_ratings_test$;
 
 select 'Online SQL migrations, matchmaking, cloud progress, Puzzle Battle ratings and season tests passed.' as result;
