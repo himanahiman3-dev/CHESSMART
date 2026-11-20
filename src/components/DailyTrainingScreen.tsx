@@ -173,8 +173,8 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
     setDailyHearts(nextHearts);
     setSaved((previous) => ({ ...previous, heartsByDate: { ...previous.heartsByDate, [dailyKey]: nextHearts } }));
     setDailyMessage(nextHint === 1
-      ? "Посмотри на фигуру на поле " + dailyPuzzle.moves[0].slice(0, 2) + ". Какая у неё роль в позиции?"
-      : "Первый ход: " + dailyPuzzle.moves[0].slice(0, 2) + "–" + dailyPuzzle.moves[0].slice(2, 4) + ". Теперь найди продолжение самостоятельно.");
+      ? "Посмотри на фигуру на поле " + dailyPuzzle.moves[dailyIndex].slice(0, 2) + ". Какая у неё роль в позиции?"
+      : "Первый ход: " + dailyPuzzle.moves[dailyIndex].slice(0, 2) + "–" + dailyPuzzle.moves[dailyIndex].slice(2, 4) + ". Теперь найди продолжение самостоятельно.");
   };
 
   const filteredCustom = useMemo(() => bank.filter((puzzle) => {
@@ -195,8 +195,8 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
   }, [filteredCustom]);
 
   useEffect(() => {
-    if (bank.length && !customPuzzle) chooseCustom();
-  }, [bank, filteredCustom.length, customPuzzle, chooseCustom]);
+    if (bank.length) chooseCustom();
+  }, [bank.length, customTheme, customLevel, chooseCustom]);
 
   const onCustomMove = useCallback((move: BoardMove): boolean => {
     if (!customPuzzle) return false;
@@ -264,7 +264,6 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
 
   const customThemeLabel = THEMES.find(([id]) => id === customTheme)?.[1] ?? "Все темы";
   const dateLabel = dailyDate.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const rushModeLabel = rushMode === "3m" ? "3 минуты" : rushMode === "5m" ? "5 минут" : "Выживание";
 
   return (
     <div className="min-h-screen bg-[#1d241d] p-4 text-[#edf3e8] sm:p-7">
