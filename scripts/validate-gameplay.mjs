@@ -6,6 +6,7 @@ import { buildPgnFromSan, buildPgnFromUci, formatSanMoveList, pgnFilename, textF
 import { formatMaterialBalance, gamePhaseLabel, getCapturedMaterial, getGamePhase, getHalfmoveClock, getLegalMoveCount, getPositionInsights, isNearFiftyMoveRule, replaySanHistory, replayUciHistory, terminalStateLabel } from "../src/lib/gameInsights.ts";
 import { classifyGamePhase } from "../src/lib/learningStats.ts";
 import { recordPersonalGameReview } from "../src/lib/playerProfile.ts";
+import { parseOnlineGameRealtimeFrame } from "../src/lib/onlineGameRealtime.ts";
 import { soundForSan } from "../src/lib/sound.ts";
 const start = new Chess().fen();
 assert.equal(isChessSquare("e4"), true); assert.equal(isChessSquare("i9"), false);
@@ -121,4 +122,22 @@ const onlyBlack = recordPersonalGameReview(personalBase, personalReview, "b");
 assert.equal(onlyBlack.personalReviews[0].counts.blunder, 1);
 assert.equal(onlyBlack.personalReviews[0].counts.best, 0,
   "The player's statistics must exclude the other side's best moves.");
-console.log("Premove, gameplay, and personal move-quality validation passed.");
+const topic = "realtime:online-game:00000000-0000-0000-0000-000000000001";
+const liveFrame = parseOnlineGameRealtimeFrame(JSON.stringify([
+  "9", "9", topic, "postgres_changes",
+  { data: {
+    schema: "public",
+    table: "online_games",
+    type: "UPDATE",
+    record: { id: "00000000-0000-0000-0000-000000000001", fen: "position", moves: [] },
+  } },
+]), topic);
+assert.equal(liveFrame?.event, "postgres_changes");
+assert.equal((liveFrame?.payload.data).table, "online_games");
+assert.equal(parseOnlineGameRealtimeFrame(JSON.stringify([
+  null, null, "realtime:another-game", "postgres_changes", {},
+]), topic), null, "Events from other games must be ignored.");
+assert.equal(parseOnlineGameRealtimeFrame("not-json", topic), null);
+assert.equal(parseOnlineGameRealtimeFrame(JSON.stringify({ event: "postgres_changes" }), topic), null);
+
+console.log("Premove, gameplay, personal move-quality, and Realtime transport validation passed.");
