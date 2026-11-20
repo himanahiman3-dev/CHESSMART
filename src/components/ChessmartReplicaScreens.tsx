@@ -1,11 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { PlayerProfile } from "../lib/playerProfile";
 import type { Cls } from "../types";
 import type { AccountProfile } from "../lib/accountProfile";
 import type { ShellRoute } from "./ChessmartShellScreens";
 import { GameBoard } from "./GameBoard";
 import { loadGameplayPreferences } from "../lib/gameplayPreferences";
-import { loadSavedOnlineRated, loadSavedOnlineTimeControl, saveOnlineRated, saveOnlineTimeControl, ONLINE_TIME_CONTROL_OPTIONS } from "../lib/onlinePreferences";
 
 type Navigate = (route: ShellRoute) => void;
 
@@ -23,43 +22,12 @@ function Avatar({ accountProfile, name, size = "medium" }: {
   return <span className={className}>{(accountProfile?.username ?? name ?? "И").trim().slice(0, 1).toUpperCase() || "И"}</span>;
 }
 
-function PlayAction({ icon, title, subtitle, onClick, featured = false }: {
-  icon: string;
-  title: string;
-  subtitle: string;
-  onClick: () => void;
-  featured?: boolean;
-}) {
-  return (
-    <button type="button" className={featured ? "cm-replica-play-action featured" : "cm-replica-play-action"} onClick={onClick}>
-      <span className="cm-replica-action-icon" aria-hidden="true">{icon}</span>
-      <span className="cm-replica-action-copy"><strong>{title}</strong><small>{subtitle}</small></span>
-      <span className="cm-replica-action-arrow" aria-hidden="true">›</span>
-    </button>
-  );
-}
-
-function PageHeading({ eyebrow, title, subtitle, action }: {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  action?: ReactNode;
-}) {
-  return (
-    <header className="cm-replica-page-heading">
-      <div><span>{eyebrow}</span><h1>{title}</h1><p>{subtitle}</p></div>
-      {action}
-    </header>
-  );
-}
-
 /** Strict two-column chess play workspace. */
 export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
   profile: PlayerProfile;
   accountProfile: AccountProfile | null;
   onNavigate: Navigate;
 }) {
-  const preferences = loadGameplayPreferences();
   const username = accountProfile?.username ?? profile.name;
 
   return (
@@ -298,20 +266,6 @@ function ProfileStatsTab({ profile, accountProfile }: { profile: PlayerProfile; 
           <div><span>Всего блестящих ходов</span><strong>{brilliant}</strong></div>
         </div>
       )}
-    </section>
-  );
-}
-
-function ProfileEmptyTab({ title, message, action, onAction }: {
-  title: string;
-  message: string;
-  action: string;
-  onAction: () => void;
-}) {
-  return (
-    <section className="cm-profile-empty-tab">
-      <h2>{title}</h2><p>{message}</p>
-      <button type="button" className="cm-replica-secondary-button" onClick={onAction}>{action}</button>
     </section>
   );
 }
