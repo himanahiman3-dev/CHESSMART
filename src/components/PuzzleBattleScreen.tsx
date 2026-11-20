@@ -44,6 +44,56 @@ interface BattleLeader {
   draws: number;
   best_win_streak: number;
 }
+interface BattleHistoryEntry {
+  id: string;
+  result: "win" | "loss" | "draw";
+  opponent: {
+    user_id: string;
+    username: string;
+    avatar_url: string | null;
+    puzzle_battle_rating: number;
+    puzzle_battle_games: number;
+    puzzle_battle_wins: number;
+    puzzle_battle_losses: number;
+    puzzle_battle_draws: number;
+    puzzle_battle_best_win_streak: number;
+  };
+  my_score: number;
+  opponent_score: number;
+  my_mistakes: number;
+  opponent_mistakes: number;
+  finished_at: string;
+  finish_reason: string | null;
+  rating_before: number;
+  rating_after: number;
+  rating_delta: number;
+  season_points: number;
+}
+interface BattleProfileSummary {
+  username: string;
+  avatar_url: string | null;
+  puzzle_battle_rating: number;
+  games: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  win_streak: number;
+  best_win_streak: number;
+}
+interface BattleSeasonSummary {
+  season_start: string;
+  points: number;
+  battles: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  best_win_streak: number;
+}
+interface BattleHistoryResponse {
+  profile: BattleProfileSummary;
+  season: BattleSeasonSummary;
+  history: BattleHistoryEntry[];
+}
 interface BattleSnapshot {
   status: "active" | "completed" | "cancelled";
   battle: {
@@ -88,6 +138,9 @@ interface BattleResponse {
   my_rank?: number | null;
   season_start?: string;
   sort?: "points" | "rating";
+  profile?: BattleProfileSummary;
+  season?: BattleSeasonSummary;
+  history?: BattleHistoryEntry[];
   error?: string;
 }
 const SESSION_KEY = "chessmart:account-session:v2";
@@ -165,8 +218,13 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
   const [leaderboardBusy, setLeaderboardBusy] = useState(false);
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
   const [seasonStart, setSeasonStart] = useState("");
+  const [battleProfile, setBattleProfile] = useState<BattleProfileSummary | null>(null);
+  const [battleSeason, setBattleSeason] = useState<BattleSeasonSummary | null>(null);
+  const [battleHistory, setBattleHistory] = useState<BattleHistoryEntry[]>([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const leaderboardRequest = useRef(0);
+  const historyRequest = useRef(0);
   const polling = useRef(false);
   const currentSession = session;
 
@@ -258,6 +316,37 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     if (phase === "completed") void loadLeaderboard(leaderboardSort);
   }, [phase, leaderboardSort]);
+
+  const loadBattleHistory = useCallback(async () => {
+    if (!session) return;
+    const requestId = ++historyRequest.current;
+    setHistoryBusy(true);
+    try {
+      const { data, session: fresh } = await battleAction(session, "history") as {
+        data: BattleHistoryResponse;
+        session: BattleSession;
+      };
+      if (requestId !== historyRequest.current) return;
+      setSession(fresh);
+      setBattleProfile(data.profile);
+      setBattleSeason(data.season);
+      setBattleHistory(data.history ?? []);
+    } catch (reason) {
+      if (requestId === historyRequest.current) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
+    } finally {
+      if (requestId === historyRequest.current) setHistoryBusy(false);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    if (session) void loadBattleHistory();
+  }, [session, loadBattleHistory]);
+
+  useEffect(() => {
+    if (phase === "completed") void loadBattleHistory();
+  }, [phase, loadBattleHistory]);
 
   const startQueue = async () => {
     if (!session || busy) return;
