@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { PlayerProfile, TrainingPuzzle, TrainingSessionSummary } from "../lib/playerProfile";
 import { markPuzzleSolved, recordPuzzleAttempt } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
+import { playSound, soundForSan } from "../lib/sound";
 
 interface Props {
   profile: PlayerProfile;
@@ -72,6 +73,7 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
   const handleMove = (move: BoardMove): boolean => {
     if (!current || current.solvedAt || feedback === "solved") return false;
     if (move.uci === current.bestUci) {
+      playSound(soundForSan(move.san));
       setPosition(move.fenAfter);
       setFeedback("solved");
       if (session?.puzzleIds.includes(current.id)) {
@@ -82,6 +84,7 @@ export function MistakeTrainerScreen({ profile, onChange, onBack }: Props) {
     }
     if (session?.puzzleIds.includes(current.id)) setSession((active) => active ? { ...active, attempts: active.attempts + 1 } : active);
     onChange(recordPuzzleAttempt(profile, current.id));
+    playSound("wrong");
     setFeedback("wrong");
     return false;
   };

@@ -4,6 +4,7 @@ import { canSetPremove, createPremove, formatPremove, getPremoveMoves, isChessSq
 import { clockUrgency, formatClock, formatMoveNumber, getBoardOrientation, isActiveGame, isBoardTheme, normalizeGameplayPreferences, shouldAskBeforeResign, updateGameplayPreferences } from "../src/lib/gameplayPreferences.ts";
 import { buildPgnFromSan, buildPgnFromUci, formatSanMoveList, pgnFilename, textFilename } from "../src/lib/gameNotation.ts";
 import { formatMaterialBalance, gamePhaseLabel, getCapturedMaterial, getGamePhase, getHalfmoveClock, getLegalMoveCount, getPositionInsights, isNearFiftyMoveRule, replaySanHistory, replayUciHistory, terminalStateLabel } from "../src/lib/gameInsights.ts";
+import { soundForSan } from "../src/lib/sound.ts";
 const start = new Chess().fen();
 assert.equal(isChessSquare("e4"), true); assert.equal(isChessSquare("i9"), false);
 assert.equal(isPremoveShape({from:"e2",to:"e4"}), true);
@@ -49,6 +50,15 @@ assert.equal(formatClock(60000),"1:00"); assert.equal(formatClock(9500,true),"0:
 assert.equal(formatMoveNumber(0),"1."); assert.equal(formatMoveNumber(1),"");
 assert.equal(shouldAskBeforeResign(true,true),true); assert.equal(shouldAskBeforeResign(true,false),false);
 assert.equal(isActiveGame("active"),true); assert.equal(isActiveGame("completed"),false);
+assert.equal(soundForSan("e4"), "move");
+assert.equal(soundForSan("e5", false, undefined, "opponent"), "opponent");
+assert.equal(soundForSan("d6", false, undefined, "premove"), "premove");
+assert.equal(soundForSan("exd5"), "capture");
+assert.equal(soundForSan("O-O"), "castle");
+assert.equal(soundForSan("e8=Q"), "promote");
+assert.equal(soundForSan("Qh7+"), "check");
+assert.equal(soundForSan("Qh7#"), "mate");
+assert.equal(soundForSan("Qh7", true), "end");
 const pgn=buildPgnFromSan(["e4","e5","Nf3"],{White:"Tester",Black:"Stockfish",Result:"*"});
 assert.match(pgn,/1\. e4 e5 2\. Nf3/); assert.match(pgn,/\[White "Tester"\]/);
 assert.match(buildPgnFromUci([{uci:"e2e4"},{uci:"e7e5"},{uci:"g1f3"}]),/1\. e4 e5 2\. Nf3/);

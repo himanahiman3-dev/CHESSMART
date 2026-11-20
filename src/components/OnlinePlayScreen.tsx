@@ -4,7 +4,7 @@ import { GameBoard, type BoardMove } from "./GameBoard";
 import { clearAccountProfile, publishAccountProfile } from "../lib/accountProfile";
 import { resolvePremove, type Premove, formatPremove } from "../lib/premoves";
 import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation, clockUrgency, formatClock, type GameplayPreferences } from "../lib/gameplayPreferences";
-import { playSound, setSoundEnabled, soundForSan } from "../lib/sound";
+import { playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/sound";
 import { buildPgnFromUci, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
 import { replayUciHistory, getPositionInsights, formatMaterialBalance, gamePhaseLabel, terminalStateLabel, isNearFiftyMoveRule } from "../lib/gameInsights";
 import { getOnlinePollDelay } from "../lib/systemsSuite";
@@ -194,6 +194,24 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const timeoutRequestedRef = useRef(false);
   const timeoutLastAttemptRef = useRef(0);
   const searchBusyRef = useRef(false);
+  const startedSoundGameIdRef = useRef<string | null>(null);
+  const endedSoundGameIdRef = useRef<string | null>(null);
+  const tenSecondsAlertKeyRef = useRef<string | null>(null);
+  const invitationIdsRef = useRef<Set<string>>(new Set());
+  const invitationListInitializedRef = useRef(false);
+
+  const playGameStartOnce = (gameId: string) => {
+    if (startedSoundGameIdRef.current === gameId) return;
+    startedSoundGameIdRef.current = gameId;
+    preloadSounds();
+    playSound("game-start");
+  };
+
+  const playGameEndOnce = (gameId: string) => {
+    if (endedSoundGameIdRef.current === gameId) return;
+    endedSoundGameIdRef.current = gameId;
+    playSound("end");
+  };
 
   const selectAvatar = (file: File | undefined) => {
     if (!file) return;
@@ -294,6 +312,8 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(GAME_KEY);
     setSession(null); setOnlineProfile(null); setGame(null); setSearching(false);
+    invitationIdsRef.current.clear();
+    invitationListInitializedRef.current = false;
     setInvitations([]); setError(null); setNotice("Ты вышел из аккаунта на этом устройстве.");
   };
 
@@ -318,9 +338,23 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
       if (data.game) {
         const oldCount = game?.moves.length ?? 0;
         const latest = data.game.moves.at(-1);
-        if (latest && data.game.moves.length > oldCount) {
+        const hasNewMove = data.game.moves.length > oldCount;
+        if (game?.status === "waiting" && data.game.status === "active") {
+          playGameStartOnce(data.game.id);
+        }
+        if (hasNewMove && latest) {
           const ownColor = data.game.white_id === session.user.id ? "w" : "b";
-          if (latest.color !== ownColor) playSound(soundForSan(latest.san));
+          if (latest.color !== ownColor) {
+            playSound(soundForSan(
+              latest.san,
+              data.game.status === "completed",
+              undefined,
+              latest.premove ? "premove" : "opponent",
+            ));
+          }
+          if (data.game.status === "completed") endedSoundGameIdRef.current = data.game.id;
+        } else if (game?.status === "active" && data.game.status === "completed") {
+          playGameEndOnce(data.game.id);
         }
         setGame(data.game);
       }
@@ -334,7 +368,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     } finally {
       refreshInFlightRef.current = false;
     }
-  }, [session, game?.id, game?.moves.length, url, key]);
+  }, [session, game?.id, game?.status, game?.moves.length, url, key]);
 
   useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
 
@@ -372,7 +406,15 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     if (!session || game) return;
     try {
       const data = await callAction(url, key, session, "list_invitations");
-      setInvitations(data.invitations ?? []);
+      const nextInvitations = data.invitations ?? [];
+      if (invitationListInitializedRef.current) {
+        const hasNewInvitation = nextInvitations.some((invitation) => !invitationIdsRef.current.has(invitation.id));
+        if (hasNewInvitation) playSound("notify");
+      } else {
+        invitationListInitializedRef.current = true;
+      }
+      invitationIdsRef.current = new Set(nextInvitations.map((invitation) => invitation.id));
+      setInvitations(nextInvitations);
     } catch { /* inbox polling is best-effort */ }
   }, [session, game]);
 
@@ -419,6 +461,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
       const data = await callAction(url, key, session, "find_match", { minutes, increment, rated });
       if (data.game) {
         setGame(data.game);
+        if (data.game.status === "active") playGameStartOnce(data.game.id);
         setSearching(false);
         setNotice("Соперник найден. Удачной партии!");
         localStorage.setItem(GAME_KEY, data.game.id);
@@ -430,7 +473,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
       setSearching(false);
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally { searchBusyRef.current = false; }
-  }, [session, timeControl, url, key]);
+  }, [session, timeControl, rated, url, key]);
 
   useEffect(() => {
     if (!searching || !session || game) return;
@@ -455,6 +498,16 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const activeElapsed = game?.turn_started_at ? Math.max(0, now - new Date(game.turn_started_at).getTime()) : 0;
   const whiteClock = game ? game.white_ms - (turn === "w" ? activeElapsed : 0) : 0;
   const blackClock = game ? game.black_ms - (turn === "b" ? activeElapsed : 0) : 0;
+
+  useEffect(() => {
+    if (!game || game.status !== "active" || !turn) return;
+    const remainingMs = turn === "w" ? whiteClock : blackClock;
+    const alertKey = `${game.id}:${game.moves.length}:${turn}`;
+    if (remainingMs > 0 && remainingMs <= 10_000 && tenSecondsAlertKeyRef.current !== alertKey) {
+      tenSecondsAlertKeyRef.current = alertKey;
+      playSound("tenseconds");
+    }
+  }, [game?.id, game?.moves.length, game?.status, turn, whiteClock, blackClock]);
 
   useEffect(() => {
     timeoutRequestedRef.current = false;
@@ -496,7 +549,12 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     timeoutRequestedRef.current = true;
     timeoutLastAttemptRef.current = now;
     void callAction(url, key, session, "timeout", { gameId: game.id })
-      .then((data) => { if (data.game) setGame(data.game); })
+      .then((data) => {
+        if (data.game) {
+          if (game.status === "active" && data.game.status === "completed") playGameEndOnce(data.game.id);
+          setGame(data.game);
+        }
+      })
       .catch((reason: unknown) => {
         timeoutRequestedRef.current = false;
         setError(reason instanceof Error ? reason.message : String(reason));
@@ -515,6 +573,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   }, [game?.fen, game?.moves]);
 
   const rememberGame = (next: OnlineGame) => {
+    if (next.status === "active") playGameStartOnce(next.id);
     setGame(next);
     localStorage.setItem(GAME_KEY, next.id);
     setSearching(false);
@@ -590,8 +649,16 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     setMovePending(true);
     void callAction(url, key, session, "move", { gameId: game.id, uci: move.uci, premove: isPremove })
       .then((data) => {
-        if (data.game) setGame(data.game);
-        playSound(soundForSan(move.san));
+        if (data.game) {
+          if (data.game.status === "completed") endedSoundGameIdRef.current = data.game.id;
+          setGame(data.game);
+        }
+        playSound(soundForSan(
+          move.san,
+          data.game?.status === "completed",
+          undefined,
+          isPremove ? "premove" : "self",
+        ));
       })
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => {
@@ -608,7 +675,10 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
     setBusy(true);
     try {
       const data = await callAction(url, key, session, "resign", { gameId: game.id });
-      if (data.game) setGame(data.game);
+      if (data.game) {
+        if (game.status === "active" && data.game.status === "completed") playGameEndOnce(data.game.id);
+        setGame(data.game);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally { setBusy(false); }
