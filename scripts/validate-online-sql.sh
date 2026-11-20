@@ -26,7 +26,7 @@ create table storage.buckets (
 );
 create function auth.uid() returns uuid
 language sql stable
-as $ select null::uuid $;
+as 'select null::uuid';
 create publication supabase_realtime;
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
