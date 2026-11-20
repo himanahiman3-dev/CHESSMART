@@ -37,6 +37,7 @@ psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170001_account_avatars.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611170002_player_progress_sync.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261117150407_fix_matchmaking_pgcrypto_search_path.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611200001_puzzle_battles.sql
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611200002_puzzle_battle_ratings_seasons.sql
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
 insert into auth.users(id) values
