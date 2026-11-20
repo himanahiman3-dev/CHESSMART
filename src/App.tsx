@@ -81,10 +81,19 @@ function Main() {
   const [profile, setProfile] = useState<PlayerProfile>(() => loadPlayerProfile());
   const [mobileMore, setMobileMore] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem("chessmart:sidebar-collapsed:v1") === "true"; }
+    catch { return false; }
+  });
   const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(() => readAccountProfile());
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => savePlayerProfile(profile), [profile]);
+
+  useEffect(() => {
+    try { localStorage.setItem("chessmart:sidebar-collapsed:v1", String(sidebarCollapsed)); }
+    catch { /* local storage can be unavailable in private browsing */ }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     const applyPreferences = () => applySuitePreferences(loadSuiteSettings());
@@ -217,6 +226,7 @@ function Main() {
     setIsRefining(false);
     setMode(next);
     setMobileMore(false);
+    setMoreOpen(false);
     setStage("import");
     setError(null);
   }, []);
@@ -311,7 +321,7 @@ function Main() {
   ];
   const communityActive = mode === "online" || mode === "battle";
   return (
-    <div className="cm-app-shell">
+    <div className={sidebarCollapsed ? "cm-app-shell cm-sidebar-is-collapsed" : "cm-app-shell"}>
       <aside className="cm-sidebar">
         <button type="button" className="cm-brand" onClick={() => changeMode("home")} aria-label="CHESSMART — главная">
           <BrandMark /><span>Chessmart</span>
@@ -363,6 +373,7 @@ function Main() {
           <div className="cm-bottom-actions">
             <button type="button" onClick={() => changeMode("stats")} title="Статистика" aria-label="Статистика">▥</button>
             <button type="button" onClick={() => changeMode("settings")} title="Настройки" aria-label="Настройки">⚙</button>
+            <button type="button" onClick={() => setSidebarCollapsed((value) => !value)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"} aria-label={sidebarCollapsed ? "Развернуть боковую панель" : "Свернуть боковую панель"} aria-pressed={sidebarCollapsed} className="cm-sidebar-toggle">{sidebarCollapsed ? "»" : "«"}</button>
           </div>
         </div>
       </aside>
