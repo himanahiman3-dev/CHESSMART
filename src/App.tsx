@@ -373,7 +373,7 @@ function Main() {
           <div className="cm-bottom-actions">
             <button type="button" onClick={() => changeMode("stats")} title="Статистика" aria-label="Статистика">▥</button>
             <button type="button" onClick={() => changeMode("settings")} title="Настройки" aria-label="Настройки">⚙</button>
-            <button type="button" onClick={() => setSidebarCollapsed((value) => !value)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"} aria-label={sidebarCollapsed ? "Развернуть боковую панель" : "Свернуть боковую панель"} aria-pressed={sidebarCollapsed}>{sidebarCollapsed ? "»" : "«"}</button>
+            <button type="button" onClick={() => setSidebarCollapsed((value) => !value)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"} aria-label={sidebarCollapsed ? "Развернуть боковую панель" : "Свернуть боковую панель"} aria-pressed={sidebarCollapsed} className="cm-sidebar-toggle">{sidebarCollapsed ? "»" : "«"}</button>
           </div>
         </div>
       </aside>
