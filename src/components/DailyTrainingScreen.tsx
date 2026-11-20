@@ -259,7 +259,7 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
   }, [rushMode, rushScore, rushMistakes, rushHighestRating]);
 
   const beginRush = () => {
-    if (rushRunning) saveRushAttempt();
+    if (rushStartedAt.current !== null) saveRushAttempt();
     const next = selectRushPuzzle(bank, 0, []);
     setRushPuzzle(next);
     setRushFen(next?.fen ?? "");
@@ -496,7 +496,7 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
                     ["3m", "3 минуты", "Быстрый спринт"],
                     ["5m", "5 минут", "Длинный раунд"],
                     ["survival", "Выживание", "Без таймера"],
-                  ] as Array<[RushMode, string, string]>).map(([id, label, desc]) => <button key={id} onClick={() => { if (rushRunning) saveRushAttempt(); setRushMode(id); setRushRunning(false); setRushFinished(false); setRushPuzzle(null); setRushSeen([]); setRushTime(id === "3m" ? 180 : id === "5m" ? 300 : 0); rushStartedAt.current = null; }} className={"w-full rounded-xl border p-3 text-left " + (rushMode === id ? "border-[#9bc96e] bg-[#354a2d]" : "border-white/[.07] bg-[#1d281d] hover:bg-[#2d3a2b]")}><div className="text-xs font-extrabold">{label}</div><div className="mt-1 text-[10px] text-[#9eaa96]">{desc}</div></button>)}
+                  ] as Array<[RushMode, string, string]>).map(([id, label, desc]) => <button key={id} onClick={() => { if (rushStartedAt.current !== null) saveRushAttempt(); setRushMode(id); setRushRunning(false); setRushFinished(false); setRushPuzzle(null); setRushSeen([]); setRushTime(id === "3m" ? 180 : id === "5m" ? 300 : 0); rushStartedAt.current = null; }} className={"w-full rounded-xl border p-3 text-left " + (rushMode === id ? "border-[#9bc96e] bg-[#354a2d]" : "border-white/[.07] bg-[#1d281d] hover:bg-[#2d3a2b]")}><div className="text-xs font-extrabold">{label}</div><div className="mt-1 text-[10px] text-[#9eaa96]">{desc}</div></button>)}
                 </div>
                 <div className="mt-3 rounded-lg bg-[#1d281d] p-3 text-xs text-[#9eaa96]">Сложность растёт вместе со счётом. Повторные позиции в одном забеге исключены. Elo задач не меняется.</div>
               </section>
