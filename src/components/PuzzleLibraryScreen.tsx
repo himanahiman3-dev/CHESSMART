@@ -4,7 +4,7 @@ import type { PlayerProfile, PuzzleRatingEntry } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
 import { playSound, soundForSan } from "../lib/sound";
 
-interface Puzzle {
+export interface Puzzle {
   id: string;
   fen: string;
   moves: string[];
@@ -99,7 +99,7 @@ async function fetchPage(offset: number, signal: AbortSignal): Promise<Puzzle[]>
   const payload = await response.json() as { rows?: Array<{ row?: Record<string, unknown> }> };
   return (payload.rows ?? []).map((item) => validPuzzle(item.row ?? {})).filter((item): item is Puzzle => !!item);
 }
-async function loadPuzzleBank(signal: AbortSignal, onProgress: (count: number) => void): Promise<Puzzle[]> {
+export async function loadPuzzleBank(signal: AbortSignal, onProgress: (count: number) => void): Promise<Puzzle[]> {
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null") as Puzzle[] | null;
     if (Array.isArray(cached) && cached.length >= TARGET) return cached.slice(0, TARGET);
@@ -367,7 +367,6 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
         <div className="mb-4 flex flex-wrap gap-2">
           {([
             ["rated", "Тренировка"],
-            ["daily", "Задача дня"],
             ["themes", "Все темы"],
           ] as const).map(([id, label]) => (
             <button key={id} onClick={() => { setMode(id); setQuery(""); }} className={"rounded-lg px-4 py-2 text-sm font-bold " + (mode === id ? "bg-[#81b64c] text-[#17210f]" : "border border-[#41403a] bg-[#30302b] text-[#d2d1cb] hover:bg-[#3b3a34]")}>{label}</button>
