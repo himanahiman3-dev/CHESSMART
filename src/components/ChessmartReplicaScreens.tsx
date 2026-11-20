@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { PlayerProfile } from "../lib/playerProfile";
-import type { Cls } from "../types";
 import type { AccountProfile } from "../lib/accountProfile";
 import type { ShellRoute } from "./ChessmartShellScreens";
 import { GameBoard } from "./GameBoard";
@@ -9,18 +8,6 @@ import { loadGameplayPreferences } from "../lib/gameplayPreferences";
 type Navigate = (route: ShellRoute) => void;
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-
-function Avatar({ accountProfile, name, size = "medium" }: {
-  accountProfile: AccountProfile | null;
-  name: string;
-  size?: "small" | "medium" | "large";
-}) {
-  const className = `cm-replica-avatar cm-replica-avatar-${size}`;
-  if (accountProfile?.avatar_url) {
-    return <img className={className} src={accountProfile.avatar_url} alt={accountProfile.username} />;
-  }
-  return <span className={className}>{(accountProfile?.username ?? name ?? "И").trim().slice(0, 1).toUpperCase() || "И"}</span>;
-}
 
 /** Strict two-column chess play workspace. */
 export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
