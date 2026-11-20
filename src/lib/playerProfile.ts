@@ -1,6 +1,6 @@
 import { emptyCounts } from "../types.ts";
 import type { Cls, GameReview, Color } from "../types";
-import { summarizeReview, type ReviewSummary } from "./learningStats.ts";
+import { summarizeReview, classifyGamePhase, type ReviewSummary, type GamePhase, type AccuracySlice } from "./learningStats.ts";
 
 export interface RatingEntry {
   at: number;
@@ -59,6 +59,9 @@ export interface PersonalGameReviewSummary {
   accuracy: number;
   moves: number;
   counts: Record<Cls, number>;
+  ratingType?: "bullet" | "blitz" | "rapid";
+  phaseAccuracy?: Record<GamePhase, AccuracySlice>;
+  phaseBrilliant?: Record<GamePhase, number>;
 }
 
 export interface PlayerProfile {
@@ -198,7 +201,8 @@ export function recordReviewedGame(profile: PlayerProfile, review: GameReview): 
 export function recordPersonalGameReview(
   profile: PlayerProfile,
   review: GameReview,
-  playerColor: Color
+  playerColor: Color,
+  ratingType?: "bullet" | "blitz" | "rapid"
 ): PlayerProfile {
   const summary = summarizeReview(review);
   const playerMoves = review.moves.filter((move) => move.color === playerColor);
@@ -214,7 +218,21 @@ export function recordPersonalGameReview(
     accuracy: playerColor === "w" ? review.accuracy.w : review.accuracy.b,
     moves: playerMoves.length,
     counts,
+    ...(ratingType ? { ratingType } : {}),
+    phaseAccuracy: {
+      opening: summary.phases.opening[playerColor],
+      middlegame: summary.phases.middlegame[playerColor],
+      endgame: summary.phases.endgame[playerColor],
+    },
+    phaseBrilliant: {
+      opening: 0,
+      middlegame: 0,
+      endgame: 0,
+    },
   };
+  for (const move of playerMoves) {
+    if (move.cls === "brilliant") entry.phaseBrilliant![classifyGamePhase(move.fenBefore)] += 1;
+  }
   const personalReviews = [...(profile.personalReviews ?? []).filter((item) => item.id !== id), entry].slice(-100);
   return { ...profile, personalReviews };
 }
