@@ -166,6 +166,7 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
   const [seasonStart, setSeasonStart] = useState("");
   const [now, setNow] = useState(Date.now());
+  const leaderboardRequest = useRef(0);
   const polling = useRef(false);
   const currentSession = session;
 
@@ -231,20 +232,24 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
   }, [session, applyResponse]);
 
   const loadLeaderboard = useCallback(async (sort: "points" | "rating" = leaderboardSort) => {
-    if (!session || leaderboardBusy) return;
+    if (!session) return;
+    const requestId = ++leaderboardRequest.current;
     setLeaderboardBusy(true);
     try {
       const { data, session: fresh } = await battleAction(session, "leaderboard", { sort });
+      if (requestId !== leaderboardRequest.current) return;
       setSession(fresh);
       setLeaderboard(data.leaders ?? []);
       setLeaderboardRank(data.my_rank ?? null);
       setSeasonStart(data.season_start ?? "");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      if (requestId === leaderboardRequest.current) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
     } finally {
-      setLeaderboardBusy(false);
+      if (requestId === leaderboardRequest.current) setLeaderboardBusy(false);
     }
-  }, [session, leaderboardSort, leaderboardBusy]);
+  }, [session, leaderboardSort]);
 
   useEffect(() => {
     if (session) void loadLeaderboard(leaderboardSort);
