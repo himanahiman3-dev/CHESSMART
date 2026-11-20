@@ -23,7 +23,9 @@ export function selectRushPuzzle<T extends RushPuzzleCandidate>(
   const closest = [...available].sort(
     (left, right) => Math.abs(left.rating - target) - Math.abs(right.rating - target),
   );
-  const inBand = closest.filter((puzzle) => Math.abs(puzzle.rating - target) <= 300);
+  const inBand = closest.filter((puzzle) =>
+    puzzle.rating >= target - 150 && puzzle.rating <= target + 300
+  );
   const pool = (inBand.length ? inBand : closest).slice(0, Math.min(40, inBand.length || closest.length));
   const rawIndex = random();
   const index = Math.min(pool.length - 1, Math.max(0, Math.floor(rawIndex * pool.length)));
