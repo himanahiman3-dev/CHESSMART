@@ -47,9 +47,11 @@ class FakeWorker {
     } else if (command === "isready") {
       queueMicrotask(() => this.line("readyok"));
     } else if (command.startsWith("go ")) {
-      if (this.mode === "minimum-depth") {
-        setTimeout(() => this.line("info depth 40 multipv 1 score cp 40 pv e2e4 e7e5"), 0);
-        setTimeout(() => this.line("info depth 41 multipv 1 score cp 41 pv e2e4 e7e5"), 5);
+      if (this.mode === "timed-partial") {
+        queueMicrotask(() => this.line("info depth 16 multipv 1 score cp 31 pv e2e4 e7e5"));
+        setTimeout(() => this.line("bestmove e2e4"), 10);
+      } else if (this.mode === "timed-watchdog") {
+        queueMicrotask(() => this.line("info depth 14 multipv 1 score cp 29 pv d2d4 d7d5"));
       } else {
         queueMicrotask(() => {
           this.line("info depth 8 multipv 1 score cp 42 pv e2e4 e7e5");
@@ -57,8 +59,8 @@ class FakeWorker {
           else this.line("bestmove e2e4");
         });
       }
-    } else if (command === "stop" && this.mode === "minimum-depth") {
-      queueMicrotask(() => this.line("bestmove e2e4"));
+    } else if (command === "stop" && this.mode === "timed-watchdog") {
+      queueMicrotask(() => this.line("bestmove d2d4"));
     }
   }
 
@@ -100,26 +102,41 @@ try {
   assert.ok(revoked.has(successBundle.jsUrl) && revoked.has(successBundle.wasmUrl),
     "Terminating the engine must revoke both Blob URLs.");
 
-  nextMode = "minimum-depth";
-  const minimumBundle = makeBundle();
-  const minimumEngine = await StockfishEngine.create(minimumBundle, 64);
-  const minimumWorker = workers.at(-1);
-  const minimumResult = await minimumEngine.search({
+  nextMode = "timed-partial";
+  const timedBundle = makeBundle();
+  const timedEngine = await StockfishEngine.create(timedBundle, 64);
+  const timedWorker = workers.at(-1);
+  const timedResult = await timedEngine.search({
     fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-    depth: 245,
+    depth: 22,
     multipv: 1,
-    minimumDepth: 41,
-    movetimeAfterMinimumDepthMs: 20,
+    movetimeMs: 300,
   }).promise;
-  assert.ok(minimumWorker.commands.includes("go depth 245"),
-    "A minimum-depth search must request the selected target depth without a UCI movetime cap.");
-  assert.ok(!minimumWorker.commands.some((command) => command.startsWith("go depth 245 movetime")),
-    "The time budget must not expire before the mandatory depth is reached.");
-  assert.ok(minimumWorker.commands.includes("stop"),
-    "The deferred time budget must stop the search only after the minimum depth.");
-  assert.equal(minimumResult[0]?.depth, 41,
-    "A search must return the depth-41 result before advancing to the next position.");
-  minimumEngine.terminate();
+  assert.ok(timedWorker.commands.includes("go depth 22 movetime 300"),
+    "The main review must use a timed UCI search with a depth-22 ceiling.");
+  assert.equal(timedResult[0]?.depth, 16,
+    "When movetime ends before depth 22, the latest completed depth must be returned.");
+  assert.equal(timedResult[0]?.score.cp, 31,
+    "The last completed evaluation must be retained after the timed stop.");
+  timedEngine.terminate();
+
+  nextMode = "timed-watchdog";
+  const watchdogBundle = makeBundle();
+  const watchdogEngine = await StockfishEngine.create(watchdogBundle, 64);
+  const watchdogWorker = workers.at(-1);
+  const watchdogResult = await watchdogEngine.search({
+    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    depth: 22,
+    multipv: 1,
+    movetimeMs: 5,
+  }).promise;
+  assert.ok(watchdogWorker.commands.includes("go depth 22 movetime 5"),
+    "The time watchdog must still use UCI movetime as the primary limit.");
+  assert.ok(watchdogWorker.commands.includes("stop"),
+    "A stalled worker must be stopped by the safety watchdog.");
+  assert.equal(watchdogResult[0]?.depth, 14,
+    "The safety watchdog must resolve with the last info line, not discard the partial search.");
+  watchdogEngine.terminate();
 
   nextMode = "search-crash";
   const crashBundle = makeBundle();
@@ -143,7 +160,7 @@ try {
   assert.ok(revoked.has(initBundle.jsUrl) && revoked.has(initBundle.wasmUrl),
     "An initialization failure must release both Blob URLs.");
 
-  console.log("Stockfish worker lifecycle validated: success, mandatory depth 41, crash after partial info, init failure, and Blob URL cleanup.");
+  console.log("Stockfish worker lifecycle validated: timed depth-22 search, depth-16 timeout fallback, safety stop, crash handling, and Blob URL cleanup.");
 } finally {
   URL.revokeObjectURL = nativeRevoke;
 }
