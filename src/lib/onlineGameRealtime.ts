@@ -32,7 +32,7 @@ export const ONLINE_GAME_REALTIME_COLUMNS = [
   "black_rating",
 ] as const;
 
-const HEARTBEAT_INTERVAL_MS = 25_000;
+const HEARTBEAT_INTERVAL_MS = 20_000;
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000, 15_000] as const;
 
 interface RealtimeFrame {
