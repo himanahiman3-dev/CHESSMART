@@ -15,6 +15,14 @@ interface BattlePlayer {
   round_index: number;
   mistakes: number;
   completed: boolean;
+  puzzle_battle_rating: number;
+  puzzle_battle_games: number;
+  puzzle_battle_wins: number;
+  puzzle_battle_losses: number;
+  puzzle_battle_draws: number;
+  puzzle_battle_win_streak: number;
+  puzzle_battle_best_win_streak: number;
+  season_points: number;
 }
 interface BattlePuzzle {
   round: number;
@@ -24,15 +32,36 @@ interface BattlePuzzle {
   rating: number;
   themes: string[];
 }
+interface BattleLeader {
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+  puzzle_battle_rating: number;
+  puzzle_battle_games: number;
+  season_points: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  best_win_streak: number;
+}
 interface BattleSnapshot {
   status: "active" | "completed" | "cancelled";
   battle: {
     id: string;
+    player_one_id: string;
+    player_two_id: string;
     started_at: string;
     ends_at: string;
     finished_at: string | null;
     winner_id: string | null;
     finish_reason: string | null;
+    player_one_rating: number;
+    player_two_rating: number;
+    player_one_rating_after: number | null;
+    player_two_rating_after: number | null;
+    season_points_one: number;
+    season_points_two: number;
+    rating_applied: boolean;
   };
   players: BattlePlayer[];
   me: BattlePlayer;
@@ -55,6 +84,10 @@ interface BattleResponse {
   me?: BattlePlayer | null;
   opponent?: BattlePlayer | null;
   puzzle?: BattlePuzzle | null;
+  leaders?: BattleLeader[];
+  my_rank?: number | null;
+  season_start?: string;
+  sort?: "points" | "rating";
   error?: string;
 }
 const SESSION_KEY = "chessmart:account-session:v2";
@@ -127,6 +160,11 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
   const [message, setMessage] = useState("Подготавливаем соревновательный режим.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<BattleLeader[]>([]);
+  const [leaderboardSort, setLeaderboardSort] = useState<"points" | "rating">("points");
+  const [leaderboardBusy, setLeaderboardBusy] = useState(false);
+  const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
+  const [seasonStart, setSeasonStart] = useState("");
   const [now, setNow] = useState(Date.now());
   const polling = useRef(false);
   const currentSession = session;
@@ -191,6 +229,30 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
       });
     return () => { alive = false; };
   }, [session, applyResponse]);
+
+  const loadLeaderboard = useCallback(async (sort: "points" | "rating" = leaderboardSort) => {
+    if (!session || leaderboardBusy) return;
+    setLeaderboardBusy(true);
+    try {
+      const { data, session: fresh } = await battleAction(session, "leaderboard", { sort });
+      setSession(fresh);
+      setLeaderboard(data.leaders ?? []);
+      setLeaderboardRank(data.my_rank ?? null);
+      setSeasonStart(data.season_start ?? "");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLeaderboardBusy(false);
+    }
+  }, [session, leaderboardSort, leaderboardBusy]);
+
+  useEffect(() => {
+    if (session) void loadLeaderboard(leaderboardSort);
+  }, [session, leaderboardSort]);
+
+  useEffect(() => {
+    if (phase === "completed") void loadLeaderboard(leaderboardSort);
+  }, [phase, leaderboardSort]);
 
   const startQueue = async () => {
     if (!session || busy) return;
@@ -314,18 +376,44 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                   <div>
                     <div className="text-[9px] font-black uppercase tracking-[.2em] text-[#a8ca89]">СОРЕВНОВАТЕЛЬНЫЙ РЕЖИМ</div>
                     <h2 className="mt-2 text-2xl font-black">Кто быстрее найдёт комбинации?</h2>
-                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#adbaa4]">Подбираем игрока с близким рейтинговым уровнем. Вы получаете одинаковые пять задач из проверенной базы Lichess. За каждую решённую задачу — одно очко.</p>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#adbaa4]">Подбираем игрока по отдельному Puzzle Battle Elo. Вы получаете одинаковые пять задач из проверенной базы. За каждую решённую задачу — очко и сезонный прогресс; победные серии усиливают награду.</p>
                     <button onClick={startQueue} disabled={busy} className="mt-5 rounded-xl bg-[#a5d17c] px-6 py-3 text-sm font-black text-[#172315] hover:bg-[#b7e28e] disabled:opacity-50">{busy ? "Подготовка…" : "Найти соперника"}</button>
                     <p className="mt-2 text-[10px] text-[#879781]">Без входного рейтинга, ставок и платных ограничений.</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      ["3:00", "Время раунда"],
-                      ["5", "Позиций"],
-                      ["3", "Допустимые ошибки"],
-                      ["1", "Очко за решение"],
-                    ].map(([value, label]) => <div key={label} className="rounded-2xl border border-white/[.07] bg-black/[.14] p-4"><div className="text-2xl font-black">{value}</div><div className="mt-1 text-[10px] text-[#9eac94]">{label}</div></div>)}
-                  </div>
+                  <aside className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        ["3:00", "Время раунда"],
+                        ["5", "Позиций"],
+                        ["3", "Допустимые ошибки"],
+                        ["1", "Очко за решение"],
+                      ].map(([value, label]) => <div key={label} className="rounded-2xl border border-white/[.07] bg-black/[.14] p-3"><div className="text-2xl font-black">{value}</div><div className="mt-1 text-[10px] text-[#9eac94]">{label}</div></div>)}
+                    </div>
+                    <div className="rounded-2xl border border-white/[.08] bg-black/[.13] p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-black">Лидеры Puzzle Battle</div>
+                        <div className="flex gap-1">
+                          <button onClick={() => setLeaderboardSort("points")} className={"rounded-md px-2 py-1 text-[9px] font-bold " + (leaderboardSort === "points" ? "bg-[#9bc96e] text-[#182315]" : "bg-white/[.07] text-[#aebba6]")}>Сезон</button>
+                          <button onClick={() => setLeaderboardSort("rating")} className={"rounded-md px-2 py-1 text-[9px] font-bold " + (leaderboardSort === "rating" ? "bg-[#9bc96e] text-[#182315]" : "bg-white/[.07] text-[#aebba6]")}>Рейтинг</button>
+                        </div>
+                      </div>
+                      <div className="mt-1 text-[9px] text-[#82927a]">{leaderboardSort === "points" ? "Месячные очки · " + (seasonStart || "текущий сезон") : "Отдельный Battle Elo"}{leaderboardBusy ? " · обновляем" : ""}</div>
+                      <div className="mt-2 space-y-1.5">
+                        {leaderboard.slice(0, 8).map((leader, index) => (
+                          <div key={leader.user_id} className={"flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 " + (leader.user_id === session?.user.id ? "bg-[#3a4c31]" : "bg-white/[.035]")}>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="w-4 shrink-0 text-[10px] font-black text-[#9aab8e]">{index + 1}</span>
+                              <span className="truncate text-[10px] font-bold text-[#dbe7d1]">{leader.username}</span>
+                            </div>
+                            <span className="shrink-0 text-[10px] font-black tabular-nums text-[#cce4b3]">{leaderboardSort === "points" ? leader.season_points + " очк." : leader.puzzle_battle_rating}</span>
+                          </div>
+                        ))}
+                        {!leaderboard.length && <div className="py-3 text-center text-[10px] text-[#82927a]">{leaderboardBusy ? "Загружаем таблицу…" : "В этом сезоне пока нет результатов."}</div>}
+                      </div>
+                      {leaderboardRank && <div className="mt-2 border-t border-white/[.06] pt-2 text-[10px] font-bold text-[#a6ba99]">Твоё место: #{leaderboardRank}</div>}
+                      <button onClick={() => void loadLeaderboard(leaderboardSort)} disabled={leaderboardBusy} className="mt-2 text-[9px] font-bold text-[#a9c68d] disabled:opacity-40">Обновить таблицу</button>
+                    </div>
+                  </aside>
                 </div>
               </section>
             )}
@@ -353,8 +441,8 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <div className="rounded-xl bg-black/[.15] p-3"><div className="text-2xl font-black tabular-nums">{battle.me.score}</div><div className="text-[9px] font-bold uppercase text-[#92a188]">Твои очки</div></div>
-                    <div className="rounded-xl bg-black/[.15] p-3"><div className="text-2xl font-black tabular-nums">{battle.opponent.score}</div><div className="text-[9px] font-bold uppercase text-[#92a188]">Соперник</div></div>
+                    <div className="rounded-xl bg-black/[.15] p-3"><div className="text-2xl font-black tabular-nums">{battle.me.score}</div><div className="text-[9px] font-bold uppercase text-[#92a188]">Твои очки</div><div className="mt-1 text-[9px] text-[#abc39a]">{battle.me.puzzle_battle_rating} Battle Elo</div></div>
+                    <div className="rounded-xl bg-black/[.15] p-3"><div className="text-2xl font-black tabular-nums">{battle.opponent.score}</div><div className="text-[9px] font-bold uppercase text-[#92a188]">Соперник</div><div className="mt-1 text-[9px] text-[#abc39a]">{battle.opponent.puzzle_battle_rating} Battle Elo</div></div>
                     <div className="rounded-xl bg-black/[.15] p-3"><div className="text-2xl font-black tabular-nums">{myProgress}/5</div><div className="text-[9px] font-bold uppercase text-[#92a188]">Мой прогресс</div></div>
                     <div className="rounded-xl bg-black/[.15] p-3"><div className="text-2xl font-black tabular-nums">{battle.me.mistakes}/3</div><div className="text-[9px] font-bold uppercase text-[#92a188]">Ошибки</div></div>
                   </div>
@@ -363,6 +451,14 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                     <div className="mt-5 rounded-2xl border border-[#718e55] bg-[#30442b] p-5">
                       <div className="text-lg font-black text-[#d7edc3]">{winnerText}</div>
                       <div className="mt-1 text-sm text-[#c4d8b5]">Счёт {battle.me.score} : {battle.opponent.score}</div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                        <div className="rounded-lg bg-black/[.14] p-2">
+                          <div className="text-[#879781]">Твой Battle Elo</div>
+                          <b className="text-[#d7edc3]">{battle.me.puzzle_battle_rating}</b>
+                          <span className="ml-1 text-[#a3b996]">· {((battle.battle.player_one_id === battle.me.user_id ? battle.battle.player_one_rating_after : battle.battle.player_two_rating_after) ?? battle.me.puzzle_battle_rating) - (battle.battle.player_one_id === battle.me.user_id ? battle.battle.player_one_rating : battle.battle.player_two_rating) >= 0 ? "+" : ""}{((battle.battle.player_one_id === battle.me.user_id ? battle.battle.player_one_rating_after : battle.battle.player_two_rating_after) ?? battle.me.puzzle_battle_rating) - (battle.battle.player_one_id === battle.me.user_id ? battle.battle.player_one_rating : battle.battle.player_two_rating)}</span>
+                        </div>
+                        <div className="rounded-lg bg-black/[.14] p-2"><div className="text-[#879781]">Сезонные очки</div><b className="text-[#d7edc3]">+{battle.battle.player_one_id === battle.me.user_id ? battle.battle.season_points_one : battle.battle.season_points_two}</b></div>
+                      </div>
                       <p className="mt-2 text-xs text-[#9eb48c]">{battle.battle.finish_reason === "time" ? "Время вышло. Результат зафиксирован сервером." : "Оба игрока завершили серию или исчерпали ошибки."}</p>
                       <button onClick={startQueue} disabled={busy} className="mt-4 rounded-xl bg-[#a5d17c] px-4 py-3 text-xs font-black text-[#172315]">Новая дуэль →</button>
                     </div>
@@ -387,6 +483,7 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                         <div className="rounded-2xl border border-white/[.07] bg-[#1b271d] p-4">
                           <div className="text-[9px] font-black uppercase tracking-widest text-[#91a481]">Твой соперник</div>
                           <div className="mt-2 text-sm font-black">{battle.opponent.username}</div>
+                          <div className="mt-1 text-[10px] text-[#abc39a]">{battle.opponent.puzzle_battle_rating} Battle Elo · {battle.opponent.season_points} сезонных очков</div>
                           <div className="mt-1 text-xs text-[#9eae94]">Позиции: {opponentProgress}/5</div>
                           <div className="mt-3 flex gap-1">{Array.from({ length: 5 }, (_, index) => <span key={index} className={"h-1.5 flex-1 rounded-full " + (index < opponentProgress ? "bg-[#a8d17a]" : "bg-white/[.08]")} />)}</div>
                           <div className="mt-3 text-xs text-[#9eae94]">Ошибки: {battle.opponent.mistakes}/3</div>
