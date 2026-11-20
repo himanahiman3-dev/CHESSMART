@@ -8,7 +8,7 @@ import type { PlayerProfile } from "../lib/playerProfile";
 import { chooseBotMove, botMistakeLabel } from "../lib/botBrain";
 import { resolvePremove, type Premove, formatPremove } from "../lib/premoves";
 import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation, type GameplayPreferences } from "../lib/gameplayPreferences";
-import { playSound, setSoundEnabled, soundForSan } from "../lib/sound";
+import { playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/sound";
 import { buildPgnFromSan, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
 import { replaySanHistory, getPositionInsights, formatMaterialBalance, gamePhaseLabel, terminalStateLabel, isNearFiftyMoveRule } from "../lib/gameInsights";
 
@@ -74,12 +74,15 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     setResultMessage("");
     setEngineError(null);
     setThinking(false);
+    preloadSounds();
+    playSound("game-start");
     setStarted(true);
   };
 
   const finish = (result: Result) => {
     if (finishedRef.current) return;
     finishedRef.current = true;
+    if (!game.isCheckmate()) playSound("end");
     setPremove(null);
     setFinished(result);
     setStarted(false);
@@ -129,7 +132,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
         setRedoSan([]);
         setLastSan((items) => [...items, moved.san]);
         setFen(next.fen());
-        playSound(soundForSan(moved.san, next.isGameOver()));
+        playSound(soundForSan(moved.san, next.isGameOver(), undefined, "opponent"));
         setThinking(false);
       })
       .catch((error: unknown) => {
@@ -167,7 +170,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     setRedoSan([]);
     setLastSan((items) => [...items, moved.san]);
     setFen(next.fen());
-    playSound(soundForSan(moved.san, next.isGameOver()));
+    playSound(soundForSan(moved.san, next.isGameOver(), undefined, "premove"));
   }, [premove, started, thinking, finished, game, fen, playerColor]);
 
   // Фиксируем результат только один раз — в том числе если мат поставил бот.
