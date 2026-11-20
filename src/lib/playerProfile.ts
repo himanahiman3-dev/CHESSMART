@@ -1,5 +1,6 @@
-import { emptyCounts, type Cls, type GameReview, type Color } from "../types";
-import { summarizeReview, type ReviewSummary } from "./learningStats";
+import { emptyCounts } from "../types.ts";
+import type { Cls, GameReview, Color } from "../types";
+import { summarizeReview, type ReviewSummary } from "./learningStats.ts";
 
 export interface RatingEntry {
   at: number;
