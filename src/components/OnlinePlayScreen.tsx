@@ -176,7 +176,6 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   const [avatarBusy, setAvatarBusy] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [game, setGame] = useState<OnlineGame | null>(null);
-  const [dismissedReviewGameId, setDismissedReviewGameId] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.search).get("challenge") ?? "");
   const [inviteUsername, setInviteUsername] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -1022,7 +1021,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
           </div>
         )}
       </div>
-      {game?.status === "completed" && completedPgn && myColor && dismissedReviewGameId !== game.id && (
+      {game?.status === "completed" && completedPgn && myColor && (
         <GameFinishedReviewOverlay
           key={game.id}
           gameKey={`online:${game.id}`}
@@ -1030,7 +1029,6 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
           playerColor={myColor}
           onAnalyzed={onPersonalReviewReady}
           onOpenReview={onOpenReview}
-          onClose={() => setDismissedReviewGameId(game.id)}
         />
       )}
     </main>
