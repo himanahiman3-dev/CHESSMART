@@ -67,13 +67,15 @@ export function GameFinishedReviewOverlay({
     () => review?.moves.filter((move) => move.color === playerColor) ?? [],
     [review, playerColor],
   );
-  const counts = useMemo(() => ownMoves.reduce(
-    (result, move) => {
-      result[move.cls] += 1;
-      return result;
-    },
-    { best: 0, brilliant: 0, great: 0, blunder: 0 },
-  ), [ownMoves]);
+  const counts = useMemo(() => {
+    const result = { best: 0, brilliant: 0, great: 0, blunder: 0 };
+    for (const move of ownMoves) {
+      if (move.cls === "best" || move.cls === "brilliant" || move.cls === "great" || move.cls === "blunder") {
+        result[move.cls] += 1;
+      }
+    }
+    return result;
+  }, [ownMoves]);
   const total = progress?.total ?? 1;
   const done = progress?.done ?? 0;
   const depthProgress = progress?.targetDepth
