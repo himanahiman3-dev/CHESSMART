@@ -232,6 +232,7 @@ async function getPuzzleBattleLeaderboard(sort: "points" | "rating", userId: str
   if (sort === "rating") {
     const { data: profiles, error } = await admin.from("online_profiles")
       .select("user_id,username,avatar_url,puzzle_battle_rating,puzzle_battle_games,puzzle_battle_wins,puzzle_battle_losses,puzzle_battle_draws,puzzle_battle_best_win_streak")
+      .gt("puzzle_battle_games", 0)
       .order("puzzle_battle_rating", { ascending: false })
       .order("puzzle_battle_games", { ascending: false })
       .limit(50);
