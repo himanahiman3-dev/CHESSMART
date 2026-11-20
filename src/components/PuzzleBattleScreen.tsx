@@ -392,7 +392,7 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                   <div>
                     <div className="text-[9px] font-black uppercase tracking-[.2em] text-[#a8ca89]">СОРЕВНОВАТЕЛЬНЫЙ РЕЖИМ</div>
                     <h2 className="mt-2 text-2xl font-black">Кто быстрее найдёт комбинации?</h2>
-                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#adbaa4]">Подбираем игрока по отдельному Puzzle Battle Elo. Вы получаете одинаковые пять задач из проверенной базы. За каждую решённую задачу — очко и сезонный прогресс; победные серии усиливают награду.</p>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#adbaa4]">Подбираем игрока по отдельному Puzzle Battle Elo. Вы получаете одинаковые пять задач из проверенной базы. За каждую решённую задачу — очко и сезонный прогресс; победные серии усиливают награду. При равных очках выигрывает тот, кто допустил меньше ошибок.</p>
                     <button onClick={startQueue} disabled={busy} className="mt-5 rounded-xl bg-[#a5d17c] px-6 py-3 text-sm font-black text-[#172315] hover:bg-[#b7e28e] disabled:opacity-50">{busy ? "Подготовка…" : "Найти соперника"}</button>
                     <p className="mt-2 text-[10px] text-[#879781]">Без входного рейтинга, ставок и платных ограничений.</p>
                   </div>
@@ -419,7 +419,10 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                           <div key={leader.user_id} className={"flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 " + (leader.user_id === session?.user.id ? "bg-[#3a4c31]" : "bg-white/[.035]")}>
                             <div className="flex min-w-0 items-center gap-2">
                               <span className="w-4 shrink-0 text-[10px] font-black text-[#9aab8e]">{index + 1}</span>
-                              <span className="truncate text-[10px] font-bold text-[#dbe7d1]">{leader.username}</span>
+                              <div className="min-w-0">
+                                <span className="block truncate text-[10px] font-bold text-[#dbe7d1]">{leader.username}</span>
+                                <span className="block text-[8px] text-[#879781]">{leader.wins} побед · {leader.puzzle_battle_games} игр · рекорд серии {leader.best_win_streak}</span>
+                              </div>
                             </div>
                             <span className="shrink-0 text-[10px] font-black tabular-nums text-[#cce4b3]">{leaderboardSort === "points" ? leader.season_points + " очк." : leader.puzzle_battle_rating}</span>
                           </div>
@@ -476,6 +479,7 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                         <div className="rounded-lg bg-black/[.14] p-2"><div className="text-[#879781]">Сезонные очки</div><b className="text-[#d7edc3]">+{mySeasonPoints}</b></div>
                       </div>
                       <p className="mt-2 text-xs text-[#9eb48c]">{battle.battle.finish_reason === "time" ? "Время вышло. Результат зафиксирован сервером." : "Оба игрока завершили серию или исчерпали ошибки."}</p>
+                      <div className="mt-2 text-[10px] text-[#b2c5a5]">Твоя серия побед: {battle.me.puzzle_battle_win_streak} · лучший рекорд: {battle.me.puzzle_battle_best_win_streak}</div>
                       <button onClick={startQueue} disabled={busy} className="mt-4 rounded-xl bg-[#a5d17c] px-4 py-3 text-xs font-black text-[#172315]">Новая дуэль →</button>
                     </div>
                   ) : battle.me.completed ? (
