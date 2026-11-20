@@ -175,6 +175,23 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
     return data;
   }, [currentSession, applyResponse]);
 
+  useEffect(() => {
+    if (!session) return;
+    let alive = true;
+    void battleAction(session, "status")
+      .then(({ data, session: fresh }) => {
+        if (!alive) return;
+        setSession(fresh);
+        applyResponse(data);
+        if (data.status === "queued") setMessage("Ты уже в очереди. Продолжаем поиск соперника…");
+        else if (data.battle) setMessage("Восстановили твою текущую дуэль.");
+      })
+      .catch((reason) => {
+        if (alive) setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    return () => { alive = false; };
+  }, [session, applyResponse]);
+
   const startQueue = async () => {
     if (!session || busy) return;
     setBusy(true);
