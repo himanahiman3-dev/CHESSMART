@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { EngineProvider, useEngine } from "./hooks/useEngine";
 import { EngineLoader } from "./components/EngineLoader";
 import { ImportScreen } from "./components/ImportScreen";
@@ -356,6 +356,35 @@ function Main() {
   );
 }
 
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  state = { error: null as string | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("CHESSMART render error:", error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#20251f", color: "#f2f1ed", fontFamily: "system-ui, sans-serif" }}>
+          <section style={{ width: "min(100%, 620px)", padding: 28, border: "1px solid #59664d", borderRadius: 16, background: "#292f27", boxShadow: "0 24px 70px rgba(0,0,0,.35)" }}>
+            <div style={{ color: "#a8d080", fontSize: 12, fontWeight: 900, letterSpacing: ".14em" }}>CHESSMART</div>
+            <h1 style={{ margin: "12px 0 8px", fontSize: 24 }}>Не удалось отрисовать интерфейс</h1>
+            <p style={{ margin: "0 0 16px", color: "#c0c5ba", fontSize: 14, lineHeight: 1.5 }}>Приложение поймало ошибку вместо пустого экрана. Обнови страницу — если проблема повторится, этот текст поможет её найти.</p>
+            <pre style={{ overflowWrap: "anywhere", whiteSpace: "pre-wrap", padding: 12, borderRadius: 8, background: "#1d211c", color: "#e9c2b9", fontSize: 12 }}>{this.state.error}</pre>
+            <button type="button" onClick={() => window.location.reload()} style={{ marginTop: 12, padding: "10px 16px", border: 0, borderRadius: 8, background: "#9bc875", color: "#1c2417", fontWeight: 900 }}>Перезагрузить CHESSMART</button>
+          </section>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
-  return <EngineProvider><Main /></EngineProvider>;
+  return <AppErrorBoundary><EngineProvider><Main /></EngineProvider></AppErrorBoundary>;
 }
