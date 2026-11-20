@@ -758,7 +758,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
           <section className="rounded-2xl border border-[#41403a] bg-[#30302b] p-6 sm:p-8">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#a3c86d]">Chessmart online</p>
             <h1 className="mt-2 text-3xl font-black">Аккаунты и онлайн-шахматы</h1>
-            <p className="mt-3 text-sm leading-relaxed text-[#b8b7b0]">Render Static Site оставляем как есть. Для аккаунтов, рейтинга и поиска нужен Supabase backend. Добавь VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY в Environment своего Static Site и разверни серверную функцию.</p>
+            <p className="mt-3 text-sm leading-relaxed text-[#b8b7b0]">Не удалось подключить онлайн-аккаунты: настройки Supabase не попали в сборку сайта. Проверь VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY в Environment сервиса CHESSMART на Render, затем пересобери его.</p>
             <button onClick={onBack} className="mt-5 rounded-lg bg-[#81b64c] px-5 py-3 text-sm font-extrabold text-[#17210f]">Назад</button>
           </section>
         </div>

@@ -6,6 +6,10 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+
+# Supabase publishable configuration is intentionally bundled into the browser app by Vite.
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
 RUN npm run build
 
 # Serve the compiled SPA with Nginx; no Node runtime is needed in production.
