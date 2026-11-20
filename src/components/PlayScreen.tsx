@@ -11,6 +11,8 @@ import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation
 import { playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/sound";
 import { buildPgnFromSan, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
 import { replaySanHistory, getPositionInsights, formatMaterialBalance, gamePhaseLabel, terminalStateLabel, isNearFiftyMoveRule } from "../lib/gameInsights";
+import type { Color, GameReview } from "../types";
+import { GameFinishedReviewOverlay } from "./GameFinishedReviewOverlay";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -20,6 +22,8 @@ interface Props {
   engine: StockfishEngine;
   profile: PlayerProfile;
   onFinished: (updatedProfile: PlayerProfile) => void;
+  onPersonalReviewReady: (review: GameReview, color: Color) => void;
+  onOpenReview: (review: GameReview) => void;
   onBack: () => void;
 }
 
@@ -27,13 +31,14 @@ function resultText(result: Result): string {
   return result === "win" ? "Ты победил!" : result === "loss" ? "Победил Stockfish." : "Ничья.";
 }
 
-export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
+export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady, onOpenReview, onBack }: Props) {
   const [botElo, setBotElo] = useState<number>(BOT_DIFFICULTIES[1].elo);
   const [playerColor, setPlayerColor] = useState<"w" | "b">("w");
   const [fen, setFen] = useState(START_FEN);
   const [started, setStarted] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [finished, setFinished] = useState<Result | null>(null);
+  const [completedPgn, setCompletedPgn] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState("");
   const [engineError, setEngineError] = useState<string | null>(null);
   const [lastSan, setLastSan] = useState<string[]>([]);
@@ -73,6 +78,7 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     setExportNotice("");
     setBoardFlipped(false);
     setFinished(null);
+    setCompletedPgn(null);
     setResultMessage("");
     setEngineError(null);
     setThinking(false);
@@ -91,6 +97,22 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
     setPremove(null);
     setFinished(result);
     setStarted(false);
+    const resultTag = result === "draw" ? "1/2-1/2" : result === "win"
+      ? (playerColor === "w" ? "1-0" : "0-1")
+      : (playerColor === "w" ? "0-1" : "1-0");
+    try {
+      const pgn = buildPgnFromSan(lastSan, {
+        Event: "CHESSMART vs Stockfish",
+        White: playerColor === "w" ? profile.name : "Stockfish",
+        Black: playerColor === "b" ? profile.name : "Stockfish",
+        WhiteElo: String(playerColor === "w" ? profile.rating : botElo),
+        BlackElo: String(playerColor === "b" ? profile.rating : botElo),
+        Result: resultTag,
+      });
+      setCompletedPgn(pgn);
+    } catch (reason) {
+      setEngineError(reason instanceof Error ? reason.message : String(reason));
+    }
     const update = recordBotGame(profile, botElo, result);
     setResultMessage(update.message);
     onFinished(update.profile);
@@ -413,6 +435,16 @@ export function PlayScreen({ engine, profile, onFinished, onBack }: Props) {
           </aside>
         </div>
       </div>
+      {finished && completedPgn && (
+        <GameFinishedReviewOverlay
+          gameKey={`bot:${botElo}:${finished}:${lastSan.length}`}
+          pgn={completedPgn}
+          playerColor={playerColor}
+          onAnalyzed={onPersonalReviewReady}
+          onOpenReview={onOpenReview}
+          onClose={() => setCompletedPgn(null)}
+        />
+      )}
     </div>
   );
 }
