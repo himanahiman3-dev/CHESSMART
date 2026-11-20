@@ -28,9 +28,10 @@ import {
   loadPlayerProfile,
   savePlayerProfile,
   recordReviewedGame,
+  recordPersonalGameReview,
   type PlayerProfile,
 } from "./lib/playerProfile";
-import type { GameReview } from "./types";
+import type { Color, GameReview } from "./types";
 import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
 import { StatsScreen, SettingsScreen, NewsScreen, type ShellRoute } from "./components/ChessmartShellScreens";
 import { HomeDashboardScreen, PlayHubScreen, ProfileHubScreen } from "./components/ChessmartReplicaScreens";
@@ -158,6 +159,20 @@ function Main() {
     return () => { cancelled = true; };
   }, []);
 
+  const persistPersonalReview = useCallback((result: GameReview, color: Color) => {
+    setProfile((current) => recordPersonalGameReview(current, result, color));
+  }, []);
+
+  const openPersonalReview = useCallback((result: GameReview) => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setReview(result);
+    setMode("review");
+    setStage("review");
+    setIsRefining(false);
+    setError(null);
+  }, []);
+
   const start = useCallback(async (pgn: string, timePerPositionMs: number) => {
     if (!engine) return;
     abortRef.current?.abort();
@@ -217,9 +232,9 @@ function Main() {
   else if (mode === "news") page = <NewsScreen />;
   else if (mode === "profileDetails") page = <ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("profile")} onOpenAccount={() => changeMode("online")} />;
   else if (mode === "play") page = engine
-    ? <PlayScreen engine={engine} profile={profile} onFinished={setProfile} onBack={() => changeMode("review")} />
+    ? <PlayScreen engine={engine} profile={profile} onFinished={setProfile} onPersonalReviewReady={persistPersonalReview} onOpenReview={openPersonalReview} onBack={() => changeMode("review")} />
     : <EngineLoader />;
-  else if (mode === "online") page = <OnlinePlayScreen onBack={() => changeMode("review")} />;
+  else if (mode === "online") page = <OnlinePlayScreen onBack={() => changeMode("review")} onPersonalReviewReady={persistPersonalReview} onOpenReview={openPersonalReview} />;
   else if (mode === "puzzles") page = <PuzzleLibraryScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "daily") page = <DailyTrainingScreen onBack={() => changeMode("review")} />;
   else if (mode === "battle") page = <PuzzleBattleScreen onBack={() => changeMode("review")} />;

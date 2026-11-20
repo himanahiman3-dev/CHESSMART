@@ -5,6 +5,7 @@ import { clockUrgency, formatClock, formatMoveNumber, getBoardOrientation, isAct
 import { buildPgnFromSan, buildPgnFromUci, formatSanMoveList, pgnFilename, textFilename } from "../src/lib/gameNotation.ts";
 import { formatMaterialBalance, gamePhaseLabel, getCapturedMaterial, getGamePhase, getHalfmoveClock, getLegalMoveCount, getPositionInsights, isNearFiftyMoveRule, replaySanHistory, replayUciHistory, terminalStateLabel } from "../src/lib/gameInsights.ts";
 import { classifyGamePhase } from "../src/lib/learningStats.ts";
+import { recordPersonalGameReview } from "../src/lib/playerProfile.ts";
 import { soundForSan } from "../src/lib/sound.ts";
 const start = new Chess().fen();
 assert.equal(isChessSquare("e4"), true); assert.equal(isChessSquare("i9"), false);
@@ -94,4 +95,30 @@ assert.equal(insights.turn, "b");
 assert.equal(insights.terminal, "playing");
 assert.equal(terminalStateLabel("checkmate"), "Мат");
 assert.equal(createPremove(promo, "w", "a7", "a8", "n")?.promotion, "n");
-console.log("Premove and gameplay feature validation passed.");
+
+const personalReview = {
+  headers: { White: "Tester", Black: "Opponent", Result: "1-0" },
+  startFen: start,
+  moves: [
+    { index: 0, color: "w", san: "e4", uci: "e2e4", fenBefore: start, cls: "best" },
+    { index: 1, color: "b", san: "e5", uci: "e7e5", fenBefore: start, cls: "blunder" },
+    { index: 2, color: "w", san: "Nf3", uci: "g1f3", fenBefore: start, cls: "brilliant" },
+  ],
+  accuracy: { w: 97, b: 41 },
+};
+const personalBase = {
+  name: "Tester", rating: 1200, puzzleRating: 1200, puzzleRatingHistory: [],
+  games: 1, wins: 1, losses: 0, draws: 0, qualifyingBotGames: 1,
+  history: [], reviews: [], puzzles: [], trainingSessions: [],
+};
+const onlyWhite = recordPersonalGameReview(personalBase, personalReview, "w");
+assert.equal(onlyWhite.personalReviews.length, 1);
+assert.equal(onlyWhite.personalReviews[0].counts.best, 1);
+assert.equal(onlyWhite.personalReviews[0].counts.brilliant, 1);
+assert.equal(onlyWhite.personalReviews[0].counts.blunder, 0,
+  "Opponent blunders must not be included in personal statistics.");
+const onlyBlack = recordPersonalGameReview(personalBase, personalReview, "b");
+assert.equal(onlyBlack.personalReviews[0].counts.blunder, 1);
+assert.equal(onlyBlack.personalReviews[0].counts.best, 0,
+  "The player's statistics must exclude the other side's best moves.");
+console.log("Premove, gameplay, and personal move-quality validation passed.");

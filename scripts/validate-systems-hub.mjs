@@ -133,8 +133,8 @@ assert.equal(getRetryDelay(0), 500);
 assert.ok(getRetryDelay(4) >= getRetryDelay(3));
 assert.equal(getOnlinePollDelay({ online: false, visible: true, consecutiveFailures: 0 }), 5000);
 assert.equal(getOnlinePollDelay({ online: true, visible: false, consecutiveFailures: 0 }), 5000);
-assert.equal(getOnlinePollDelay({ online: true, visible: true, consecutiveFailures: 0 }), 1000);
-assert.equal(getOnlinePollDelay({ online: true, visible: true, consecutiveFailures: 0, urgent: true }), 250);
+assert.equal(getOnlinePollDelay({ online: true, visible: true, consecutiveFailures: 0 }), 220);
+assert.equal(getOnlinePollDelay({ online: true, visible: true, consecutiveFailures: 0, urgent: true }), 120);
 assert.ok(getOnlinePollDelay({ online: true, visible: true, consecutiveFailures: 4 }) >
   getOnlinePollDelay({ online: true, visible: true, consecutiveFailures: 3 }));
 assert.equal(calculateReviewConfidence([], 3), 0);

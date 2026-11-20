@@ -1,5 +1,6 @@
-import type { GameReview, Color } from "../types";
-import { summarizeReview, type ReviewSummary } from "./learningStats";
+import { emptyCounts } from "../types.ts";
+import type { Cls, GameReview, Color } from "../types";
+import { summarizeReview, type ReviewSummary } from "./learningStats.ts";
 
 export interface RatingEntry {
   at: number;
@@ -49,6 +50,17 @@ export interface PuzzleRatingEntry {
   ratingAfter: number;
 }
 
+export interface PersonalGameReviewSummary {
+  id: string;
+  at: number;
+  color: Color;
+  opponent: string;
+  result: string;
+  accuracy: number;
+  moves: number;
+  counts: Record<Cls, number>;
+}
+
 export interface PlayerProfile {
   name: string;
   rating: number;
@@ -63,6 +75,8 @@ export interface PlayerProfile {
   reviews: ReviewSummary[];
   puzzles: TrainingPuzzle[];
   trainingSessions: TrainingSessionSummary[];
+  /** Анализ качества только собственных ходов в партиях, сыгранных этим игроком. */
+  personalReviews?: PersonalGameReviewSummary[];
 }
 
 const STORAGE_KEY = "chess-review:player-profile:v1";
@@ -80,6 +94,7 @@ const DEFAULT_PROFILE: PlayerProfile = {
   reviews: [],
   puzzles: [],
   trainingSessions: [],
+  personalReviews: [],
 };
 
 function validPuzzleRatingEntry(value: unknown): value is PuzzleRatingEntry {
@@ -110,6 +125,21 @@ export function loadPlayerProfile(): PlayerProfile {
       reviews: Array.isArray(value.reviews) ? value.reviews.slice(-100) : [],
       puzzles: Array.isArray(value.puzzles) ? value.puzzles.slice(-300) : [],
       trainingSessions: Array.isArray(value.trainingSessions) ? value.trainingSessions.slice(-100) : [],
+      personalReviews: Array.isArray(value.personalReviews)
+        ? value.personalReviews.filter((entry): entry is PersonalGameReviewSummary => {
+            if (!entry || typeof entry !== "object") return false;
+            const item = entry as Partial<PersonalGameReviewSummary>;
+            return typeof item.id === "string"
+              && Number.isFinite(item.at)
+              && (item.color === "w" || item.color === "b")
+              && typeof item.opponent === "string"
+              && typeof item.result === "string"
+              && Number.isFinite(item.accuracy)
+              && Number.isFinite(item.moves)
+              && !!item.counts
+              && typeof item.counts === "object";
+          }).slice(-100)
+        : [],
     };
   } catch {
     return { ...DEFAULT_PROFILE, history: [], reviews: [], puzzles: [], puzzleRatingHistory: [] };
@@ -159,6 +189,34 @@ export function recordReviewedGame(profile: PlayerProfile, review: GameReview): 
     });
   const puzzles = [...profile.puzzles.filter((puzzle) => !puzzle.id.startsWith(`${summary.id}:`)), ...generated].slice(-300);
   return { ...profile, reviews, puzzles };
+}
+
+/**
+ * Записывает только ходы стороны пользователя. Импортированные PGN и ходы соперника
+ * намеренно не попадают в личные показатели профиля.
+ */
+export function recordPersonalGameReview(
+  profile: PlayerProfile,
+  review: GameReview,
+  playerColor: Color
+): PlayerProfile {
+  const summary = summarizeReview(review);
+  const playerMoves = review.moves.filter((move) => move.color === playerColor);
+  const counts = emptyCounts();
+  for (const move of playerMoves) counts[move.cls] += 1;
+  const id = `${summary.id}:${playerColor}`;
+  const entry: PersonalGameReviewSummary = {
+    id,
+    at: Date.now(),
+    color: playerColor,
+    opponent: playerColor === "w" ? summary.black : summary.white,
+    result: summary.result,
+    accuracy: playerColor === "w" ? review.accuracy.w : review.accuracy.b,
+    moves: playerMoves.length,
+    counts,
+  };
+  const personalReviews = [...(profile.personalReviews ?? []).filter((item) => item.id !== id), entry].slice(-100);
+  return { ...profile, personalReviews };
 }
 
 export function markPuzzleSolved(profile: PlayerProfile, puzzleId: string): PlayerProfile {
