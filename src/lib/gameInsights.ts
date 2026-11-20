@@ -61,6 +61,8 @@ export function formatMaterialBalance(balance: number): string {
 }
 export function getGamePhase(fen: string): GamePhase {
   try {
+    // Keep the old malformed-FEN guard; the shared classifier assumes valid chess positions.
+    new Chess(fen);
     return classifyGamePhase(fen);
   } catch {
     return "opening";
