@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { GameBoard, type BoardMove } from "./GameBoard";
+import type { Color, GameReview } from "../types";
+import { GameFinishedReviewOverlay } from "./GameFinishedReviewOverlay";
 import { clearAccountProfile, publishAccountProfile } from "../lib/accountProfile";
 import { resolvePremove, type Premove, formatPremove } from "../lib/premoves";
 import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation, clockUrgency, formatClock, type GameplayPreferences } from "../lib/gameplayPreferences";
@@ -152,7 +154,13 @@ function reasonText(reason: string | null): string {
   return reason ? labels[reason] ?? reason : "";
 }
 
-export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
+interface OnlinePlayScreenProps {
+  onBack: () => void;
+  onPersonalReviewReady: (review: GameReview, color: Color) => void;
+  onOpenReview: (review: GameReview) => void;
+}
+
+export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }: OnlinePlayScreenProps) {
   const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, "") ?? "";
   const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? "";
   const configured = !!url && !!key;
@@ -168,6 +176,7 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
   const [avatarBusy, setAvatarBusy] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [game, setGame] = useState<OnlineGame | null>(null);
+  const [dismissedReviewGameId, setDismissedReviewGameId] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.search).get("challenge") ?? "");
   const [inviteUsername, setInviteUsername] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -563,6 +572,27 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
 
   const isMyTurn = !!game && game.status === "active" && !!myColor && turn === myColor && !movePending;
   const canQueuePremove = !!game && game.status === "active" && !!myColor && turn !== myColor && preferences.premovesEnabled && !movePending;
+  const completedPgn = useMemo(() => {
+    if (!game || game.status !== "completed" || !myColor || game.moves.length === 0) return null;
+    const result = game.result === "white_win" ? "1-0"
+      : game.result === "black_win" ? "0-1"
+      : game.result === "draw" ? "1/2-1/2" : "*";
+    try {
+      return buildPgnFromUci(game.moves, {
+        Event: "CHESSMART Online",
+        Date: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+        White: game.white_name,
+        Black: game.black_name ?? "Соперник",
+        ...(game.white_rating ? { WhiteElo: String(game.white_rating) } : {}),
+        ...(game.black_rating ? { BlackElo: String(game.black_rating) } : {}),
+        Result: result,
+      });
+    } catch (reason) {
+      console.error("Could not prepare completed online game PGN:", reason);
+      return null;
+    }
+  }, [game?.id, game?.status, game?.moves, game?.white_name, game?.black_name, game?.white_rating, game?.black_rating, game?.result, myColor]);
+
   const myRating = game && myColor === "w" ? game.white_rating : game?.black_rating;
   const opponentName = game && myColor === "w" ? (game.black_name ?? "Ожидаем игрока") : game?.white_name ?? "Соперник";
   const ratingType = game?.rating_type ?? "blitz";
@@ -992,6 +1022,17 @@ export function OnlinePlayScreen({ onBack }: { onBack: () => void }) {
           </div>
         )}
       </div>
+      {game?.status === "completed" && completedPgn && myColor && dismissedReviewGameId !== game.id && (
+        <GameFinishedReviewOverlay
+          key={game.id}
+          gameKey={`online:${game.id}`}
+          pgn={completedPgn}
+          playerColor={myColor}
+          onAnalyzed={onPersonalReviewReady}
+          onOpenReview={onOpenReview}
+          onClose={() => setDismissedReviewGameId(game.id)}
+        />
+      )}
     </main>
   );
 }
