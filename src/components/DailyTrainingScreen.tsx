@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import { GameBoard, type BoardMove } from "./GameBoard";
 import { loadPuzzleBank, type Puzzle } from "./PuzzleLibraryScreen";
+import { getRushTargetRating, selectRushPuzzle, type PuzzleRushAttempt } from "../lib/puzzleRush";
 
 type Tab = "daily" | "rush" | "custom";
 type RushMode = "3m" | "5m" | "survival";
@@ -9,10 +10,11 @@ interface SavedProgress {
   completedDates: string[];
   heartsByDate: Record<string, number>;
   rushBest: Record<RushMode, number>;
+  rushHistory: PuzzleRushAttempt[];
   hardMode: boolean;
 }
 const STORAGE_KEY = "chessmart:daily-rush-progress:v1";
-const EMPTY: SavedProgress = { completedDates: [], heartsByDate: {}, rushBest: { "3m": 0, "5m": 0, survival: 0 }, hardMode: false };
+const EMPTY: SavedProgress = { completedDates: [], heartsByDate: {}, rushBest: { "3m": 0, "5m": 0, survival: 0 }, rushHistory: [], hardMode: false };
 const THEMES: Array<[string, string]> = [
   ["fork", "Вилки"], ["pin", "Связки"], ["skewer", "Шпажки"], ["mateIn1", "Мат в 1"],
   ["mateIn2", "Мат в 2"], ["mateIn3", "Мат в 3"], ["hangingPiece", "Выигрыш фигуры"],
@@ -28,6 +30,15 @@ function readProgress(): SavedProgress {
       completedDates: Array.isArray(saved?.completedDates) ? saved.completedDates.filter((value): value is string => typeof value === "string") : [],
       heartsByDate: saved?.heartsByDate && typeof saved.heartsByDate === "object" ? saved.heartsByDate : {},
       rushBest: { ...EMPTY.rushBest, ...(saved?.rushBest ?? {}) },
+      rushHistory: Array.isArray(saved?.rushHistory)
+        ? saved.rushHistory.filter((item): item is PuzzleRushAttempt =>
+          !!item && typeof item.id === "string"
+          && (item.mode === "3m" || item.mode === "5m" || item.mode === "survival")
+          && typeof item.playedAt === "string"
+          && Number.isFinite(item.score) && Number.isFinite(item.mistakes)
+          && Number.isFinite(item.maxPuzzleRating)
+        ).slice(0, 20)
+        : [],
       hardMode: typeof saved?.hardMode === "boolean" ? saved.hardMode : false,
     };
   } catch { return EMPTY; }
@@ -91,6 +102,11 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
   const [rushPuzzle, setRushPuzzle] = useState<Puzzle | null>(null);
   const [rushFen, setRushFen] = useState("");
   const [rushIndex, setRushIndex] = useState(0);
+  const [rushSeen, setRushSeen] = useState<string[]>([]);
+  const [rushHighestRating, setRushHighestRating] = useState(0);
+  const rushStartedAt = useRef<number | null>(null);
+  const rushSessionNumber = useRef(0);
+  const rushRecordedId = useRef<string | null>(null);
   const [customTheme, setCustomTheme] = useState("fork");
   const [customLevel, setCustomLevel] = useState("all");
   const [customPuzzle, setCustomPuzzle] = useState<Puzzle | null>(null);
@@ -217,17 +233,48 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
     return true;
   }, [customPuzzle, customFen, customIndex]);
 
+  const saveRushAttempt = useCallback(() => {
+    if (rushStartedAt.current === null) return;
+    const runId = rushStartedAt.current + "-" + rushSessionNumber.current;
+    if (rushRecordedId.current === runId) return;
+    rushRecordedId.current = runId;
+    const record: PuzzleRushAttempt = {
+      id: runId,
+      mode: rushMode,
+      playedAt: new Date(rushStartedAt.current).toISOString(),
+      score: rushScore,
+      mistakes: rushMistakes,
+      maxPuzzleRating: rushHighestRating,
+    };
+    setSaved((previous) => {
+      const best = Math.max(previous.rushBest[rushMode] ?? 0, rushScore);
+      const next = {
+        ...previous,
+        rushBest: { ...previous.rushBest, [rushMode]: best },
+        rushHistory: [record, ...previous.rushHistory.filter((item) => item.id !== runId)].slice(0, 20),
+      };
+      saveProgress(next);
+      return next;
+    });
+  }, [rushMode, rushScore, rushMistakes, rushHighestRating]);
+
   const beginRush = () => {
-    const next = randomItem(bank);
+    if (rushStartedAt.current !== null) saveRushAttempt();
+    const next = selectRushPuzzle(bank, 0, []);
     setRushPuzzle(next);
     setRushFen(next?.fen ?? "");
     setRushIndex(0);
     setRushScore(0);
     setRushMistakes(0);
+    setRushSeen(next ? [next.id] : []);
+    setRushHighestRating(next?.rating ?? 0);
     setRushTime(rushMode === "3m" ? 180 : rushMode === "5m" ? 300 : 0);
     setRushFinished(false);
+    rushSessionNumber.current += 1;
+    rushStartedAt.current = Date.now();
     setRushRunning(!!next);
   };
+
   const onRushMove = useCallback((move: BoardMove): boolean => {
     if (!rushPuzzle || !rushRunning) return false;
     const result = advancePuzzle(rushPuzzle, rushFen, rushIndex, move);
@@ -240,14 +287,23 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
     setRushFen(result.fen);
     setRushIndex(result.index);
     if (result.done) {
-      setRushScore((value) => value + 1);
-      const next = randomItem(bank.filter((puzzle) => puzzle.id !== rushPuzzle.id)) ?? randomItem(bank);
+      const nextScore = rushScore + 1;
+      const nextSeen = [...rushSeen, rushPuzzle.id];
+      setRushScore(nextScore);
+      setRushSeen(nextSeen);
+      setRushHighestRating((value) => Math.max(value, rushPuzzle.rating));
+      const next = selectRushPuzzle(bank, nextScore, nextSeen);
       setRushPuzzle(next);
       setRushFen(next?.fen ?? "");
       setRushIndex(0);
+      if (next) setRushHighestRating((value) => Math.max(value, next.rating));
+      if (!next) {
+        setRushRunning(false);
+        setRushFinished(true);
+      }
     }
     return true;
-  }, [rushPuzzle, rushRunning, rushFen, rushIndex, rushMistakes, bank]);
+  }, [rushPuzzle, rushRunning, rushFen, rushIndex, rushMistakes, rushScore, rushSeen, bank]);
 
   useEffect(() => {
     if (!rushRunning || rushMode === "survival") return;
@@ -261,14 +317,9 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
   }, [rushRunning, rushMode]);
 
   useEffect(() => {
-    if (!rushFinished) return;
-    setSaved((previous) => {
-      const best = Math.max(previous.rushBest[rushMode] ?? 0, rushScore);
-      const next = { ...previous, rushBest: { ...previous.rushBest, [rushMode]: best } };
-      saveProgress(next);
-      return next;
-    });
-  }, [rushFinished]);
+    if (rushFinished) saveRushAttempt();
+  }, [rushFinished, saveRushAttempt]);
+
 
   const shareDailyResult = async () => {
     const result = [
@@ -424,8 +475,13 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
                 <div className="rounded-xl bg-black/[.16] p-3"><div className="text-2xl font-black tabular-nums">{rushMistakes}/3</div><div className="text-[9px] font-bold uppercase text-[#91a083]">Ошибки</div></div>
                 <div className="rounded-xl bg-black/[.16] p-3"><div className="text-2xl font-black tabular-nums">{saved.rushBest[rushMode]}</div><div className="text-[9px] font-bold uppercase text-[#91a083]">Рекорд</div></div>
               </div>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[.07] bg-black/[.12] px-3 py-2.5 text-[10px]">
+                <span className="font-bold text-[#a8b79f]">Сложность растёт каждые две решённые задачи</span>
+                <span className="font-black text-[#d0e6b8]">Целевой уровень · {getRushTargetRating(rushScore)} Elo</span>
+                {rushPuzzle && <span className="text-[#9aa991]">Позиция · {rushPuzzle.rating}</span>}
+              </div>
               {rushPuzzle && <div className="mx-auto max-w-[720px]"><GameBoard fen={rushFen || rushPuzzle.fen} orientation={rushPuzzle.color === "w" ? "white" : "black"} interactive={rushRunning} allowedColor={rushPuzzle.color} onMove={onRushMove} /></div>}
-              {rushFinished && <div className="mt-4 rounded-2xl border border-[#718e55] bg-[#30442b] p-4"><div className="text-lg font-black text-[#d7edc3]">Раунд завершён</div><div className="mt-1 text-sm text-[#c1d8af]">Решено: {rushScore} · Ошибки: {rushMistakes} · Рекорд: {Math.max(saved.rushBest[rushMode], rushScore)}</div><p className="mt-1 text-[10px] text-[#9eb48c]">{rushMode === "survival" ? "Выживание заканчивается после трёх ошибок." : "Время вышло или закончились попытки."}</p></div>}
+              {rushFinished && <div className="mt-4 rounded-2xl border border-[#718e55] bg-[#30442b] p-4"><div className="text-lg font-black text-[#d7edc3]">Раунд завершён</div><div className="mt-1 text-sm text-[#c1d8af]">Решено: {rushScore} · Ошибки: {rushMistakes} · Рекорд: {Math.max(saved.rushBest[rushMode], rushScore)}</div><div className="mt-1 text-[10px] text-[#a8bd98]">Максимальная сложность в забеге: {rushHighestRating} Elo</div><p className="mt-1 text-[10px] text-[#9eb48c]">{rushMode === "survival" ? "Выживание заканчивается после трёх ошибок." : "Время вышло или закончились попытки."}</p></div>}
               {!rushRunning && !rushFinished && <div className="mt-4 rounded-xl border border-dashed border-white/[.12] p-8 text-center text-sm text-[#a1ad98]">Выбери режим справа и нажми «Старт».</div>}
               <div className="mt-4 flex flex-wrap gap-2">
                 <button onClick={beginRush} disabled={!bank.length} className="rounded-xl bg-[#9bc96e] px-5 py-3 text-sm font-black text-[#182315] hover:bg-[#b0db84] disabled:opacity-40">{rushFinished || rushRunning ? "Начать заново" : "Старт"}</button>
@@ -440,9 +496,31 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
                     ["3m", "3 минуты", "Быстрый спринт"],
                     ["5m", "5 минут", "Длинный раунд"],
                     ["survival", "Выживание", "Без таймера"],
-                  ] as Array<[RushMode, string, string]>).map(([id, label, desc]) => <button key={id} onClick={() => { setRushMode(id); setRushRunning(false); setRushFinished(false); setRushPuzzle(null); setRushTime(id === "3m" ? 180 : id === "5m" ? 300 : 0); }} className={"w-full rounded-xl border p-3 text-left " + (rushMode === id ? "border-[#9bc96e] bg-[#354a2d]" : "border-white/[.07] bg-[#1d281d] hover:bg-[#2d3a2b]")}><div className="text-xs font-extrabold">{label}</div><div className="mt-1 text-[10px] text-[#9eaa96]">{desc}</div></button>)}
+                  ] as Array<[RushMode, string, string]>).map(([id, label, desc]) => <button key={id} onClick={() => { if (rushStartedAt.current !== null) saveRushAttempt(); setRushMode(id); setRushRunning(false); setRushFinished(false); setRushPuzzle(null); setRushSeen([]); setRushTime(id === "3m" ? 180 : id === "5m" ? 300 : 0); rushStartedAt.current = null; }} className={"w-full rounded-xl border p-3 text-left " + (rushMode === id ? "border-[#9bc96e] bg-[#354a2d]" : "border-white/[.07] bg-[#1d281d] hover:bg-[#2d3a2b]")}><div className="text-xs font-extrabold">{label}</div><div className="mt-1 text-[10px] text-[#9eaa96]">{desc}</div></button>)}
                 </div>
-                <div className="mt-3 rounded-lg bg-[#1d281d] p-3 text-xs text-[#9eaa96]">Рейтинг задач не меняется. Тренируй скорость и точность без риска потерять Elo.</div>
+                <div className="mt-3 rounded-lg bg-[#1d281d] p-3 text-xs text-[#9eaa96]">Сложность растёт вместе со счётом. Повторные позиции в одном забеге исключены. Elo задач не меняется.</div>
+              </section>
+              <section className="rounded-2xl border border-white/[.07] bg-[#263026] p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-black">Последние забеги</div>
+                  <span className="text-[9px] text-[#82917a]">{saved.rushHistory.length}/20</span>
+                </div>
+                {saved.rushHistory.length ? (
+                  <div className="mt-3 space-y-2">
+                    {saved.rushHistory.slice(0, 5).map((attempt) => (
+                      <div key={attempt.id} className="rounded-lg border border-white/[.06] bg-[#1d281d] p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-extrabold">{attempt.mode === "3m" ? "Rush · 3 мин" : attempt.mode === "5m" ? "Rush · 5 мин" : "Выживание"}</span>
+                          <span className="text-sm font-black tabular-nums text-[#d4ebbd]">{attempt.score}</span>
+                        </div>
+                        <div className="mt-1 flex justify-between gap-2 text-[9px] text-[#8f9d85]">
+                          <span>{new Date(attempt.playedAt).toLocaleDateString("ru-RU")} · {new Date(attempt.playedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
+                          <span>{attempt.mistakes}/3 ошибок · {attempt.maxPuzzleRating} Elo max</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="mt-2 text-xs text-[#8f9d85]">История появится после первого забега.</p>}
               </section>
             </aside>
           </div>
