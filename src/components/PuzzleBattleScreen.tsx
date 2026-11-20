@@ -44,6 +44,24 @@ interface BattleLeader {
   draws: number;
   best_win_streak: number;
 }
+interface BattleHistoryEntry {
+  id: string;
+  played_at: string;
+  result: "win" | "loss" | "draw";
+  winner_id: string | null;
+  finish_reason: string | null;
+  opponent_id: string;
+  opponent_username: string;
+  opponent_avatar_url: string | null;
+  my_score: number;
+  opponent_score: number;
+  my_mistakes: number;
+  opponent_mistakes: number;
+  my_rating_before: number | null;
+  my_rating_after: number | null;
+  rating_delta: number | null;
+  season_points: number;
+}
 interface BattleSnapshot {
   status: "active" | "completed" | "cancelled";
   battle: {
@@ -88,6 +106,8 @@ interface BattleResponse {
   my_rank?: number | null;
   season_start?: string;
   sort?: "points" | "rating";
+  history?: BattleHistoryEntry[];
+  total?: number;
   error?: string;
 }
 const SESSION_KEY = "chessmart:account-session:v2";
@@ -165,6 +185,8 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
   const [leaderboardBusy, setLeaderboardBusy] = useState(false);
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
   const [seasonStart, setSeasonStart] = useState("");
+  const [history, setHistory] = useState<BattleHistoryEntry[]>([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const polling = useRef(false);
   const currentSession = session;
@@ -250,8 +272,29 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
     if (session) void loadLeaderboard(leaderboardSort);
   }, [session, leaderboardSort]);
 
+  const loadHistory = useCallback(async () => {
+    if (!session || historyBusy) return;
+    setHistoryBusy(true);
+    try {
+      const { data, session: fresh } = await battleAction(session, "history");
+      setSession(fresh);
+      setHistory(data.history ?? []);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setHistoryBusy(false);
+    }
+  }, [session, historyBusy]);
+
   useEffect(() => {
-    if (phase === "completed") void loadLeaderboard(leaderboardSort);
+    if (session) void loadHistory();
+  }, [session]);
+
+  useEffect(() => {
+    if (phase === "completed") {
+      void loadLeaderboard(leaderboardSort);
+      void loadHistory();
+    }
   }, [phase, leaderboardSort]);
 
   const startQueue = async () => {
@@ -431,6 +474,40 @@ export function PuzzleBattleScreen({ onBack }: { onBack: () => void }) {
                       </div>
                       {leaderboardRank && <div className="mt-2 border-t border-white/[.06] pt-2 text-[10px] font-bold text-[#a6ba99]">Твоё место: #{leaderboardRank}</div>}
                       <button onClick={() => void loadLeaderboard(leaderboardSort)} disabled={leaderboardBusy} className="mt-2 text-[9px] font-bold text-[#a9c68d] disabled:opacity-40">Обновить таблицу</button>
+                    </div>
+                    <div className="rounded-2xl border border-white/[.08] bg-black/[.13] p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-black">Последние дуэли</div>
+                        <button onClick={() => void loadHistory()} disabled={historyBusy} className="text-[9px] font-bold text-[#a9c68d] disabled:opacity-40">{historyBusy ? "Загружаем…" : "Обновить"}</button>
+                      </div>
+                      <div className="mt-1 text-[9px] text-[#82927a]">До 20 последних завершённых матчей этого аккаунта</div>
+                      {history.length ? (
+                        <div className="mt-2 space-y-2">
+                          {history.slice(0, 8).map((item) => (
+                            <div key={item.id} className="rounded-lg border border-white/[.06] bg-[#1d281d] p-2.5">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span className={"rounded-md px-1.5 py-1 text-[8px] font-black uppercase " + (item.result === "win" ? "bg-[#3d5835] text-[#c8e7b1]" : item.result === "loss" ? "bg-[#543632] text-[#f0b8ac]" : "bg-[#4a4b3a] text-[#e4dfb1]")}>
+                                    {item.result === "win" ? "Победа" : item.result === "loss" ? "Поражение" : "Ничья"}
+                                  </span>
+                                  <span className="truncate text-[10px] font-bold text-[#dbe7d1]">{item.opponent_username}</span>
+                                </div>
+                                <span className="shrink-0 text-sm font-black tabular-nums text-[#d2e8bd]">{item.my_score} : {item.opponent_score}</span>
+                              </div>
+                              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[9px] text-[#879781]">
+                                <span>{new Date(item.played_at).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                                <span>Ошибки {item.my_mistakes} : {item.opponent_mistakes}</span>
+                                <span className={item.rating_delta === null ? "" : item.rating_delta >= 0 ? "text-[#a9d38a]" : "text-[#e5a89d]"}>
+                                  {item.rating_delta === null ? "Без изменения Elo" : (item.rating_delta >= 0 ? "+" : "") + item.rating_delta + " Elo"}
+                                </span>
+                                <span className="text-[#bfd3a9]">+{item.season_points} сезонных</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-4 text-center text-[10px] text-[#82927a]">{historyBusy ? "Загружаем историю…" : "Здесь появятся твои первые дуэли."}</div>
+                      )}
                     </div>
                   </aside>
                 </div>
