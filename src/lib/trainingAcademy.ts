@@ -322,8 +322,10 @@ function phaseWeaknesses(profile: PlayerProfile): AcademyWeakness[] {
 }
 
 export function analyzeTrainingWeaknesses(profile: PlayerProfile): AcademyWeakness[] {
+  // Solved mistakes remain in history, but must stop contributing to current weaknesses.
+  const activePuzzles = safeArray(profile.puzzles).filter((puzzle) => !isFiniteNumber(puzzle.solvedAt));
   const themed = new Map<string, { count: number; weight: number }>();
-  for (const puzzle of safeArray(profile.puzzles)) {
+  for (const puzzle of activePuzzles) {
     const theme = classifyPuzzleTheme(puzzle);
     const entry = themed.get(theme) ?? { count: 0, weight: 0 };
     entry.count += 1;
@@ -341,7 +343,7 @@ export function analyzeTrainingWeaknesses(profile: PlayerProfile): AcademyWeakne
   }));
 
   const classCounts = new Map<string, number>();
-  for (const puzzle of safeArray(profile.puzzles)) classCounts.set(puzzle.cls, (classCounts.get(puzzle.cls) ?? 0) + 1);
+  for (const puzzle of activePuzzles) classCounts.set(puzzle.cls, (classCounts.get(puzzle.cls) ?? 0) + 1);
   const severe = (classCounts.get("blunder") ?? 0) * 4
     + (classCounts.get("mistake") ?? 0) * 2
     + (classCounts.get("miss") ?? 0) * 2
@@ -349,9 +351,9 @@ export function analyzeTrainingWeaknesses(profile: PlayerProfile): AcademyWeakne
   const classWeaknesses: AcademyWeakness[] = severe > 0 ? [{
     id: "move-quality",
     title: "Качество решений",
-    detail: `${safeArray(profile.puzzles).length} позиций с неточностями, ошибками, зевками или упущенными возможностями.`,
+    detail: `${activePuzzles.length} нерешённых позиций с неточностями, ошибками, зевками или упущенными возможностями.`,
     score: severe * 6,
-    sourceCount: safeArray(profile.puzzles).length,
+    sourceCount: activePuzzles.length,
     destination: "mistakes",
   }] : [];
 
