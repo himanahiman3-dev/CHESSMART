@@ -17,6 +17,7 @@
     "validate:engine-coach": "node --experimental-strip-types scripts/validate-engine-coach.mjs",
     "validate:engine-worker": "node --experimental-strip-types scripts/validate-engine-worker.mjs",
     "validate:endgames": "node scripts/validate-endgame-training.mjs",
+    "validate:puzzle-journey": "node --experimental-strip-types scripts/validate-puzzle-journey.mjs",
     "validate:training-academy": "node --experimental-strip-types scripts/validate-training-academy.mjs",
     "validate:systems-hub": "node --experimental-strip-types scripts/validate-systems-hub.mjs"
   },
