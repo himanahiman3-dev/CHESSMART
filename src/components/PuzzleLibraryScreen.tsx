@@ -367,7 +367,6 @@ export function PuzzleLibraryScreen({ onBack, profile, onChange }: Props) {
         <div className="mb-4 flex flex-wrap gap-2">
           {([
             ["rated", "Тренировка"],
-            ["daily", "Задача дня"],
             ["themes", "Все темы"],
           ] as const).map(([id, label]) => (
             <button key={id} onClick={() => { setMode(id); setQuery(""); }} className={"rounded-lg px-4 py-2 text-sm font-bold " + (mode === id ? "bg-[#81b64c] text-[#17210f]" : "border border-[#41403a] bg-[#30302b] text-[#d2d1cb] hover:bg-[#3b3a34]")}>{label}</button>
