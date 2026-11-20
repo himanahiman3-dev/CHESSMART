@@ -2,10 +2,9 @@
  * Конвейер обзора партии: разбор PGN → анализ Stockfish 19 (MultiPV 2, с кэшем и историей ходов)
  * → рейтинговый Expected Points (приближение) → классификация → собственная точность Chessmart → комментарии.
  *
- * Бюджет времени: на основную часть партии отводится 0.4 с на каждый полуход (10 ходов → 6 с, 20 → 12 с, 30 → 18 с…).
- * Бюджет делится динамически: если позиция посчитана быстрее (достигнута целевая глубина, ход единственный,
- * позиция взята из кэша), сэкономленное время достаётся следующим позициям, а общий анализ
- * завершается раньше. Время зря не тратится — Stockfish останавливается, как только достиг глубины.
+ * Основной проход: каждая позиция получает отдельный UCI movetime (300 / 1000 / 3000 мс).
+ * Поиск ограничен depth 22 и временем одновременно; выполняется то условие, которое наступит раньше.
+ * При таймауте используется последняя завершённая строка info, затем очередь переходит дальше.
  */
 import { Chess, type Square } from "chess.js";
 import type { Cls, Color, EngineLine, GameReview, MoveReview, PositionEval, Score } from "../types";
@@ -73,7 +72,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { gameBudgetMs, TIME_PER_MOVE_MS, MAX_ANALYSIS_DEPTH, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
+import { gameBudgetMs, TIME_PER_MOVE_MS, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
 import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { forcedMoveClass } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
@@ -89,9 +88,6 @@ export function moveTimeForDepth(depth: number): number | undefined {
 
 /** Результаты, недосчитанные глубже этого порога, не кэшируем (иначе слабая оценка закрепится в кэше навсегда). */
 const MIN_CACHEABLE_DEPTH = 8;
-/** Кэшированная оценка не глубже этого значения считается «слишком слабой» и пересчитывается. */
-const CACHE_ACCEPT_DEPTH = 16;
-
 /* ------------------------------------------------------------------ */
 /*        Параметры классификации (по Chess.com Classification V2)     */
 /* ------------------------------------------------------------------ */
@@ -161,8 +157,7 @@ export async function evaluatePosition(
   signal?: AbortSignal,
   onInfo?: (lines: EngineLine[]) => void,
   movetimeMs?: number,
-  history?: PositionHistory,
-  searchPolicy?: { minimumDepth?: number; movetimeAfterMinimumDepthMs?: number }
+  history?: PositionHistory
 ): Promise<{ evalResult: PositionEval; fromCache: boolean }> {
   const term = terminalEval(fen);
   if (term) return { evalResult: term, fromCache: true };
@@ -174,7 +169,7 @@ export async function evaluatePosition(
   // A shallow timed-out cache entry must not skip a fresh timed search.
   const requiredCacheDepth = depth;
   if (cached && cached.depth >= requiredCacheDepth) return { evalResult: cached, fromCache: true };
-  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history, ...searchPolicy });
+  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
   let lines: EngineLine[];
@@ -275,6 +270,102 @@ export function selectCriticalPositions(
   return rankCriticalPositions(candidates, maxCandidates);
 }
 
+
+/**
+ * Runs one timed UCI search for every position in the PGN.
+ * No extra verification pass follows, so the main-pass time table remains meaningful.
+ */
+export async function reviewGame(
+  pgn: string,
+  timePerPositionMs: number,
+  engine: StockfishEngine,
+  onProgress: (p: AnalyzeProgress) => void,
+  signal?: AbortSignal,
+  computeProfile?: ReviewComputeProfile
+): Promise<GameReview> {
+  const game = parseGame(pgn);
+  const N = game.moves.length;
+  const total = N + 1;
+  const movetimeMs = normalizeAnalysisTimeMs(timePerPositionMs);
+  const targetDepth = REVIEW_TARGET_DEPTH;
+  const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
+  const budgetMs = gameBudgetMs(N, movetimeMs);
+  const startedAt = now();
+
+  engine.newGame();
+  const positions: PositionEval[] = [];
+  let cachedHits = 0;
+
+  for (let i = 0; i <= N; i++) {
+    if (signal?.aborted) throw new Error("cancelled");
+    const fen = game.fens[i];
+    const history = {
+      startFen: game.startFen,
+      moves: game.moves.slice(0, i).map((move) => move.uci),
+    };
+
+    onProgress({
+      done: i,
+      total,
+      depth: 0,
+      targetDepth,
+      cached: cachedHits,
+      fen,
+      budgetMs,
+      elapsedMs: now() - startedAt,
+    });
+
+    const { evalResult, fromCache } = await evaluatePosition(
+      engine,
+      fen,
+      targetDepth,
+      mainMultiPv,
+      signal,
+      (lines) => {
+        onProgress({
+          done: i,
+          total,
+          depth: lines.length ? Math.min(...lines.map((line) => line.depth)) : 0,
+          targetDepth,
+          cached: cachedHits,
+          fen,
+          budgetMs,
+          elapsedMs: now() - startedAt,
+        });
+      },
+      movetimeMs,
+      history
+    );
+
+    if (fromCache) cachedHits++;
+    positions.push(evalResult);
+    onProgress({
+      done: i + 1,
+      total,
+      depth: evalResult.depth,
+      targetDepth,
+      cached: cachedHits,
+      fen,
+      budgetMs,
+      elapsedMs: now() - startedAt,
+    });
+  }
+
+  const reachedDepths = positions.filter((position) => position.depth > 0).map((position) => position.depth);
+  const minimumReachedDepth = reachedDepths.length ? Math.min(...reachedDepths) : 0;
+  onProgress({
+    done: total,
+    total,
+    depth: minimumReachedDepth,
+    targetDepth,
+    cached: cachedHits,
+    fen: game.fens[N],
+    budgetMs,
+    elapsedMs: now() - startedAt,
+  });
+
+  return buildReview(game, positions, targetDepth);
+}
 
 export function buildReview(
   game: ParsedGame,
