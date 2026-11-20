@@ -134,7 +134,8 @@ begin
       or coalesce(v_puzzle->>'fen', '') = ''
       or jsonb_typeof(v_puzzle->'moves') <> 'array'
       or jsonb_array_length(v_puzzle->'moves') < 1
-      or not (v_puzzle->>'color' = any(array['w','b']))
+      or v_puzzle->>'color' is null
+      or v_puzzle->>'color' not in ('w', 'b')
       or exists (
         select 1 from jsonb_array_elements_text(v_puzzle->'moves') as mv(value)
         where value !~ '^[a-h][1-8][a-h][1-8][qrbn]?$'
