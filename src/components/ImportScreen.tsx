@@ -44,7 +44,7 @@ function formatResult(result: string | undefined) {
   return "Результат не указан";
 }
 
-export function ImportScreen({ onStart }: { onStart: (pgn: string, depth: number) => void }) {
+export function ImportScreen({ onStart }: { onStart: (pgn: string, timePerPositionMs: number) => void }) {
   const { info } = useEngine();
   const [pgn, setPgn] = useState("");
   const [link, setLink] = useState("");
