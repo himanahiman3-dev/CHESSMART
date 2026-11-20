@@ -4,7 +4,7 @@ import type { PlayerProfile, PuzzleRatingEntry } from "../lib/playerProfile";
 import { GameBoard, type BoardMove } from "./GameBoard";
 import { playSound, soundForSan } from "../lib/sound";
 
-interface Puzzle {
+export interface Puzzle {
   id: string;
   fen: string;
   moves: string[];
@@ -99,7 +99,7 @@ async function fetchPage(offset: number, signal: AbortSignal): Promise<Puzzle[]>
   const payload = await response.json() as { rows?: Array<{ row?: Record<string, unknown> }> };
   return (payload.rows ?? []).map((item) => validPuzzle(item.row ?? {})).filter((item): item is Puzzle => !!item);
 }
-async function loadPuzzleBank(signal: AbortSignal, onProgress: (count: number) => void): Promise<Puzzle[]> {
+export async function loadPuzzleBank(signal: AbortSignal, onProgress: (count: number) => void): Promise<Puzzle[]> {
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? "null") as Puzzle[] | null;
     if (Array.isArray(cached) && cached.length >= TARGET) return cached.slice(0, TARGET);
