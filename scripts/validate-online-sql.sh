@@ -302,13 +302,13 @@ begin
 
   select public.join_puzzle_battle_queue('00000000-0000-0000-0000-000000000002', 1200, puzzle_pack) into second_join;
   if second_join->>'queued' <> 'false' then raise exception 'Second battle player should be matched immediately'; end if;
-  v_battle_id := (second_join->>'v_battle_id')::uuid;
+  v_battle_id := (second_join->>'battle_id')::uuid;
 
-  if (select count(*) from public.puzzle_battle_rounds where puzzle_battle_rounds.v_battle_id = v_battle_id) <> 5 then
+  if (select count(*) from public.puzzle_battle_rounds where puzzle_battle_rounds.battle_id = v_battle_id) <> 5 then
     raise exception 'Battle must contain exactly five rounds'; end if;
-  if (select count(*) from public.puzzle_battle_solutions where puzzle_battle_solutions.v_battle_id = v_battle_id) <> 5 then
+  if (select count(*) from public.puzzle_battle_solutions where puzzle_battle_solutions.battle_id = v_battle_id) <> 5 then
     raise exception 'Server must retain five hidden answer keys'; end if;
-  if (select count(*) from public.puzzle_battle_players where puzzle_battle_players.v_battle_id = v_battle_id) <> 2 then
+  if (select count(*) from public.puzzle_battle_players where puzzle_battle_players.battle_id = v_battle_id) <> 2 then
     raise exception 'Battle must have two player state rows'; end if;
 
   select public.submit_puzzle_battle_answer(v_battle_id, '00000000-0000-0000-0000-000000000001', 'e2e4') into answer;
@@ -325,7 +325,7 @@ begin
     raise exception 'Three incorrect answers must end the player series'; end if;
   select mistakes, completed into player_mistakes, player_completed
     from public.puzzle_battle_players
-    where puzzle_battle_players.v_battle_id = v_battle_id
+    where puzzle_battle_players.battle_id = v_battle_id
       and user_id = '00000000-0000-0000-0000-000000000002';
   if player_mistakes <> 3 or not player_completed then
     raise exception 'Three strikes must be persisted server-side'; end if;
@@ -341,7 +341,7 @@ begin
   select status, winner_id into battle_status, winner from public.puzzle_battles where id = v_battle_id;
   select score, completed into player_score, player_completed
     from public.puzzle_battle_players
-    where puzzle_battle_players.v_battle_id = v_battle_id
+    where puzzle_battle_players.battle_id = v_battle_id
       and user_id = '00000000-0000-0000-0000-000000000001';
   if battle_status <> 'completed'
     or winner <> '00000000-0000-0000-0000-000000000001'
