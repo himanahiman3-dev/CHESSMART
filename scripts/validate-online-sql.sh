@@ -458,6 +458,42 @@ begin
     or has_table_privilege('anon', 'public.puzzle_battle_season_stats', 'SELECT') then
     raise exception 'Season leaderboard must be readable only to authenticated users'; end if;
 end;
+  -- A second consecutive win increases the monthly points multiplier to x2.
+  insert into public.puzzle_battles(
+    player_one_id, player_two_id, duration_seconds, started_at, ends_at
+  ) values (
+    '00000000-0000-0000-0000-000000000004',
+    '00000000-0000-0000-0000-000000000005',
+    180, now(), now() + interval '180 seconds'
+  ) returning id into v_tiebreak_battle;
+
+  insert into public.puzzle_battle_players(
+    battle_id, user_id, score, round_index, mistakes, completed
+  ) values
+    (v_tiebreak_battle, '00000000-0000-0000-0000-000000000004', 1, 1, 0, true),
+    (v_tiebreak_battle, '00000000-0000-0000-0000-000000000005', 0, 0, 3, true);
+
+  update public.puzzle_battles
+    set status = 'completed', finish_reason = 'score'
+    where id = v_tiebreak_battle;
+
+  select points, battles into v_points, v_battles
+    from public.puzzle_battle_season_stats
+    where user_id = '00000000-0000-0000-0000-000000000004'
+      and season_start = date_trunc('month', now())::date;
+  if v_points <> 3 or v_battles <> 2 then
+    raise exception 'Second consecutive win must award two season points: points %, battles %',
+      v_points, v_battles;
+  end if;
+
+  select puzzle_battle_rating, puzzle_battle_win_streak, puzzle_battle_best_win_streak
+    into v_rating, v_streak, v_games
+    from public.online_profiles
+    where user_id = '00000000-0000-0000-0000-000000000004';
+  if v_streak <> 2 or v_games <> 2 then
+    raise exception 'Consecutive win streak did not increase to two: current %, best %', v_streak, v_games;
+  end if;
+
 $battle_ratings_test$;
 
 select 'Online SQL migrations, matchmaking, cloud progress, Puzzle Battle ratings and season tests passed.' as result;
