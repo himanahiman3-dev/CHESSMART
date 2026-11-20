@@ -44,6 +44,7 @@ const FILE_SOUNDS: Partial<Record<SoundKind, string>> = {
 
 let enabled = true;
 let soundToken = 0;
+let audioContext: AudioContext | null = null;
 let activeAudio: HTMLAudioElement | null = null;
 let activeAudioFinish: (() => void) | null = null;
 const audioCache = new Map<string, HTMLAudioElement>();
@@ -145,9 +146,9 @@ function getAudioContext(): AudioContext | null {
     const w = window as Window & { webkitAudioContext?: typeof AudioContext };
     const Constructor = window.AudioContext ?? w.webkitAudioContext;
     if (!Constructor) return null;
-    const context = new Constructor();
-    if (context.state === "suspended") void context.resume();
-    return context;
+    audioContext ??= new Constructor();
+    if (audioContext.state === "suspended") void audioContext.resume();
+    return audioContext;
   } catch {
     return null;
   }
@@ -176,7 +177,7 @@ function tone(
 /** Подготавливает MP3-элементы заранее, чтобы первый ход не ждал сетевую загрузку. */
 export function preloadSounds() {
   if (!enabled) return;
-  for (const file of Object.values(FILE_SOUNDS)) {
+  for (const file of Object.values(FILE_SOUNDS).filter((value): value is string => typeof value === "string")) {
     const audio = getAudio(file);
     audio.load();
   }
