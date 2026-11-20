@@ -32,7 +32,8 @@ import {
 } from "./lib/playerProfile";
 import type { GameReview } from "./types";
 import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
-import { StatsScreen, SettingsScreen, NewsScreen, type ShellRoute } from "./components/ChessmartShellScreens";\nimport { HomeDashboardScreen, PlayHubScreen, ProfileHubScreen } from "./components/ChessmartReplicaScreens";
+import { StatsScreen, SettingsScreen, NewsScreen, type ShellRoute } from "./components/ChessmartShellScreens";
+import { HomeDashboardScreen, PlayHubScreen, ProfileHubScreen } from "./components/ChessmartReplicaScreens";
 
 type Stage = "import" | "analyzing" | "review";
 type MainMode = ShellRoute | "daily" | "mistakes" | "endgame" | "lab" | "diagnostics" | "systems";
@@ -61,7 +62,8 @@ function SidebarIcon({ name }: { name: string }) {
   };
   return <svg className="cm-side-svg" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name] ?? paths.more}</svg>;
 }
-\nfunction AvatarPlaceholder({ accountProfile, name }: { accountProfile: AccountProfile | null; name: string }) {
+
+function AvatarPlaceholder({ accountProfile, name }: { accountProfile: AccountProfile | null; name: string }) {
   return accountProfile?.avatar_url
     ? <img className="cm-sidebar-avatar" src={accountProfile.avatar_url} alt="" />
     : <span className="cm-sidebar-avatar">{(accountProfile?.username ?? name).slice(0, 1).toUpperCase()}</span>;
@@ -207,7 +209,8 @@ function Main() {
   if (stage === "analyzing") return <AnalyzingScreen progress={progress} onCancel={() => abortRef.current?.abort()} />;
 
   let page = null;
-  if (mode === "home") page = <HomeDashboardScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;\n  else if (mode === "playHub") page = <PlayHubScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
+  if (mode === "home") page = <HomeDashboardScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
+  else if (mode === "playHub") page = <PlayHubScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
   else if (mode === "profile") page = <ProfileHubScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
   else if (mode === "stats") page = <StatsScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
   else if (mode === "settings") page = <SettingsScreen profile={profile} accountProfile={accountProfile} onChangeProfile={setProfile} onNavigate={changeMode} />;
