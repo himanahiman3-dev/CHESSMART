@@ -1,53 +1,40 @@
 /**
- * Pure time-budget helpers for the local Stockfish game-review pipeline.
- * Kept in a dependency-free module so regression tests can import it directly
- * under Node without loading the browser/engine analysis graph.
+ * Deterministic time presets for the local Stockfish game-review queue.
+ * Every non-terminal position gets its own full movetime allowance.
  */
+export const REVIEW_TARGET_DEPTH = 22;
+export const TIME_PER_MOVE_MS = 1000;
+export const DEFAULT_ANALYSIS_TIME_MS = 1000;
 
-/** Base analysis budget per played half-move, in milliseconds. */
-export const TIME_PER_MOVE_MS = 400;
+export const ANALYSIS_TIME_MODES = [
+  { id: "fast", timeMs: 300, title: "Быстрый", desc: "0,3 секунды на каждую позицию", note: "Быстрый обзор партии", level: "01" },
+  { id: "optimal", timeMs: 1000, title: "Оптимальный", desc: "1 секунда на каждую позицию", note: "Рекомендуемый баланс", level: "02" },
+  { id: "deep", timeMs: 3000, title: "Глубокий", desc: "3 секунды на каждую позицию", note: "Больше времени на сложные варианты", level: "03" },
+] as const;
 
-/** Minimum search slot per evaluated position, in milliseconds. */
-const MIN_POSITION_MS = 120;
+export type AnalysisTimeModeId = (typeof ANALYSIS_TIME_MODES)[number]["id"];
 
-/** Every non-terminal game position must reach this depth before the review advances. */
-export const MINIMUM_ANALYSIS_DEPTH = 41;
-
-/** Maximum user-selectable Stockfish search depth supported by the bundled UCI engine. */
-export const MAX_ANALYSIS_DEPTH = 245;
-
-/**
- * Convert the selected target depth into a per-ply time budget.
- * Presets up to depth 22 keep today's snappy timing; higher depths progressively
- * spend more time, reaching the desktop 6.5-minute target for an 80-ply game.
- */
-export function timePerMoveForDepth(depth: number, baseMs: number, maxMs: number): number {
-  const safeBase = Math.max(MIN_POSITION_MS, Math.floor(Number.isFinite(baseMs) ? baseMs : TIME_PER_MOVE_MS));
-  const safeMax = Math.max(safeBase, Math.floor(Number.isFinite(maxMs) ? maxMs : safeBase));
-  const targetDepth = Math.max(1, Math.min(MAX_ANALYSIS_DEPTH, Math.floor(depth)));
-  if (targetDepth <= 22 || safeMax === safeBase) return safeBase;
-  const progress = (targetDepth - 22) / (MAX_ANALYSIS_DEPTH - 22);
-  const ramp = Math.pow(progress, 1.08);
-  return Math.round(safeBase + (safeMax - safeBase) * ramp);
-}
-
-/** Total main-pass search budget for a game with the given number of played plies. */
-export function gameBudgetMs(moveCount: number, timePerMoveMs = TIME_PER_MOVE_MS): number {
-  const moves = Math.max(0, Math.floor(moveCount));
-  const positions = moves + 1;
-  const perMove = Math.max(MIN_POSITION_MS, Math.floor(timePerMoveMs));
-  // Reserve at least MIN_POSITION_MS for every evaluated position.
-  // A one-ply game still needs both its initial and final positions.
-  return Math.max(moves * perMove, positions * MIN_POSITION_MS);
+export function normalizeAnalysisTimeMs(value: number): number {
+  return ANALYSIS_TIME_MODES.some((mode) => mode.timeMs === value)
+    ? value
+    : DEFAULT_ANALYSIS_TIME_MS;
 }
 
 /**
- * Split the remaining game budget across positions still to be evaluated.
- * Never return more time than remains, even after scheduling overhead.
+ * A PGN with N played half-moves has N+1 review positions:
+ * the initial position, then the position after each half-move.
  */
+export function gameBudgetMs(moveCount: number, timePerPositionMs = TIME_PER_MOVE_MS): number {
+  const plies = Math.max(0, Math.floor(moveCount));
+  const positions = plies + 1;
+  const perPosition = Math.max(1, Math.floor(Number.isFinite(timePerPositionMs) ? timePerPositionMs : TIME_PER_MOVE_MS));
+  return positions * perPosition;
+}
+
+/** Split a remaining budget evenly; retained for callers that need a shared wall-clock budget. */
 export function slotForPosition(budgetMs: number, elapsedMs: number, positionsLeft: number): number {
   const remaining = Math.max(0, Math.floor(budgetMs - elapsedMs));
   if (remaining <= 0) return 1;
   const fairShare = Math.round(remaining / Math.max(1, positionsLeft));
-  return Math.max(1, Math.min(remaining, Math.max(MIN_POSITION_MS, fairShare)));
+  return Math.max(1, Math.min(remaining, fairShare));
 }
