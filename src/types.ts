@@ -7,6 +7,7 @@ export type Cls =
   | "excellent"
   | "good"
   | "book"
+  | "forced"
   | "inaccuracy"
   | "mistake"
   | "miss"
@@ -84,6 +85,7 @@ export const CLS_ORDER: Cls[] = [
   "excellent",
   "good",
   "book",
+  "forced",
   "inaccuracy",
   "mistake",
   "miss",
@@ -97,6 +99,7 @@ export const CLS_META: Record<Cls, { color: string; symbol: string; ru: string; 
   excellent: { color: "#96bc4b", symbol: "✓", ru: "Отличный ход", en: "Excellent" },
   good: { color: "#95af8a", symbol: "✓", ru: "Хороший", en: "Good" },
   book: { color: "#a88865", symbol: "BK", ru: "Книжный", en: "Book" },
+  forced: { color: "#8293a3", symbol: "→", ru: "Вынужденный", en: "Forced" },
   inaccuracy: { color: "#f7c045", symbol: "?!", ru: "Неточность", en: "Inaccuracy" },
   mistake: { color: "#e58f2a", symbol: "?", ru: "Ошибка", en: "Mistake" },
   miss: { color: "#ca3431", symbol: "×", ru: "Упущено", en: "Miss" },
@@ -110,6 +113,7 @@ export const emptyCounts = (): Record<Cls, number> => ({
   excellent: 0,
   good: 0,
   book: 0,
+  forced: 0,
   inaccuracy: 0,
   mistake: 0,
   miss: 0,
