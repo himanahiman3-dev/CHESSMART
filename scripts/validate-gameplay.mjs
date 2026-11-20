@@ -72,6 +72,7 @@ assert.equal(replayed.turn(), "b");
 assert.equal(replayUciHistory([{ uci: "e2e4" }, { uci: "e7e5" }]).history().length, 2);
 assert.equal(getLegalMoveCount(start), 20);
 assert.equal(getGamePhase(start), "opening");
+assert.equal(getGamePhase("not-a-valid-fen"), "opening", "Malformed FEN must keep the safe fallback phase.");
 const phaseBoundary = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 11";
 const materialBoundary = "r2nk2r/8/8/8/8/8/8/R1N1K2R w - - 0 20";
 assert.equal(classifyGamePhase(phaseBoundary), "middlegame");
