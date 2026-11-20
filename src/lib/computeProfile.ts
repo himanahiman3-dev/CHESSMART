@@ -15,6 +15,8 @@ export interface DeviceAnalysisProfile {
   maxThreads: number;
   hashMb: number;
   timePerMoveMs: number;
+  /** Per-ply ceiling used only when the user selects a high target depth. */
+  maxTimePerMoveMs: number;
   depthBonus: number;
   mainMultiPv: number;
   verifierEnabled: boolean;
@@ -41,6 +43,7 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
       maxThreads: 1,
       hashMb: 64,
       timePerMoveMs: 400,
+      maxTimePerMoveMs: 1100,
       depthBonus: 0,
       mainMultiPv: 2,
       verifierEnabled,
@@ -63,6 +66,7 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
     maxThreads,
     hashMb: highEndPc ? 512 : memory !== undefined && memory <= 8 ? 128 : 256,
     timePerMoveMs: highEndPc ? 1400 : lowResourcePc ? 650 : 1000,
+    maxTimePerMoveMs: lowResourcePc ? 2600 : 4750,
     depthBonus: highEndPc ? 5 : lowResourcePc ? 2 : 3,
     mainMultiPv: highEndPc ? 4 : lowResourcePc ? 2 : 3,
     verifierEnabled,

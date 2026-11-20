@@ -13,6 +13,7 @@ assert.equal(powerfulDesktop.defaultVariant, "full");
 assert.equal(powerfulDesktop.maxThreads, 15);
 assert.equal(powerfulDesktop.hashMb, 512);
 assert.equal(powerfulDesktop.timePerMoveMs, 1400);
+assert.equal(powerfulDesktop.maxTimePerMoveMs, 4750);
 assert.equal(powerfulDesktop.depthBonus, 5);
 assert.equal(powerfulDesktop.mainMultiPv, 4);
 assert.equal(powerfulDesktop.verifierMaxMoves, 2);
@@ -27,6 +28,7 @@ const ordinaryDesktop = getDeviceAnalysisProfile({
 assert.equal(ordinaryDesktop.device, "desktop");
 assert.equal(ordinaryDesktop.defaultVariant, "full");
 assert.equal(ordinaryDesktop.timePerMoveMs, 1000);
+assert.equal(ordinaryDesktop.maxTimePerMoveMs, 4750);
 assert.equal(ordinaryDesktop.depthBonus, 3);
 
 const lowEndPhone = getDeviceAnalysisProfile({
@@ -40,6 +42,7 @@ assert.equal(lowEndPhone.defaultVariant, "lite");
 assert.equal(lowEndPhone.maxThreads, 1);
 assert.equal(lowEndPhone.hashMb, 64);
 assert.equal(lowEndPhone.timePerMoveMs, 400);
+assert.equal(lowEndPhone.maxTimePerMoveMs, 1100);
 assert.equal(lowEndPhone.depthBonus, 0);
 assert.equal(lowEndPhone.mainMultiPv, 2);
 assert.equal(lowEndPhone.verifierEnabled, false);

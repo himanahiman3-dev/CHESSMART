@@ -73,7 +73,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { gameBudgetMs, slotForPosition, TIME_PER_MOVE_MS } from "./analysisBudget";
+import { gameBudgetMs, slotForPosition, TIME_PER_MOVE_MS, timePerMoveForDepth, MAX_ANALYSIS_DEPTH } from "./analysisBudget";
 import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
@@ -141,6 +141,7 @@ function playerElo(headers: Record<string, string>, c: Color): number | undefine
 
 export interface ReviewComputeProfile {
   timePerMoveMs: number;
+  maxTimePerMoveMs?: number;
   depthBonus: number;
   mainMultiPv: number;
   verifierEnabled: boolean;
@@ -186,9 +187,10 @@ export async function evaluatePosition(
   if (term) return { evalResult: term, fromCache: true };
   const historyKey = history ? `${history.startFen}|${history.moves.join(" ")}` : undefined;
   const cached = await getCachedPosition(fen, depth, multipv, historyKey);
-  // Раньше любой кэш (даже глубины 8, посчитанный за 120 мс) навсегда подменял анализ на заданную глубину.
-  // Теперь кэш принимается, только если он достаточно глубок; иначе позиция пересчитывается.
-  if (cached && cached.depth >= Math.min(depth, CACHE_ACCEPT_DEPTH)) return { evalResult: cached, fromCache: true };
+  // A quick-pass cache must not silently satisfy a user request for a much deeper search.
+  // For high target depths, accept only a result that reached at least 75% of the target.
+  const requiredCacheDepth = Math.min(depth, Math.max(CACHE_ACCEPT_DEPTH, Math.floor(depth * 0.75)));
+  if (cached && cached.depth >= requiredCacheDepth) return { evalResult: cached, fromCache: true };
   const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
@@ -329,7 +331,7 @@ async function refineCriticalPositions(
 
   try {
     verifier.newGame();
-    const targetDepth = Math.min(32, Math.max(16, depth + 4));
+    const targetDepth = Math.min(MAX_ANALYSIS_DEPTH, Math.max(16, depth + 4));
     let searchesLeft = candidates.length;
 
     for (const candidate of candidates) {
@@ -402,8 +404,10 @@ export async function reviewGame(
   const game = parseGame(pgn);
   const N = game.moves.length;
   const total = N + 1;
-  const timePerMoveMs = computeProfile?.timePerMoveMs ?? TIME_PER_MOVE_MS;
-  const effectiveDepth = Math.min(32, Math.max(1, depth + (computeProfile?.depthBonus ?? 0)));
+  const timePerMoveMs = computeProfile
+    ? timePerMoveForDepth(depth, computeProfile.timePerMoveMs, computeProfile.maxTimePerMoveMs ?? computeProfile.timePerMoveMs)
+    : TIME_PER_MOVE_MS;
+  const effectiveDepth = Math.min(MAX_ANALYSIS_DEPTH, Math.max(1, Math.floor(depth) + (computeProfile?.depthBonus ?? 0)));
   const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
   const tacticalExtraBudgetMs = computeProfile?.tacticalExtraBudgetMs ?? TACTICAL_EXTRA_BUDGET_MS;
   const verifierBudgetMs = computeProfile?.verifierBudgetMs ?? MULTI_ENGINE_RECHECK_BUDGET_MS;
@@ -520,7 +524,7 @@ async function refineSacrifices(
     if (sac.sacrifice) candidates.push({ i, amount: sac.amount });
   }
   candidates.sort((a, b) => b.amount - a.amount);
-  const targetDepth = depth + REFINE_DEPTH_BONUS;
+  const targetDepth = Math.min(MAX_ANALYSIS_DEPTH, depth + REFINE_DEPTH_BONUS);
   for (const { i } of candidates.slice(0, REFINE_MAX_MOVES)) {
     for (const idx of [i, i + 1]) {
       if (signal?.aborted) throw new Error("cancelled");

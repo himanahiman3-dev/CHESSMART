@@ -10,6 +10,24 @@ export const TIME_PER_MOVE_MS = 400;
 /** Minimum search slot per evaluated position, in milliseconds. */
 const MIN_POSITION_MS = 120;
 
+/** Maximum user-selectable Stockfish search depth supported by the bundled UCI engine. */
+export const MAX_ANALYSIS_DEPTH = 245;
+
+/**
+ * Convert the selected target depth into a per-ply time budget.
+ * Presets up to depth 22 keep today's snappy timing; higher depths progressively
+ * spend more time, reaching the desktop 6.5-minute target for an 80-ply game.
+ */
+export function timePerMoveForDepth(depth: number, baseMs: number, maxMs: number): number {
+  const safeBase = Math.max(MIN_POSITION_MS, Math.floor(Number.isFinite(baseMs) ? baseMs : TIME_PER_MOVE_MS));
+  const safeMax = Math.max(safeBase, Math.floor(Number.isFinite(maxMs) ? maxMs : safeBase));
+  const targetDepth = Math.max(1, Math.min(MAX_ANALYSIS_DEPTH, Math.floor(depth)));
+  if (targetDepth <= 22 || safeMax === safeBase) return safeBase;
+  const progress = (targetDepth - 22) / (MAX_ANALYSIS_DEPTH - 22);
+  const ramp = Math.pow(progress, 1.08);
+  return Math.round(safeBase + (safeMax - safeBase) * ramp);
+}
+
 /** Total main-pass search budget for a game with the given number of played plies. */
 export function gameBudgetMs(moveCount: number, timePerMoveMs = TIME_PER_MOVE_MS): number {
   const moves = Math.max(0, Math.floor(moveCount));
