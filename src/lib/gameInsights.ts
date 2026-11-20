@@ -1,5 +1,6 @@
 import { Chess, type PieceSymbol } from "chess.js";
 import type { UciGameMove } from "./gameNotation";
+import { classifyGamePhase } from "./learningStats";
 
 export type GamePhase = "opening" | "middlegame" | "endgame";
 export type TerminalState = "playing" | "check" | "checkmate" | "stalemate" | "draw";
@@ -60,13 +61,10 @@ export function formatMaterialBalance(balance: number): string {
 }
 export function getGamePhase(fen: string): GamePhase {
   try {
-    const chess = new Chess(fen);
-    const fullMove = Number(fen.trim().split(/\s+/)[5] ?? 1);
-    const board = chess.board().flat().filter((piece) => piece && piece.type !== "p" && piece.type !== "k");
-    if (board.length <= 6) return "endgame";
-    if (fullMove <= 12) return "opening";
-    return "middlegame";
-  } catch { return "opening"; }
+    return classifyGamePhase(fen);
+  } catch {
+    return "opening";
+  }
 }
 export function gamePhaseLabel(phase: GamePhase): string {
   return phase === "opening" ? "Дебют" : phase === "middlegame" ? "Миттельшпиль" : "Эндшпиль";
