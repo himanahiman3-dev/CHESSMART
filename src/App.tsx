@@ -10,6 +10,7 @@ import { OnlinePlayScreen } from "./components/OnlinePlayScreen";
 import { ProfileScreen } from "./components/ProfileScreen";
 import { MistakeTrainerScreen } from "./components/MistakeTrainerScreen";
 import { PuzzleLibraryScreen } from "./components/PuzzleLibraryScreen";
+import { DailyTrainingScreen } from "./components/DailyTrainingScreen";
 import { EndgameTrainingScreen } from "./components/EndgameTrainingScreen";
 import { OpeningExplorerScreen } from "./components/OpeningExplorerScreen";
 import { PositionLabScreen } from "./components/PositionLabScreen";
@@ -31,14 +32,15 @@ import type { GameReview } from "./types";
 import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
 
 type Stage = "import" | "analyzing" | "review";
-type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "mistakes" | "coach" | "academy" | "endgame" | "openings" | "lab" | "diagnostics" | "systems";
+type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "daily" | "mistakes" | "coach" | "academy" | "endgame" | "openings" | "lab" | "diagnostics" | "systems";
 type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "coach" | "academy" | "endgame" | "openings" | "profile" | "lab" | "diagnostics" | "systems";
 
 const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconName }> = [
   { id: "review", label: "Анализ партий", group: "Играть", icon: "analysis" },
   { id: "play", label: "Против компьютера", group: "Играть", icon: "play" },
   { id: "online", label: "Играть онлайн", group: "Играть", icon: "online" },
-  { id: "puzzles", label: "Тактические задачи", group: "Тренировка", icon: "puzzles" },
+  { id: "puzzles", label: "Библиотека задач", group: "Тренировка", icon: "puzzles" },
+  { id: "daily", label: "Задача дня и Rush", group: "Тренировка", icon: "puzzles" },
   { id: "mistakes", label: "Мои ошибки", group: "Тренировка", icon: "mistakes" },
   { id: "coach", label: "Personal Coach", group: "Тренировка", icon: "coach" },
   { id: "academy", label: "Академия и план", group: "Тренировка", icon: "academy" },
@@ -228,6 +230,7 @@ function Main() {
   else if (mode === "online") page = <OnlinePlayScreen onBack={() => changeMode("review")} />;
   else if (mode === "profile") page = <ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} onOpenAccount={() => changeMode("online")} />;
   else if (mode === "puzzles") page = <PuzzleLibraryScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
+  else if (mode === "daily") page = <DailyTrainingScreen onBack={() => changeMode("review")} />;
   else if (mode === "mistakes") page = <MistakeTrainerScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "coach") page = <PersonalCoachScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "academy") page = <TrainingAcademyScreen profile={profile} onBack={() => changeMode("review")} onNavigate={changeMode} />;
