@@ -354,5 +354,110 @@ begin
 end;
 $battle_flow_test$;
 
-select 'Online SQL migrations, matchmaking, cloud progress, and puzzle battle tests passed.' as result;
+-- Puzzle Battle uses a separate Elo, monthly points, streak multiplier and a mistake tie-break.
+do $battle_ratings_test$
+declare
+  v_first_battle uuid;
+  v_tiebreak_battle uuid;
+  v_rating integer;
+  v_games integer;
+  v_wins integer;
+  v_losses integer;
+  v_streak integer;
+  v_points integer;
+  v_battles integer;
+  v_winner uuid;
+  v_rating_applied boolean;
+  v_rating_one_after integer;
+  v_rating_two_after integer;
+begin
+  select id into v_first_battle
+    from public.puzzle_battles
+    where player_one_id = '00000000-0000-0000-0000-000000000001'
+      and player_two_id = '00000000-0000-0000-0000-000000000002'
+      and status = 'completed'
+    order by created_at desc
+    limit 1;
+  if v_first_battle is null then raise exception 'The main battle test did not create a completed battle'; end if;
+
+  select puzzle_battle_rating, puzzle_battle_games, puzzle_battle_wins,
+         puzzle_battle_losses, puzzle_battle_win_streak
+    into v_rating, v_games, v_wins, v_losses, v_streak
+    from public.online_profiles
+    where user_id = '00000000-0000-0000-0000-000000000001';
+  if v_rating <> 1212 or v_games <> 1 or v_wins <> 1 or v_losses <> 0 or v_streak <> 1 then
+    raise exception 'Puzzle Battle winner rating/stats mismatch: rating %, games %, wins %, losses %, streak %',
+      v_rating, v_games, v_wins, v_losses, v_streak;
+  end if;
+
+  select points, battles into v_points, v_battles
+    from public.puzzle_battle_season_stats
+    where user_id = '00000000-0000-0000-0000-000000000001'
+      and season_start = date_trunc('month', now())::date;
+  if v_points <> 5 or v_battles <> 1 then
+    raise exception 'First-win season points mismatch: points %, battles %', v_points, v_battles;
+  end if;
+
+  -- Applying the same completed result again must not award Elo or season points twice.
+  perform public.apply_puzzle_battle_result(v_first_battle);
+  select puzzle_battle_rating, puzzle_battle_games into v_rating, v_games
+    from public.online_profiles
+    where user_id = '00000000-0000-0000-0000-000000000001';
+  if v_rating <> 1212 or v_games <> 1 then
+    raise exception 'Puzzle Battle result settlement was not idempotent'; end if;
+
+  -- Equal scores are decided by fewer mistakes, even when the timeout is what ends the battle.
+  insert into public.puzzle_battles(
+    player_one_id, player_two_id, duration_seconds, started_at, ends_at
+  ) values (
+    '00000000-0000-0000-0000-000000000003',
+    '00000000-0000-0000-0000-000000000004',
+    180, now(), now() + interval '180 seconds'
+  ) returning id into v_tiebreak_battle;
+
+  insert into public.puzzle_battle_players(
+    battle_id, user_id, score, round_index, mistakes, completed
+  ) values
+    (v_tiebreak_battle, '00000000-0000-0000-0000-000000000003', 1, 1, 2, true),
+    (v_tiebreak_battle, '00000000-0000-0000-0000-000000000004', 1, 1, 1, true);
+
+  update public.puzzle_battles
+    set status = 'completed', finish_reason = 'time'
+    where id = v_tiebreak_battle;
+
+  select winner_id, player_one_rating_after, player_two_rating_after, rating_applied
+    into v_winner, v_rating_one_after, v_rating_two_after, v_rating_applied
+    from public.puzzle_battles
+    where id = v_tiebreak_battle;
+  if v_winner <> '00000000-0000-0000-0000-000000000004'
+    or v_rating_one_after <> 1188
+    or v_rating_two_after <> 1212
+    or not v_rating_applied then
+    raise exception 'Puzzle Battle tie-break/rating settlement failed: winner %, ratings % / %, applied %',
+      v_winner, v_rating_one_after, v_rating_two_after, v_rating_applied;
+  end if;
+
+  select points, battles into v_points, v_battles
+    from public.puzzle_battle_season_stats
+    where user_id = '00000000-0000-0000-0000-000000000004'
+      and season_start = date_trunc('month', now())::date;
+  if v_points <> 1 or v_battles <> 1 then
+    raise exception 'Tie-break winner season points mismatch'; end if;
+
+  select puzzle_battle_rating, puzzle_battle_wins, puzzle_battle_win_streak
+    into v_rating, v_wins, v_streak
+    from public.online_profiles
+    where user_id = '00000000-0000-0000-0000-000000000004';
+  if v_rating <> 1212 or v_wins <> 1 or v_streak <> 1 then
+    raise exception 'Tie-break winner profile record mismatch'; end if;
+
+  if not has_table_privilege('authenticated', 'public.puzzle_battle_season_stats', 'SELECT')
+    or has_table_privilege('authenticated', 'public.puzzle_battle_season_stats', 'INSERT')
+    or has_table_privilege('authenticated', 'public.puzzle_battle_season_stats', 'UPDATE')
+    or has_table_privilege('anon', 'public.puzzle_battle_season_stats', 'SELECT') then
+    raise exception 'Season leaderboard must be readable only to authenticated users'; end if;
+end;
+$battle_ratings_test$;
+
+select 'Online SQL migrations, matchmaking, cloud progress, Puzzle Battle ratings and season tests passed.' as result;
 SQL
