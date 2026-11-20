@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Chessboard } from "react-chessboard";
 import type { PlayerProfile } from "../lib/playerProfile";
 import { updatePlayerName } from "../lib/playerProfile";
 import type { AccountProfile } from "../lib/accountProfile";
@@ -7,6 +6,13 @@ import { loadGameplayPreferences, updateGameplayPreferences, type GameplayPrefer
 
 export type ShellRoute = "home" | "review" | "online" | "play" | "coach" | "puzzles" | "battle" | "openings" | "lessons" | "academy" | "profile" | "profileDetails" | "stats" | "settings" | "news";
 type Navigate = (route: ShellRoute) => void;
+const HOME_BOARD_POSITION = [
+  "♜♞♝♛♚♝♞♜",
+  "♟♟♟♟♟♟♟♟",
+  "........", "........", "........", "........",
+  "♙♙♙♙♙♙♙♙",
+  "♖♘♗♕♔♗♘♖",
+];
 const BOARD_COLORS: Record<GameBoardTheme, { light: string; dark: string }> = {
   classic: { light: "#eeeed2", dark: "#779556" }, blue: { light: "#e8edf5", dark: "#6b83a5" },
   walnut: { light: "#ead7ba", dark: "#9a6748" }, violet: { light: "#ece4f4", dark: "#856a9b" },
@@ -29,7 +35,17 @@ export function HomeScreen({ profile, accountProfile, onNavigate }: { profile: P
   return <div className="cm-home-screen">
     <div className="cm-home-board-column">
       <div className="cm-opponent-bar"><div className="cm-opponent-avatar">♟</div><div><strong>Соперник</strong><small>Готов к партии</small></div><span className="cm-online-dot" /></div>
-      <div className="cm-home-board"><Chessboard options={{ id: "chessmart-home-board", position: "start", boardOrientation: "white", allowDragging: false, allowDrawingArrows: false, showAnimations: false, darkSquareStyle: { backgroundColor: colors.dark }, lightSquareStyle: { backgroundColor: colors.light }, boardStyle: { borderRadius: "3px", boxShadow: "0 16px 42px rgba(0,0,0,.35)" } }} /></div>
+      <div className="cm-home-board" role="img" aria-label="Шахматная доска в начальной позиции">
+        <div className="cm-preview-board">
+          {HOME_BOARD_POSITION.map((row, rowIndex) => row.split("").map((piece, columnIndex) => {
+            const lightSquare = (rowIndex + columnIndex) % 2 === 0;
+            const isBlackPiece = rowIndex < 2;
+            return <div key={`${rowIndex}-${columnIndex}`} className="cm-preview-square" style={{ backgroundColor: lightSquare ? colors.light : colors.dark }}>
+              {piece !== "." && <span className={isBlackPiece ? "cm-preview-piece cm-preview-piece-black" : "cm-preview-piece cm-preview-piece-white"}>{piece}</span>}
+            </div>;
+          }))}
+        </div>
+      </div>
       <div className="cm-player-bar"><Avatar profile={accountProfile} localName={profile.name} size="small" /><div className="cm-player-name"><strong>{username}</strong><small>{accountProfile ? "Аккаунт CHESSMART" : "Локальный профиль"}</small></div><div className="cm-player-rating"><span>Рейтинг</span><b>{accountProfile?.rapid_rating ?? profile.rating}</b></div></div>
       <div className="cm-board-caption">Доска-превью · выбери режим справа, чтобы начать игру</div>
     </div>
