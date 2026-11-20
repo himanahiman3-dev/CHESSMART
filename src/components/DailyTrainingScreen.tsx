@@ -278,7 +278,7 @@ export function DailyTrainingScreen({ onBack }: { onBack: () => void }) {
       "Осталось сердец: " + dailyHearts + "/5",
       "Серия: " + dailyStreak + " дн.",
       window.location.origin,
-    ].join("\\n");
+    ].join("\n");
     try {
       await navigator.clipboard.writeText(result);
       setDailyMessage("Результат скопирован. Отправляй друзьям и сравнивайте серию!");
