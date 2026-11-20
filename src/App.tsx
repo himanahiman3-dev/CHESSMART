@@ -11,6 +11,7 @@ import { ProfileScreen } from "./components/ProfileScreen";
 import { MistakeTrainerScreen } from "./components/MistakeTrainerScreen";
 import { PuzzleLibraryScreen } from "./components/PuzzleLibraryScreen";
 import { DailyTrainingScreen } from "./components/DailyTrainingScreen";
+import { LearningPathScreen } from "./components/LearningPathScreen";
 import { EndgameTrainingScreen } from "./components/EndgameTrainingScreen";
 import { OpeningExplorerScreen } from "./components/OpeningExplorerScreen";
 import { PositionLabScreen } from "./components/PositionLabScreen";
@@ -32,8 +33,8 @@ import type { GameReview } from "./types";
 import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
 
 type Stage = "import" | "analyzing" | "review";
-type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "daily" | "mistakes" | "coach" | "academy" | "endgame" | "openings" | "lab" | "diagnostics" | "systems";
-type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "coach" | "academy" | "endgame" | "openings" | "profile" | "lab" | "diagnostics" | "systems";
+type MainMode = "review" | "play" | "online" | "profile" | "puzzles" | "daily" | "mistakes" | "coach" | "academy" | "lessons" | "endgame" | "openings" | "lab" | "diagnostics" | "systems";
+type IconName = "analysis" | "play" | "online" | "puzzles" | "mistakes" | "coach" | "academy" | "lessons" | "endgame" | "openings" | "profile" | "lab" | "diagnostics" | "systems";
 
 const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconName }> = [
   { id: "review", label: "Анализ партий", group: "Играть", icon: "analysis" },
@@ -44,6 +45,7 @@ const NAV_ITEMS: Array<{ id: MainMode; label: string; group: string; icon: IconN
   { id: "mistakes", label: "Мои ошибки", group: "Тренировка", icon: "mistakes" },
   { id: "coach", label: "Personal Coach", group: "Тренировка", icon: "coach" },
   { id: "academy", label: "Академия и план", group: "Тренировка", icon: "academy" },
+  { id: "lessons", label: "Уроки и курсы", group: "Изучать", icon: "lessons" },
   { id: "endgame", label: "Эндшпиль", group: "Тренировка", icon: "endgame" },
   { id: "openings", label: "Дебютная база", group: "Изучать", icon: "openings" },
   { id: "profile", label: "Статистика", group: "Изучать", icon: "profile" },
@@ -64,6 +66,7 @@ function NavIcon({ name, active = false }: { name: IconName; active?: boolean })
       {name === "mistakes" && <><path {...common} d="M12 3 2.8 19h18.4L12 3Z" /><path {...common} d="M12 9v4.5M12 17h.01" /></>}
       {name === "coach" && <><path {...common} d="M12 3.5 14 8l4.9.6-3.6 3.3.9 4.8-4.2-2.4-4.2 2.4.9-4.8-3.6-3.3L11 8z" /><path {...common} d="M6 20h12M8 17.5V20m8-2.5V20" /></>}
       {name === "academy" && <><path {...common} d="m3 8 9-4 9 4-9 4-9-4Z" /><path {...common} d="M7 10v5c3.2 2.5 6.8 2.5 10 0v-5M21 8v7" /><path {...common} d="M5 19h14" /></>}
+      {name === "lessons" && <><path {...common} d="M3.5 5.5c3.2-.9 6.1-.3 8.5 1.7v12c-2.4-2-5.3-2.6-8.5-1.7z" /><path {...common} d="M20.5 5.5c-3.2-.9-6.1-.3-8.5 1.7v12c2.4-2 5.3-2.6 8.5-1.7z" /><path {...common} d="M12 7.2v12" /></>}
       {name === "endgame" && <><path {...common} d="M4 20h16M6 20V8l6-4 6 4v12" /><path {...common} d="M9 11h6M9 15h6" /></>}
       {name === "openings" && <><path {...common} d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" /></>}
       {name === "profile" && <><circle {...common} cx="12" cy="8" r="3.2" /><path {...common} d="M4.5 20a7.5 7.5 0 0 1 15 0" /></>}
@@ -231,6 +234,7 @@ function Main() {
   else if (mode === "profile") page = <ProfileScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} onOpenAccount={() => changeMode("online")} />;
   else if (mode === "puzzles") page = <PuzzleLibraryScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "daily") page = <DailyTrainingScreen onBack={() => changeMode("review")} />;
+  else if (mode === "lessons") page = <LearningPathScreen onBack={() => changeMode("review")} onNavigate={changeMode} />;
   else if (mode === "mistakes") page = <MistakeTrainerScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "coach") page = <PersonalCoachScreen profile={profile} onChange={setProfile} onBack={() => changeMode("review")} />;
   else if (mode === "academy") page = <TrainingAcademyScreen profile={profile} onBack={() => changeMode("review")} onNavigate={changeMode} />;
