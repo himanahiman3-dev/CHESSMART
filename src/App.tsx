@@ -168,8 +168,8 @@ function Main() {
     return () => { cancelled = true; };
   }, []);
 
-  const persistPersonalReview = useCallback((result: GameReview, color: Color) => {
-    setProfile((current) => recordPersonalGameReview(current, result, color));
+  const persistPersonalReview = useCallback((result: GameReview, color: Color, ratingType?: "bullet" | "blitz" | "rapid") => {
+    setProfile((current) => recordPersonalGameReview(current, result, color, ratingType));
   }, []);
 
   const openPersonalReview = useCallback((result: GameReview) => {
