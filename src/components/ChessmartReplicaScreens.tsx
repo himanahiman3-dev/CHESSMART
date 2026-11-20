@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { PlayerProfile } from "../lib/playerProfile";
+import type { Cls } from "../types";
 import type { AccountProfile } from "../lib/accountProfile";
 import type { ShellRoute } from "./ChessmartShellScreens";
 import { GameBoard } from "./GameBoard";
@@ -260,6 +261,24 @@ export function ProfileHubScreen({ profile, accountProfile, onNavigate }: {
     : 0;
   const games = profile.wins + profile.losses + profile.draws;
   const winRate = games ? Math.round(profile.wins / games * 100) : 0;
+  const qualityTotals: Record<"best" | "brilliant" | "great" | "good" | "inaccuracy" | "miss" | "mistake" | "blunder", number> = {
+    best: 0, brilliant: 0, great: 0, good: 0, inaccuracy: 0, miss: 0, mistake: 0, blunder: 0,
+  };
+  for (const report of profile.personalReviews ?? []) {
+    for (const key of Object.keys(qualityTotals) as Array<keyof typeof qualityTotals>) {
+      qualityTotals[key] += report.counts[key] ?? 0;
+    }
+  }
+  const qualityItems: Array<{ key: Cls; label: string; value: number }> = [
+    { key: "best", label: "Лучшие", value: qualityTotals.best },
+    { key: "brilliant", label: "Блестящие", value: qualityTotals.brilliant },
+    { key: "great", label: "Сильные", value: qualityTotals.great },
+    { key: "good", label: "Хорошие", value: qualityTotals.good },
+    { key: "inaccuracy", label: "Неточности", value: qualityTotals.inaccuracy },
+    { key: "miss", label: "Упущенные возможности", value: qualityTotals.miss },
+    { key: "mistake", label: "Ошибки", value: qualityTotals.mistake },
+    { key: "blunder", label: "Зевки", value: qualityTotals.blunder },
+  ];
 
   return (
     <div className="cm-replica-page cm-member-page">
@@ -301,6 +320,20 @@ export function ProfileHubScreen({ profile, accountProfile, onNavigate }: {
                 <div><span>Процент побед</span><strong>{winRate}%</strong><small>{games} партий</small></div>
               </div>
             )}
+          </section>
+
+          <section className="cm-replica-card cm-member-quality-card">
+            <div className="cm-replica-section-heading">
+              <div><h2>Качество твоих ходов</h2><p>Только твои ходы в сыгранных и разобранных партиях · {profile.personalReviews?.length ?? 0} партий</p></div>
+            </div>
+            <div className="cm-member-quality-grid">
+              {qualityItems.map((item) => (
+                <div className={`cm-member-quality-item ${item.key}`} key={item.key}>
+                  <span>{item.label}</span><strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+            {!(profile.personalReviews?.length) && <p className="cm-member-quality-empty">Здесь появится статистика после первой сыгранной партии и её автоматического анализа.</p>}
           </section>
 
           <section className="cm-replica-card cm-member-recent-games">
