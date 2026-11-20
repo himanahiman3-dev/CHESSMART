@@ -37,7 +37,7 @@ export function EngineLoader() {
   ];
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1d211c] px-4 py-8 text-[#f0f2eb]">
+    <section aria-labelledby="engine-loader-title" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1d211c] px-4 py-8 text-[#f0f2eb]">
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div className="absolute -left-32 -top-40 h-[500px] w-[500px] rounded-full bg-[#8dbb61]/[0.08] blur-[120px]" />
         <div className="absolute -bottom-40 -right-20 h-[420px] w-[420px] rounded-full bg-[#8dbb61]/[0.045] blur-[120px]" />
@@ -60,7 +60,7 @@ export function EngineLoader() {
         <div className="grid overflow-hidden rounded-[28px] border border-[#414a3b] bg-[#272c25] shadow-[0_28px_90px_rgba(0,0,0,.32)] lg:grid-cols-[1.1fr_.9fr]">
           <section className="p-6 sm:p-9">
             <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#8fa17f]">Первый запуск</div>
-            <h1 className="mt-3 max-w-xl text-3xl font-black leading-[1.06] tracking-[-0.04em] text-white sm:text-4xl">
+            <h1 id="engine-loader-title" className="mt-3 max-w-xl text-3xl font-black leading-[1.06] tracking-[-0.04em] text-white sm:text-4xl">
               Подготовим движок
               <span className="block text-[#b5d98e]">для твоих партий.</span>
             </h1>
@@ -189,6 +189,6 @@ export function EngineLoader() {
           </aside>
         </div>
       </div>
-    </main>
+    </section>
   );
 }
