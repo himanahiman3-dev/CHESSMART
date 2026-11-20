@@ -63,6 +63,8 @@ jobs:
         run: npm run validate:engine-coach
       - name: Validate Stockfish worker lifecycle and failure handling
         run: npm run validate:engine-worker
+      - name: Validate endgame positions and five-position challenge
+        run: npm run validate:endgames
       - name: Validate Training Academy and 15,000 scenarios
         run: npm run validate:training-academy
       - name: Validate CHESSMART Systems Hub and 15,000 scenarios
