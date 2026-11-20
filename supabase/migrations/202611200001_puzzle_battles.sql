@@ -105,6 +105,26 @@ grant all on public.puzzle_battles, public.puzzle_battle_queue, public.puzzle_ba
   public.puzzle_battle_rounds, public.puzzle_battle_solutions, public.puzzle_battle_players
   to service_role;
 
+create or replace function public.is_valid_puzzle_battle_uci(p_uci text)
+returns boolean
+language sql
+immutable
+set search_path = pg_catalog
+as $uci$
+  select p_uci is not null
+    and length(p_uci) in (4, 5)
+    and substr(p_uci, 1, 1) between 'a' and 'h'
+    and substr(p_uci, 2, 1) between '1' and '8'
+    and substr(p_uci, 3, 1) between 'a' and 'h'
+    and substr(p_uci, 4, 1) between '1' and '8'
+    and (
+      length(p_uci) = 4
+      or substr(p_uci, 5, 1) in ('q', 'r', 'b', 'n')
+    );
+$uci$;
+revoke all on function public.is_valid_puzzle_battle_uci(text) from public, anon, authenticated;
+grant execute on function public.is_valid_puzzle_battle_uci(text) to service_role;
+
 create or replace function public.join_puzzle_battle_queue(
   p_user_id uuid,
   p_rating integer,
@@ -125,12 +145,32 @@ begin
   if p_user_id is null or p_rating is null or p_rating < 100 or p_rating > 4000 then
     raise exception 'Invalid player or rating';
   end if;
-  if coalesce(jsonb_typeof(p_puzzles), '') <> 'array'
-    or case when jsonb_typeof(p_puzzles) = 'array'
-      then jsonb_array_length(p_puzzles) <> 5
-      else true end then
+  if coalesce(jsonb_typeof(p_puzzles), '') <> 'array' then
     raise exception 'A battle requires exactly five puzzles';
   end if;
+  if jsonb_array_length(p_puzzles) <> 5 then
+    raise exception 'A battle requires exactly five puzzles';
+  end if;
+  for v_puzzle in select value from jsonb_array_elements(p_puzzles) as items(value)
+  loop
+    if coalesce(v_puzzle->>'id', '') = ''
+      or coalesce(v_puzzle->>'fen', '') = ''
+      or coalesce(v_puzzle->>'color', '') not in ('w', 'b')
+      or coalesce(jsonb_typeof(v_puzzle->'moves'), '') <> 'array' then
+      raise exception 'Invalid puzzle pack';
+    end if;
+    if jsonb_array_length(v_puzzle->'moves') < 1
+      or jsonb_array_length(v_puzzle->'moves') > 100 then
+      raise exception 'Invalid puzzle move count';
+    end if;
+    if exists (
+      select 1
+      from jsonb_array_elements_text(v_puzzle->'moves') as mv(value)
+      where not public.is_valid_puzzle_battle_uci(value)
+    ) then
+      raise exception 'Invalid UCI move in puzzle pack';
+    end if;
+  end loop;
 
   -- Serialize queue changes so simultaneous arrivals cannot both miss each other.
   perform pg_advisory_xact_lock(hashtext('chessmart:puzzle-battle-queue'));
@@ -263,7 +303,7 @@ declare
   v_winner uuid;
 begin
   if p_battle_id is null or p_user_id is null
-    or p_uci is null or p_uci !~ '^[a-h][1-8][a-h][1-8][qrbn]?
+    or not public.is_valid_puzzle_battle_uci(p_uci) then
     raise exception 'Invalid move format';
   end if;
   select * into v_battle from public.puzzle_battles where id = p_battle_id for update;
