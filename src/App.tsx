@@ -49,7 +49,7 @@ function BrandMark() {
 
 
 function SidebarIcon({ name }: { name: string }) {
-  const paths: Record<string, React.ReactNode> = {
+  const paths: Record<string, ReactNode> = {
     home: <><path d="m3 10 9-7 9 7" /><path d="M5 9v11h14V9M9 20v-6h6v6" /></>,
     play: <><path d="M7 4.5v15l12-7.5z" /></>,
     puzzle: <><path d="M8 4h3a2 2 0 1 1 4 0h3v5a2 2 0 1 1 0 4v7h-5a2 2 0 1 0-4 0H5v-6a2 2 0 1 1 0-4V4z" /></>,
@@ -315,22 +315,25 @@ function Main() {
           </div>
           {sidebarItems.slice(4).map((item) => (
             <button key={item.id} type="button" onClick={() => changeMode(item.id)} aria-current={mode === item.id ? "page" : undefined} className={mode === item.id ? "cm-side-item active" : "cm-side-item"}>
-              <span className="cm-side-icon">{item.icon}</span><span>{item.label}</span>
+              <span className="cm-side-icon"><SidebarIcon name={item.icon} /></span><span>{item.label}</span>
             </button>
           ))}
           <div className="cm-side-group cm-more-group">
             <button type="button" onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen} className={moreOpen ? "cm-side-item active" : "cm-side-item"}>
-              <span className="cm-side-icon">•••</span><span>Ещё</span><span className="cm-side-chevron">{moreOpen ? "⌃" : "⌄"}</span>
+              <span className="cm-side-icon"><SidebarIcon name="more" /></span><span>Ещё</span><span className="cm-side-chevron">{moreOpen ? "⌃" : "⌄"}</span>
             </button>
             {moreOpen && <div className="cm-side-submenu">
-              <button type="button" onClick={() => changeMode("daily")}>⚡ Задача дня и Rush</button>
-              <button type="button" onClick={() => changeMode("mistakes")}>⚠ Мои ошибки</button>
-              <button type="button" onClick={() => changeMode("coach")}>🎓 Personal Coach</button>
-              <button type="button" onClick={() => changeMode("endgame")}>♔ Эндшпиль</button>
-              <button type="button" onClick={() => changeMode("openings")}>📖 Дебюты</button>
-              <button type="button" onClick={() => changeMode("lab")}>🧪 Лаборатория позиции</button>
-              <button type="button" onClick={() => changeMode("diagnostics")}>🧠 Диагностика 300</button>
-              <button type="button" onClick={() => changeMode("systems")}>⚙ Центр систем</button>
+              <button type="button" onClick={() => changeMode("play")}>Играть против бота</button>
+              <button type="button" onClick={() => changeMode("coach")}>Тренер</button>
+              <button type="button" onClick={() => changeMode("battle")}>Puzzle Battle</button>
+              <button type="button" onClick={() => changeMode("academy")}>Академия</button>
+              <button type="button" onClick={() => changeMode("daily")}>Задача дня и Rush</button>
+              <button type="button" onClick={() => changeMode("mistakes")}>Мои ошибки</button>
+              <button type="button" onClick={() => changeMode("endgame")}>Эндшпиль</button>
+              <button type="button" onClick={() => changeMode("openings")}>Дебюты и позиции</button>
+              <button type="button" onClick={() => changeMode("lab")}>Лаборатория позиции</button>
+              <button type="button" onClick={() => changeMode("diagnostics")}>Диагностика 300</button>
+              <button type="button" onClick={() => changeMode("systems")}>Центр систем</button>
             </div>}
           </div>
         </nav>
@@ -360,11 +363,11 @@ function Main() {
         <main className="cm-main-content mobile-app-main">{page}</main>
       </div>
       <nav className="cm-mobile-nav" aria-label="Мобильная навигация">
-        <button type="button" onClick={() => changeMode("home")} className={mode === "home" ? "active" : ""}><span>♟</span>Играть</button>
-        <button type="button" onClick={() => changeMode("puzzles")} className={mode === "puzzles" ? "active" : ""}><span>🧩</span>Задачи</button>
+        <button type="button" onClick={() => changeMode("home")} className={mode === "home" ? "active" : ""}><span>⌂</span>Главная</button>
+        <button type="button" onClick={() => changeMode("playHub")} className={mode === "playHub" ? "active" : ""}><span>♟</span>Играть</button>
+        <button type="button" onClick={() => changeMode("puzzles")} className={mode === "puzzles" ? "active" : ""}><span>◆</span>Задачи</button>
         <button type="button" onClick={() => changeMode("review")} className={mode === "review" ? "active" : ""}><span>⌕</span>Анализ</button>
         <button type="button" onClick={() => changeMode("profile")} className={mode === "profile" ? "active" : ""}><span>♙</span>Профиль</button>
-        <button type="button" onClick={() => changeMode("settings")} className={mode === "settings" ? "active" : ""}><span>⚙</span>Настройки</button>
       </nav>
     </div>
   );
