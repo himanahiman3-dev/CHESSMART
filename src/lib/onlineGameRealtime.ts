@@ -254,11 +254,12 @@ export function subscribeToOnlineGameRealtime(
     reconnectTimer = null;
     clearHeartbeat();
     const active = socket;
+    const activeJoinRef = joinRef;
     socket = null;
     joinRef = null;
     if (active && active.readyState === WebSocket.OPEN) {
       const leaveRef = nextRef();
-      try { active.send(JSON.stringify([joinRef, leaveRef, topic, "phx_leave", {}])); } catch { /* best-effort */ }
+      try { active.send(JSON.stringify([activeJoinRef, leaveRef, topic, "phx_leave", {}])); } catch { /* best-effort */ }
     }
     try { active?.close(1000, "Game view closed"); } catch { /* already closed */ }
     onStatus?.("disconnected");
