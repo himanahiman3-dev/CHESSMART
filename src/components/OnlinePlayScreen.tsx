@@ -10,6 +10,7 @@ import { playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/s
 import { buildPgnFromUci, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
 import { replayUciHistory, getPositionInsights, formatMaterialBalance, gamePhaseLabel, terminalStateLabel, isNearFiftyMoveRule } from "../lib/gameInsights";
 import { getOnlinePollDelay } from "../lib/systemsSuite";
+import { subscribeToOnlineGameRealtime } from "../lib/onlineGameRealtime";
 
 interface OnlineSession {
   access_token: string;
@@ -176,6 +177,8 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   const [avatarBusy, setAvatarBusy] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [game, setGame] = useState<OnlineGame | null>(null);
+  const gameRef = useRef<OnlineGame | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.search).get("challenge") ?? "");
   const [inviteUsername, setInviteUsername] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -207,6 +210,8 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   const tenSecondsAlertKeyRef = useRef<string | null>(null);
   const invitationIdsRef = useRef<Set<string>>(new Set());
   const invitationListInitializedRef = useRef(false);
+
+  useEffect(() => { gameRef.current = game; }, [game]);
 
   const playGameStartOnce = (gameId: string) => {
     if (startedSoundGameIdRef.current === gameId) return;
@@ -378,6 +383,45 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     }
   }, [session, game?.id, game?.status, game?.moves.length, url, key]);
 
+  // Push committed game rows over one authenticated Realtime channel per game.
+  // Polling below remains a low-frequency safety net while this channel is healthy.
+  useEffect(() => {
+    if (!session || !game || game.status === "completed") {
+      setRealtimeConnected(false);
+      return;
+    }
+    setRealtimeConnected(false);
+    return subscribeToOnlineGameRealtime({
+      projectUrl: url,
+      publishableKey: key,
+      accessToken: session.access_token,
+      gameId: game.id,
+      onStatus: (status) => setRealtimeConnected(status === "connected"),
+      onUpdate: (record) => {
+        const current = gameRef.current;
+        if (!current || current.id !== game.id || record.id !== game.id) return;
+        if (typeof record.fen !== "string" || !Array.isArray(record.moves) || typeof record.status !== "string") return;
+        const next = { ...current, ...record } as OnlineGame;
+        const latest = next.moves.at(-1);
+        const hasNewMove = next.moves.length > current.moves.length;
+        if (current.status === "waiting" && next.status === "active") playGameStartOnce(next.id);
+        if (hasNewMove && latest) {
+          const ownColor = next.white_id === session.user.id ? "w" : "b";
+          if (latest.color !== ownColor) {
+            playSound(soundForSan(latest.san, next.status === "completed", undefined, "opponent"));
+          }
+        } else if (current.status === "active" && next.status === "completed") {
+          playGameEndOnce(next.id);
+        }
+        gameRef.current = next;
+        setGame(next);
+        gamePollFailuresRef.current = 0;
+        setConnectionOnline(true);
+        setLastSync(Date.now());
+      },
+    });
+  }, [session, game?.id, game?.status, url, key]);
+
   useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
 
   const updatePreference = <K extends keyof GameplayPreferences>(key: K, value: GameplayPreferences[K]) => {
@@ -434,12 +478,14 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       if (cancelled) return;
       if (navigator.onLine && document.visibilityState !== "hidden") await refreshGame();
       if (cancelled) return;
-      const delay = getOnlinePollDelay({
-        online: navigator.onLine,
-        visible: document.visibilityState !== "hidden",
-        consecutiveFailures: gamePollFailuresRef.current,
-        urgent: !!premove,
-      });
+      const delay = realtimeConnected
+        ? 1_800
+        : getOnlinePollDelay({
+            online: navigator.onLine,
+            visible: document.visibilityState !== "hidden",
+            consecutiveFailures: gamePollFailuresRef.current,
+            urgent: !!premove,
+          });
       timer = window.setTimeout(() => { void poll(); }, delay);
     };
     void poll();
@@ -447,7 +493,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [game?.id, game?.status, session, refreshGame, premove]);
+  }, [game?.id, game?.status, session, refreshGame, premove, realtimeConnected]);
 
   useEffect(() => {
     if (!session || game) return;
@@ -987,7 +1033,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
             </section>
             <aside className="space-y-3">
               {game.status === "waiting" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-sm font-extrabold text-[#d7edbd]">Комната создана</div><div className="mt-2 font-mono text-2xl font-black tracking-[0.2em]">{game.invite_code}</div><p className="mt-2 text-xs text-[#b7cba0]">{inviteTarget ? "Вызов отправлен игроку @" + inviteTarget + ". Ожидаем, пока он примет приглашение." : "Отправь код или ссылку другу."}</p></section>}
-              {game.status === "active" && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="text-sm font-bold">Статус партии</div><p className="mt-2 text-sm text-[#c9c8c1]">{isMyTurn ? "Ваш ход" : "Ход соперника"}{movePending ? " · отправляем ход…" : ""}</p><p className={"mt-2 text-[10px] " + (connectionOnline ? "text-[#9acb72]" : "text-[#ff7770]")}>{connectionOnline ? "Соединение активно" : "Нет соединения"} · синхронизация {Math.max(0, Math.floor((now - lastSync) / 1000))} сек. назад</p>{canQueuePremove && <p className="mt-2 text-xs text-[#ff9b94]">Можно поставить premove — он будет проверен после ответа соперника.</p>}<p className="mt-2 text-xs text-[#a3c86d]">Рейтинг {typeLabel(ratingType)}: {myRating ?? "—"}</p></section>}
+              {game.status === "active" && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="text-sm font-bold">Статус партии</div><p className="mt-2 text-sm text-[#c9c8c1]">{isMyTurn ? "Ваш ход" : "Ход соперника"}{movePending ? " · отправляем ход…" : ""}</p><p className={"mt-2 text-[10px] " + (connectionOnline ? "text-[#9acb72]" : "text-[#ff7770]")}>{!connectionOnline ? "Нет соединения" : realtimeConnected ? "Realtime · push-синхронизация активна" : "Резервная синхронизация"} · обновлено {Math.max(0, Math.floor((now - lastSync) / 1000))} сек. назад</p>{canQueuePremove && <p className="mt-2 text-xs text-[#ff9b94]">Можно поставить premove — он будет проверен после ответа соперника.</p>}<p className="mt-2 text-xs text-[#a3c86d]">Рейтинг {typeLabel(ratingType)}: {myRating ?? "—"}</p></section>}
               {positionInsights && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="mb-2 flex items-center justify-between text-sm font-bold"><span>Позиция сейчас</span><span className="text-[10px] text-[#91ad76]">{gamePhaseLabel(positionInsights.phase)}</span></div><div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Материал белых</div><b className="mt-1 block text-base">{positionInsights.whiteMaterial}</b></div><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Материал чёрных</div><b className="mt-1 block text-base">{positionInsights.blackMaterial}</b></div><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Легальные ходы</div><b className="mt-1 block text-base">{positionInsights.legalMoves}</b></div><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Счётчик 50 ходов</div><b className="mt-1 block text-base">{positionInsights.halfmoveClock}/100</b></div></div><div className="mt-2 rounded-lg bg-[#242520] p-2 text-xs text-[#b7b4aa]">{formatMaterialBalance(positionInsights.materialBalance)} · {terminalStateLabel(positionInsights.terminal)}</div>{isNearFiftyMoveRule(game.fen) && <p className="mt-2 text-[10px] text-[#e7bd73]">Скоро можно будет заявить ничью по правилу 50 ходов.</p>}</section>}
               {game.status === "completed" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-lg font-extrabold">{resultText(game, myColor)}</div><p className="mt-2 text-sm text-[#d7edbd]">{reasonText(game.reason)}</p><p className="mt-2 text-xs text-[#b7cba0]">Рейтинг после партии: {myRating ?? "—"}</p><button onClick={() => void requestRematch()} disabled={busy || !game.black_id} className="mt-3 w-full rounded-lg bg-[#81b64c] px-3 py-2.5 text-xs font-extrabold text-[#17210f] disabled:opacity-40">Реванш</button></section>}
               <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4">
