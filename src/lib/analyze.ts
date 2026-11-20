@@ -72,7 +72,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { gameBudgetMs, TIME_PER_MOVE_MS, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
+import { gameBudgetMs, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
 import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { forcedMoveClass } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
@@ -163,9 +163,8 @@ export async function evaluatePosition(
   if (term) return { evalResult: term, fromCache: true };
   const historyKey = history ? `${history.startFen}|${history.moves.join(" ")}` : undefined;
   const cached = await getCachedPosition(fen, depth, multipv, historyKey);
-  // A quick-pass cache must not silently satisfy a user request for a much deeper search.
-  // For high target depths, accept only a result that reached at least 75% of the target.
-  // Reuse a cached result only when it completed the requested depth ceiling.
+  // Reuse only a result that completed the target depth. Partial cache entries
+  // remain available as fallbacks if a fresh timed search reaches less depth.
   // A shallow timed-out cache entry must not skip a fresh timed search.
   const requiredCacheDepth = depth;
   if (cached && cached.depth >= requiredCacheDepth) return { evalResult: cached, fromCache: true };
@@ -227,7 +226,7 @@ export interface CriticalPositionCandidate {
 export function selectCriticalPositions(
   game: ParsedGame,
   positions: PositionEval[],
-  maxCandidates = MULTI_ENGINE_MAX_MOVES
+  maxCandidates = 3
 ): CriticalPositionCandidate[] {
   const book = analyzeBook(game.moves.map((move) => move.san));
   const candidates: CriticalPositionCandidate[] = [];
