@@ -106,6 +106,15 @@ function Main() {
   }, []);
 
   useEffect(() => {
+    if (!mobileMore) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMore(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileMore]);
+
+  useEffect(() => {
     const handleAccountProfile = (event: Event) => {
       setAccountProfile((event as CustomEvent<AccountProfile | null>).detail ?? null);
     };
@@ -205,6 +214,7 @@ function Main() {
     abortRef.current = null;
     setIsRefining(false);
     setMode(next);
+    setMobileMore(false);
     setStage("import");
     setError(null);
   }, []);
@@ -347,10 +357,10 @@ function Main() {
             </button>;
           })}
           <div className="mobile-more-wrap">
-            <button type="button" onClick={() => setMobileMore((open) => !open)} aria-expanded={mobileMore} className={mobileMore ? "mobile-nav-item active" : "mobile-nav-item"}>
+            <button type="button" onClick={() => setMobileMore((open) => !open)} aria-expanded={mobileMore} aria-controls="mobile-more-menu" className={mobileMore ? "mobile-nav-item active" : "mobile-nav-item"}>
               <span className="mobile-more-dots">•••</span><span>Ещё</span>
             </button>
-            {mobileMore && <div className="mobile-more-menu">
+            {mobileMore && <div id="mobile-more-menu" className="mobile-more-menu">
               {NAV_ITEMS.filter((item) => !(["review", "play", "online", "profile"] as MainMode[]).includes(item.id)).map((item) => (
                 <button key={item.id} onClick={() => { changeMode(item.id); setMobileMore(false); }} className="mobile-more-option">
                   <NavIcon name={item.icon} /><span>{item.label}</span>
