@@ -83,7 +83,7 @@ function BrandMark() {
 }
 
 function Main() {
-  const { engine, status, createVerifier, computeProfile } = useEngine();
+  const { engine, status, computeProfile } = useEngine();
   const [stage, setStage] = useState<Stage>("import");
   const [mode, setMode] = useState<MainMode>("review");
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null);
@@ -161,12 +161,11 @@ function Main() {
     return () => { cancelled = true; };
   }, []);
 
-  const start = useCallback(async (pgn: string, depth: number) => {
+  const start = useCallback(async (pgn: string, timePerPositionMs: number) => {
     if (!engine) return;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    let partialPublished = false;
     setError(null);
     setProgress(null);
     setIsRefining(false);
@@ -174,20 +173,10 @@ function Main() {
     try {
       const result = await reviewGame(
         pgn,
-        depth,
+        timePerPositionMs,
         engine,
         setProgress,
         controller.signal,
-        undefined,
-        (partial) => {
-          if (controller.signal.aborted || abortRef.current !== controller) return;
-          partialPublished = true;
-          setReview(partial);
-          setMode("review");
-          setIsRefining(true);
-          setStage("review");
-        },
-        createVerifier,
         computeProfile
       );
       if (controller.signal.aborted || abortRef.current !== controller) return;
@@ -203,15 +192,12 @@ function Main() {
       setIsRefining(false);
       if (controller.signal.aborted) {
         setStage("import");
-      } else if (partialPublished) {
-        // Keep the usable first-pass review on screen if an optional deep pass fails.
-        setStage("review");
       } else {
         setError(reason instanceof Error ? reason.message : String(reason));
         setStage("import");
       }
     }
-  }, [engine, createVerifier, computeProfile]);
+  }, [engine, computeProfile]);
 
   const changeMode = useCallback((next: MainMode) => {
     abortRef.current?.abort();
