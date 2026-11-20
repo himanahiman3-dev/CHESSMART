@@ -287,6 +287,104 @@ async function getPuzzleBattleLeaderboard(sort: "points" | "rating", userId: str
   };
 }
 
+interface BattleHistoryRow {
+  id: string;
+  player_one_id: string;
+  player_two_id: string;
+  created_at: string;
+  finished_at: string | null;
+  winner_id: string | null;
+  finish_reason: string | null;
+  player_one_rating: number | null;
+  player_two_rating: number | null;
+  player_one_rating_after: number | null;
+  player_two_rating_after: number | null;
+  season_points_one: number;
+  season_points_two: number;
+}
+interface BattleHistoryPlayerRow {
+  battle_id: string;
+  user_id: string;
+  score: number;
+  mistakes: number;
+}
+async function getPuzzleBattleHistory(userId: string) {
+  const columns = "id,player_one_id,player_two_id,created_at,finished_at,winner_id,finish_reason,player_one_rating,player_two_rating,player_one_rating_after,player_two_rating_after,season_points_one,season_points_two";
+  const [one, two] = await Promise.all([
+    admin.from("puzzle_battles").select(columns)
+      .eq("status", "completed").eq("player_one_id", userId)
+      .order("finished_at", { ascending: false }).limit(20),
+    admin.from("puzzle_battles").select(columns)
+      .eq("status", "completed").eq("player_two_id", userId)
+      .order("finished_at", { ascending: false }).limit(20),
+  ]);
+  if (one.error || two.error) {
+    throw new Error("Не удалось загрузить историю дуэлей: " + (one.error?.message ?? two.error?.message));
+  }
+  const battles = [...(one.data ?? []), ...(two.data ?? [])] as BattleHistoryRow[];
+  battles.sort((left, right) =>
+    Date.parse(right.finished_at ?? right.created_at) - Date.parse(left.finished_at ?? left.created_at)
+  );
+  const recent = battles.slice(0, 20);
+  if (!recent.length) return { history: [], total: 0 };
+
+  const battleIds = recent.map((battle) => battle.id);
+  const opponentIds = [...new Set(recent.map((battle) =>
+    battle.player_one_id === userId ? battle.player_two_id : battle.player_one_id
+  ))];
+  const [{ data: playerRows, error: playersError }, { data: profiles, error: profilesError }] = await Promise.all([
+    admin.from("puzzle_battle_players")
+      .select("battle_id,user_id,score,mistakes")
+      .in("battle_id", battleIds),
+    admin.from("online_profiles")
+      .select("user_id,username,avatar_url")
+      .in("user_id", opponentIds),
+  ]);
+  if (playersError || profilesError) {
+    throw new Error("Не удалось загрузить участников истории дуэлей.");
+  }
+
+  const playerMap = new Map(
+    ((playerRows ?? []) as BattleHistoryPlayerRow[]).map((row) =>
+      [row.battle_id + ":" + row.user_id, row]
+    ),
+  );
+  const profileMap = new Map((profiles ?? []).map((profile) => [profile.user_id, profile]));
+
+  const history = recent.map((battle) => {
+    const isOne = battle.player_one_id === userId;
+    const opponentId = isOne ? battle.player_two_id : battle.player_one_id;
+    const mine = playerMap.get(battle.id + ":" + userId);
+    const opponent = playerMap.get(battle.id + ":" + opponentId);
+    const ratingBefore = isOne ? battle.player_one_rating : battle.player_two_rating;
+    const ratingAfter = isOne ? battle.player_one_rating_after : battle.player_two_rating_after;
+    const seasonPoints = isOne ? battle.season_points_one : battle.season_points_two;
+    const result = battle.winner_id === null
+      ? "draw"
+      : battle.winner_id === userId ? "win" : "loss";
+    return {
+      id: battle.id,
+      played_at: battle.finished_at ?? battle.created_at,
+      result,
+      winner_id: battle.winner_id,
+      finish_reason: battle.finish_reason,
+      opponent_id: opponentId,
+      opponent_username: profileMap.get(opponentId)?.username ?? "Игрок",
+      opponent_avatar_url: profileMap.get(opponentId)?.avatar_url ?? null,
+      my_score: mine?.score ?? 0,
+      opponent_score: opponent?.score ?? 0,
+      my_mistakes: mine?.mistakes ?? 0,
+      opponent_mistakes: opponent?.mistakes ?? 0,
+      my_rating_before: ratingBefore,
+      my_rating_after: ratingAfter,
+      rating_delta: ratingBefore === null || ratingAfter === null ? null : ratingAfter - ratingBefore,
+      season_points: seasonPoints ?? 0,
+    };
+  });
+
+  return { history, total: history.length };
+}
+
 async function getQueueState(userId: string) {
   const { data, error } = await admin.from("puzzle_battle_queue")
     .select("status,battle_id,queued_at").eq("user_id", userId).maybeSingle();
@@ -333,6 +431,10 @@ Deno.serve(async (req: Request) => {
     if (body.action === "leaderboard") {
       const sort = body.sort === "rating" ? "rating" : "points";
       return json(await getPuzzleBattleLeaderboard(sort, user.id));
+    }
+
+    if (body.action === "history") {
+      return json(await getPuzzleBattleHistory(user.id));
     }
 
     if (body.action === "status") return json(await getQueueState(user.id));
