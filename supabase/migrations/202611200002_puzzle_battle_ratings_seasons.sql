@@ -54,7 +54,8 @@ alter table public.puzzle_battles
   add column if not exists player_two_rating_after integer,
   add column if not exists season_points_one integer not null default 0,
   add column if not exists season_points_two integer not null default 0,
-  add column if not exists rating_applied boolean not null default false;
+  add column if not exists rating_applied boolean not null default false,
+  add column if not exists updated_at timestamptz not null default now();
 
 create table if not exists public.puzzle_battle_season_stats (
   user_id uuid not null references auth.users(id) on delete cascade,
