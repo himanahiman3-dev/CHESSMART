@@ -4,7 +4,7 @@ import { updatePlayerName } from "../lib/playerProfile";
 import type { AccountProfile } from "../lib/accountProfile";
 import { loadGameplayPreferences, updateGameplayPreferences, type GameplayPreferences, type GameBoardTheme } from "../lib/gameplayPreferences";
 
-export type ShellRoute = "home" | "review" | "online" | "play" | "coach" | "puzzles" | "battle" | "openings" | "lessons" | "academy" | "profile" | "profileDetails" | "stats" | "settings" | "news";
+export type ShellRoute = "home" | "playHub" | "review" | "online" | "play" | "coach" | "puzzles" | "battle" | "openings" | "lessons" | "academy" | "profile" | "profileDetails" | "stats" | "settings" | "news" | "daily" | "mistakes" | "endgame" | "lab" | "diagnostics" | "systems";
 type Navigate = (route: ShellRoute) => void;
 const HOME_BOARD_POSITION = [
   "♜♞♝♛♚♝♞♜",

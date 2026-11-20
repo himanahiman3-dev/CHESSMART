@@ -32,7 +32,8 @@ import {
 } from "./lib/playerProfile";
 import type { GameReview } from "./types";
 import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
-import { HomeScreen, ProfileHubScreen, StatsScreen, SettingsScreen, NewsScreen, type ShellRoute } from "./components/ChessmartShellScreens";
+import { StatsScreen, SettingsScreen, NewsScreen, type ShellRoute } from "./components/ChessmartShellScreens";
+import { HomeDashboardScreen, PlayHubScreen, ProfileHubScreen } from "./components/ChessmartReplicaScreens";
 
 type Stage = "import" | "analyzing" | "review";
 type MainMode = ShellRoute | "daily" | "mistakes" | "endgame" | "lab" | "diagnostics" | "systems";
@@ -45,6 +46,21 @@ function BrandMark() {
       <path d="M18.8 24.2h10.5" stroke="#81b64c" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
+}
+
+
+function SidebarIcon({ name }: { name: string }) {
+  const paths: Record<string, ReactNode> = {
+    home: <><path d="m3 10 9-7 9 7" /><path d="M5 9v11h14V9M9 20v-6h6v6" /></>,
+    play: <><path d="M7 4.5v15l12-7.5z" /></>,
+    puzzle: <><path d="M8 4h3a2 2 0 1 1 4 0h3v5a2 2 0 1 1 0 4v7h-5a2 2 0 1 0-4 0H5v-6a2 2 0 1 1 0-4V4z" /></>,
+    book: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21z" /><path d="M4 5.5v15.2M8 7h8M8 11h8" /></>,
+    analysis: <><path d="M4 19V5M4 19h17" /><path d="m7 15 4-4 3 2 5-7" /></>,
+    news: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h4v4H7zM14 8h4M14 12h4M7 16h11" /></>,
+    online: <><path d="M5 12a10 10 0 0 1 14 0M8 15a6 6 0 0 1 8 0M11 18a2 2 0 0 1 2 0" /><circle cx="12" cy="20" r=".8" fill="currentColor" stroke="none" /></>,
+    more: <><circle cx="5" cy="12" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="19" cy="12" r="1" fill="currentColor" /></>,
+  };
+  return <svg className="cm-side-svg" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name] ?? paths.more}</svg>;
 }
 
 function AvatarPlaceholder({ accountProfile, name }: { accountProfile: AccountProfile | null; name: string }) {
@@ -193,7 +209,8 @@ function Main() {
   if (stage === "analyzing") return <AnalyzingScreen progress={progress} onCancel={() => abortRef.current?.abort()} />;
 
   let page = null;
-  if (mode === "home") page = <HomeScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
+  if (mode === "home") page = <HomeDashboardScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
+  else if (mode === "playHub") page = <PlayHubScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
   else if (mode === "profile") page = <ProfileHubScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
   else if (mode === "stats") page = <StatsScreen profile={profile} accountProfile={accountProfile} onNavigate={changeMode} />;
   else if (mode === "settings") page = <SettingsScreen profile={profile} accountProfile={accountProfile} onChangeProfile={setProfile} onNavigate={changeMode} />;
@@ -262,7 +279,7 @@ function Main() {
   }
 
   const pageTitle: Record<MainMode, string> = {
-    home: "Играть", review: "Анализ партий", play: "Боты", online: "Играть онлайн",
+    home: "Главная", playHub: "Играть", review: "Анализ партий", play: "Боты", online: "Играть онлайн",
     profile: "Профиль", profileDetails: "История и данные профиля", stats: "Статистика",
     settings: "Настройки", news: "Новости", puzzles: "Задачи", daily: "Задача дня и Rush",
     battle: "Puzzle Battle", mistakes: "Мои ошибки", coach: "Тренер", academy: "Академия",
@@ -270,12 +287,12 @@ function Main() {
     diagnostics: "Диагностика 300", systems: "Центр систем",
   };
   const sidebarItems: Array<{ id: MainMode; label: string; icon: string }> = [
-    { id: "home", label: "Играть", icon: "♟" },
-    { id: "puzzles", label: "Задачи", icon: "🧩" },
-    { id: "lessons", label: "Учёба", icon: "🎓" },
-    { id: "academy", label: "Тренировка", icon: "🏋" },
-    { id: "review", label: "Анализ", icon: "⌕" },
-    { id: "news", label: "Новости", icon: "📰" },
+    { id: "home", label: "Главная", icon: "home" },
+    { id: "playHub", label: "Играть", icon: "play" },
+    { id: "puzzles", label: "Задачи", icon: "puzzle" },
+    { id: "lessons", label: "Учёба", icon: "book" },
+    { id: "review", label: "Анализ", icon: "analysis" },
+    { id: "news", label: "Новости", icon: "news" },
   ];
   const communityActive = mode === "online" || mode === "battle";
   return (
@@ -287,36 +304,39 @@ function Main() {
         <nav className="cm-sidebar-nav" aria-label="Главная навигация">
           {sidebarItems.slice(0, 4).map((item) => (
             <button key={item.id} type="button" onClick={() => changeMode(item.id)} aria-current={mode === item.id ? "page" : undefined} className={mode === item.id ? "cm-side-item active" : "cm-side-item"}>
-              <span className="cm-side-icon">{item.icon}</span><span>{item.label}</span>
+              <span className="cm-side-icon"><SidebarIcon name={item.icon} /></span><span>{item.label}</span>
             </button>
           ))}
           <div className="cm-side-group">
             <button type="button" onClick={() => setMobileMore((open) => !open)} aria-expanded={mobileMore} className={communityActive ? "cm-side-item active" : "cm-side-item"}>
-              <span className="cm-side-icon">♟</span><span>Сообщество</span><span className="cm-side-chevron">{mobileMore ? "⌃" : "⌄"}</span>
+              <span className="cm-side-icon"><SidebarIcon name="online" /></span><span>Онлайн</span><span className="cm-side-chevron">{mobileMore ? "⌃" : "⌄"}</span>
             </button>
             {mobileMore && <div className="cm-side-submenu">
-              <button type="button" onClick={() => changeMode("online")} className={mode === "online" ? "active" : ""}>🌐 Играть онлайн</button>
+              <button type="button" onClick={() => changeMode("online")} className={mode === "online" ? "active" : ""}>Играть онлайн</button>
               <button type="button" onClick={() => changeMode("battle")} className={mode === "battle" ? "active" : ""}>🏅 Puzzle Battle</button>
             </div>}
           </div>
           {sidebarItems.slice(4).map((item) => (
             <button key={item.id} type="button" onClick={() => changeMode(item.id)} aria-current={mode === item.id ? "page" : undefined} className={mode === item.id ? "cm-side-item active" : "cm-side-item"}>
-              <span className="cm-side-icon">{item.icon}</span><span>{item.label}</span>
+              <span className="cm-side-icon"><SidebarIcon name={item.icon} /></span><span>{item.label}</span>
             </button>
           ))}
           <div className="cm-side-group cm-more-group">
             <button type="button" onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen} className={moreOpen ? "cm-side-item active" : "cm-side-item"}>
-              <span className="cm-side-icon">•••</span><span>Ещё</span><span className="cm-side-chevron">{moreOpen ? "⌃" : "⌄"}</span>
+              <span className="cm-side-icon"><SidebarIcon name="more" /></span><span>Ещё</span><span className="cm-side-chevron">{moreOpen ? "⌃" : "⌄"}</span>
             </button>
             {moreOpen && <div className="cm-side-submenu">
-              <button type="button" onClick={() => changeMode("daily")}>⚡ Задача дня и Rush</button>
-              <button type="button" onClick={() => changeMode("mistakes")}>⚠ Мои ошибки</button>
-              <button type="button" onClick={() => changeMode("coach")}>🎓 Personal Coach</button>
-              <button type="button" onClick={() => changeMode("endgame")}>♔ Эндшпиль</button>
-              <button type="button" onClick={() => changeMode("openings")}>📖 Дебюты</button>
-              <button type="button" onClick={() => changeMode("lab")}>🧪 Лаборатория позиции</button>
-              <button type="button" onClick={() => changeMode("diagnostics")}>🧠 Диагностика 300</button>
-              <button type="button" onClick={() => changeMode("systems")}>⚙ Центр систем</button>
+              <button type="button" onClick={() => changeMode("play")}>Играть против бота</button>
+              <button type="button" onClick={() => changeMode("coach")}>Тренер</button>
+              <button type="button" onClick={() => changeMode("battle")}>Puzzle Battle</button>
+              <button type="button" onClick={() => changeMode("academy")}>Академия</button>
+              <button type="button" onClick={() => changeMode("daily")}>Задача дня и Rush</button>
+              <button type="button" onClick={() => changeMode("mistakes")}>Мои ошибки</button>
+              <button type="button" onClick={() => changeMode("endgame")}>Эндшпиль</button>
+              <button type="button" onClick={() => changeMode("openings")}>Дебюты и позиции</button>
+              <button type="button" onClick={() => changeMode("lab")}>Лаборатория позиции</button>
+              <button type="button" onClick={() => changeMode("diagnostics")}>Диагностика 300</button>
+              <button type="button" onClick={() => changeMode("systems")}>Центр систем</button>
             </div>}
           </div>
         </nav>
@@ -346,11 +366,11 @@ function Main() {
         <main className="cm-main-content mobile-app-main">{page}</main>
       </div>
       <nav className="cm-mobile-nav" aria-label="Мобильная навигация">
-        <button type="button" onClick={() => changeMode("home")} className={mode === "home" ? "active" : ""}><span>♟</span>Играть</button>
-        <button type="button" onClick={() => changeMode("puzzles")} className={mode === "puzzles" ? "active" : ""}><span>🧩</span>Задачи</button>
+        <button type="button" onClick={() => changeMode("home")} className={mode === "home" ? "active" : ""}><span>⌂</span>Главная</button>
+        <button type="button" onClick={() => changeMode("playHub")} className={mode === "playHub" ? "active" : ""}><span>♟</span>Играть</button>
+        <button type="button" onClick={() => changeMode("puzzles")} className={mode === "puzzles" ? "active" : ""}><span>◆</span>Задачи</button>
         <button type="button" onClick={() => changeMode("review")} className={mode === "review" ? "active" : ""}><span>⌕</span>Анализ</button>
         <button type="button" onClick={() => changeMode("profile")} className={mode === "profile" ? "active" : ""}><span>♙</span>Профиль</button>
-        <button type="button" onClick={() => changeMode("settings")} className={mode === "settings" ? "active" : ""}><span>⚙</span>Настройки</button>
       </nav>
     </div>
   );
