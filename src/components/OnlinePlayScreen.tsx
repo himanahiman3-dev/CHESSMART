@@ -85,7 +85,7 @@ async function callPublicAction(url: string, key: string, action: string, payloa
   if (!response.ok) throw new Error(data.error || "Сервер отклонил запрос.");
   return data;
 }
-async function callAction(url: string, key: string, session: OnlineSession, action: string, payload: Record<string, unknown> = {}): Promise<ActionResponse> {
+async function callAction(url: string, key: string, session: OnlineSession, action: string, payload: Record<string, unknown> = {}, signal?: AbortSignal): Promise<ActionResponse> {
   const response = await fetch(url + "/functions/v1/game-action", {
     method: "POST",
     headers: {
@@ -94,6 +94,7 @@ async function callAction(url: string, key: string, session: OnlineSession, acti
       Authorization: "Bearer " + session.access_token,
     },
     body: JSON.stringify({ action, ...payload }),
+    signal,
   });
   const data = await response.json() as ActionResponse;
   if (!response.ok) throw new Error(data.error || "Сервер отклонил запрос.");
@@ -201,6 +202,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   const [connectionOnline, setConnectionOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   const [exportNotice, setExportNotice] = useState("");
   const movePendingRef = useRef(false);
+  const moveRequestRef = useRef<AbortController | null>(null);
   const refreshInFlightRef = useRef(false);
   const gamePollFailuresRef = useRef(0);
   const timeoutRequestedRef = useRef(false);
@@ -552,7 +554,10 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     if (!game) return null;
     try { return new Chess(game.fen).turn(); } catch { return null; }
   }, [game?.fen]);
-  const activeElapsed = game?.turn_started_at ? Math.max(0, now - new Date(game.turn_started_at).getTime()) : 0;
+  // A finished game stores the final clock values. Never subtract wall time after mate/resign/draw.
+  const activeElapsed = game?.status === "active" && game.turn_started_at
+    ? Math.max(0, now - new Date(game.turn_started_at).getTime())
+    : 0;
   const whiteClock = game ? game.white_ms - (turn === "w" ? activeElapsed : 0) : 0;
   const blackClock = game ? game.black_ms - (turn === "b" ? activeElapsed : 0) : 0;
 
@@ -571,6 +576,8 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   }, [game?.fen, game?.status]);
 
   useEffect(() => {
+    moveRequestRef.current?.abort();
+    moveRequestRef.current = null;
     setPremove(null);
     movePendingRef.current = false;
     setMovePending(false);
@@ -725,30 +732,83 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       setInvitations((items) => items.filter((item) => item.id !== inviteId));
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
   };
-  const sendMove = (move: BoardMove, isPremove = false): boolean => {
+  const sendMove = useCallback((move: BoardMove, isPremove = false): boolean => {
     if (!session || !game || !isMyTurn || movePendingRef.current) return false;
+    const gameId = game.id;
+    const previousMoveCount = game.moves.length;
+    const playerColor = myColor;
+    const controller = new AbortController();
+    moveRequestRef.current = controller;
     movePendingRef.current = true;
     setMovePending(true);
-    void callAction(url, key, session, "move", { gameId: game.id, uci: move.uci, premove: isPremove })
-      .then((data) => {
-        if (data.game) {
-          if (data.game.status === "completed") endedSoundGameIdRef.current = data.game.id;
-          setGame(data.game);
-        }
+
+    // Do not leave the board locked forever when a mobile connection stalls.
+    const requestTimeout = window.setTimeout(() => controller.abort(), 12_000);
+    void (async () => {
+      try {
+        const data = await callAction(url, key, session, "move", {
+          gameId, uci: move.uci, premove: isPremove,
+        }, controller.signal);
+        if (!data.game) throw new Error("Сервер не вернул обновлённую партию.");
+        if (data.game.status === "completed") endedSoundGameIdRef.current = data.game.id;
+        gameRef.current = data.game;
+        setGame(data.game);
         playSound(soundForSan(
           move.san,
-          data.game?.status === "completed",
+          data.game.status === "completed",
           undefined,
           isPremove ? "premove" : "self",
         ));
-      })
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)))
-      .finally(() => {
+      } catch (reason) {
+        // The response can be lost after the server commits the move. Confirm the
+        // authoritative game before telling the player to retry.
+        const syncController = new AbortController();
+        const syncTimeout = window.setTimeout(() => syncController.abort(), 8_000);
+        try {
+          const latest = await callAction(url, key, session, "get", { gameId }, syncController.signal);
+          if (!latest.game) throw new Error("Не удалось получить актуальную позицию.");
+          gameRef.current = latest.game;
+          setGame(latest.game);
+          const committedMove = latest.game.moves[previousMoveCount];
+          const moveWasCommitted = latest.game.moves.length > previousMoveCount
+            && committedMove?.uci === move.uci
+            && committedMove?.color === playerColor;
+          if (moveWasCommitted) {
+            setError(null);
+          } else {
+            setError(controller.signal.aborted
+              ? "Не удалось отправить ход из-за задержки сети. Доска синхронизирована — попробуй ещё раз."
+              : reason instanceof Error ? reason.message : String(reason));
+          }
+        } catch (syncError) {
+          setError(syncError instanceof Error
+            ? "Связь с сервером потеряна: " + syncError.message
+            : "Не удалось подтвердить ход. Проверь соединение и обнови партию.");
+        } finally {
+          window.clearTimeout(syncTimeout);
+        }
+      } finally {
+        window.clearTimeout(requestTimeout);
+        if (moveRequestRef.current === controller) moveRequestRef.current = null;
         movePendingRef.current = false;
         setMovePending(false);
-      });
+      }
+    })();
     return true;
-  };
+  }, [session, game?.id, game?.moves.length, isMyTurn, myColor, url, key]);
+
+  const handleBoardMove = useCallback((move: BoardMove) => sendMove(move, false), [sendMove]);
+  const queueBoardPremove = useCallback((next: Premove) => {
+    if (!game?.id) return;
+    premoveGameIdRef.current = game.id;
+    setPremove(next);
+    setNotice("");
+  }, [game?.id]);
+  const clearBoardPremove = useCallback(() => {
+    premoveGameIdRef.current = null;
+    setPremove(null);
+    setNotice("Premove отменён.");
+  }, []);
   const resign = async () => {
     if (!session || !game) return;
     if (preferences.confirmResign && !window.confirm("Сдаться в этой партии?")) return;
@@ -834,7 +894,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
 
   if (!configured) {
     return (
-      <main className="min-h-screen bg-[#262522] p-4 text-[#f0f0ed] sm:p-7">
+      <main className="cm-online-screen min-h-screen bg-[#262522] p-4 text-[#f0f0ed] sm:p-7">
         <div className="mx-auto max-w-3xl">
           <button onClick={onBack} className="mb-5 rounded-lg border border-[#474640] bg-[#33322e] px-4 py-2 text-sm font-bold">Назад</button>
           <section className="rounded-2xl border border-[#41403a] bg-[#30302b] p-6 sm:p-8">
@@ -851,7 +911,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
 
   if (!session || !onlineProfile) {
     return (
-      <main className="min-h-screen bg-[#262522] p-4 text-[#f0f0ed] sm:p-7">
+      <main className="cm-online-screen min-h-screen bg-[#262522] p-4 text-[#f0f0ed] sm:p-7">
         <div className="mx-auto max-w-xl">
           <header className="mb-6 flex items-center justify-between">
             <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#a3c86d]">Chessmart account</p><h1 className="mt-1 text-2xl font-black">Твой шахматный аккаунт</h1></div>
@@ -894,7 +954,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   }
 
   return (
-    <main className="min-h-screen bg-[#262522] p-4 text-[#f0f0ed] sm:p-7">
+    <main className="cm-online-screen min-h-screen bg-[#262522] p-4 text-[#f0f0ed] sm:p-7">
       <div className="mx-auto max-w-[1240px]">
         <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -908,7 +968,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
           </div>
         </header>
 
-        <section className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-[#414d39] bg-[#30382c] p-3">
+        {!game && <section className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-[#414d39] bg-[#30382c] p-3">
           {avatarPreview
             ? <img src={avatarPreview} alt="Предпросмотр аватара" className="h-14 w-14 rounded-xl object-cover" />
             : onlineProfile.avatar_url
@@ -927,7 +987,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
             </div>
           </div>
           <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(event) => { selectAvatar(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
-        </section>
+        </section>}
         {error && <section role="alert" className="mb-4 rounded-xl border border-[#81504a] bg-[#402b28] p-3 text-sm text-[#ffd2cd]">{error}</section>}
         {notice && !game && <section className="mb-4 rounded-xl border border-[#6b814a] bg-[#303c28] p-3 text-sm text-[#d7edbd]">{notice}</section>}
 
@@ -1004,8 +1064,8 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
             </div>
           </>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
-            <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-3 sm:p-4">
+          <div className="cm-online-game-layout grid gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
+            <section className="cm-online-board-panel rounded-xl border border-[#41403a] bg-[#30302b] p-3 sm:p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div><div className="text-sm font-bold">{game.status === "waiting" ? "Ожидаем соперника" : opponentName}</div><div className="mt-0.5 text-xs text-[#9a9992]">{typeLabel(game.rating_type)} · {game.rated ? "Рейтинговая" : "Без рейтинга"}</div></div>
                 <div className="rounded-md bg-[#242520] px-2 py-1 text-xs font-semibold text-[#c9c8c1]">{myColor === "w" ? "Вы играете белыми" : myColor === "b" ? "Вы играете чёрными" : "Ожидание"}</div>
@@ -1016,11 +1076,11 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
                 orientation={getBoardOrientation(myColor ?? "w", boardFlipped)}
                 interactive={isMyTurn}
                 allowedColor={myColor}
-                onMove={(move) => sendMove(move, false)}
+                onMove={handleBoardMove}
                 premoveEnabled={canQueuePremove}
                 premove={premove}
-                onPremove={(next) => { premoveGameIdRef.current = game.id; setPremove(next); setNotice(""); }}
-                onClearPremove={() => { premoveGameIdRef.current = null; setPremove(null); setNotice("Premove отменён."); }}
+                onPremove={queueBoardPremove}
+                onClearPremove={clearBoardPremove}
                 theme={preferences.boardTheme}
                 showLegalMoves={preferences.showLegalMoves}
                 highlightLastMove={preferences.highlightLastMove}
@@ -1028,7 +1088,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
                 autoQueen={preferences.autoQueen}
               />
               <div className="mt-2 flex items-center justify-between rounded-lg bg-[#252621] px-3 py-2 text-sm"><span>{game.white_name} <span className="text-xs text-[#85847d]">белые</span></span><b className={"font-mono text-xl tabular-nums " + (turn === "w" ? (clockUrgency(whiteClock) === "critical" ? "text-[#ff7770]" : "text-white") : "text-[#aaa9a2]")}>{formatClock(whiteClock, true)}</b></div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="cm-online-game-controls mt-3 flex flex-wrap items-center gap-2">
                 <button onClick={() => setBoardFlipped((value) => !value)} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2.5 text-xs font-bold">Перевернуть доску</button>
                 <button onClick={() => void copyFen()} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2.5 text-xs font-bold">Скопировать FEN</button>
                 <button onClick={() => void copyPgn()} disabled={!game.moves.length} className="rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2.5 text-xs font-bold disabled:opacity-40">Копировать PGN</button>
@@ -1038,7 +1098,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
                 <button onClick={clearGame} className="ml-auto rounded-lg border border-[#4a4942] bg-[#393831] px-3 py-2.5 text-xs font-bold">В меню</button>
               </div>
             </section>
-            <aside className="space-y-3">
+            <aside className="cm-online-game-sidebar space-y-3">
               {game.status === "waiting" && <section className="rounded-xl border border-[#6b814a] bg-[#303c28] p-4"><div className="text-sm font-extrabold text-[#d7edbd]">Комната создана</div><div className="mt-2 font-mono text-2xl font-black tracking-[0.2em]">{game.invite_code}</div><p className="mt-2 text-xs text-[#b7cba0]">{inviteTarget ? "Вызов отправлен игроку @" + inviteTarget + ". Ожидаем, пока он примет приглашение." : "Отправь код или ссылку другу."}</p></section>}
               {game.status === "active" && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="text-sm font-bold">Статус партии</div><p className="mt-2 text-sm text-[#c9c8c1]">{isMyTurn ? "Ваш ход" : "Ход соперника"}{movePending ? " · отправляем ход…" : ""}</p><p className={"mt-2 text-[10px] " + (connectionOnline ? "text-[#9acb72]" : "text-[#ff7770]")}>{!connectionOnline ? "Нет соединения" : realtimeConnected ? "Realtime · push-синхронизация активна" : "Резервная синхронизация"} · обновлено {Math.max(0, Math.floor((now - lastSync) / 1000))} сек. назад</p>{canQueuePremove && <p className="mt-2 text-xs text-[#ff9b94]">Можно поставить premove — он будет проверен после ответа соперника.</p>}<p className="mt-2 text-xs text-[#a3c86d]">Рейтинг {typeLabel(ratingType)}: {myRating ?? "—"}</p></section>}
               {positionInsights && <section className="rounded-xl border border-[#41403a] bg-[#30302b] p-4"><div className="mb-2 flex items-center justify-between text-sm font-bold"><span>Позиция сейчас</span><span className="text-[10px] text-[#91ad76]">{gamePhaseLabel(positionInsights.phase)}</span></div><div className="grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Материал белых</div><b className="mt-1 block text-base">{positionInsights.whiteMaterial}</b></div><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Материал чёрных</div><b className="mt-1 block text-base">{positionInsights.blackMaterial}</b></div><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Легальные ходы</div><b className="mt-1 block text-base">{positionInsights.legalMoves}</b></div><div className="rounded-lg bg-[#242520] p-2"><div className="text-[#85847d]">Счётчик 50 ходов</div><b className="mt-1 block text-base">{positionInsights.halfmoveClock}/100</b></div></div><div className="mt-2 rounded-lg bg-[#242520] p-2 text-xs text-[#b7b4aa]">{formatMaterialBalance(positionInsights.materialBalance)} · {terminalStateLabel(positionInsights.terminal)}</div>{isNearFiftyMoveRule(game.fen) && <p className="mt-2 text-[10px] text-[#e7bd73]">Скоро можно будет заявить ничью по правилу 50 ходов.</p>}</section>}
