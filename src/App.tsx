@@ -374,7 +374,8 @@ function Main() {
       { id: "settings", label: "Настройки" },
     ] },
   ];
-  const currentNavGroup = sidebarGroups.find((group) => group.items.some((item) => item.id === mode))?.id ?? null;
+  const currentNavMode: MainMode = mode === "home" ? "playHub" : mode;
+  const currentNavGroup = sidebarGroups.find((group) => group.items.some((item) => item.id === currentNavMode))?.id ?? null;
 
   const mobileMoreNavigation: Array<{ id: MainMode; label: string; description: string }> = [
     { id: "online", label: "Играть по сети", description: "Живые партии и вызовы друзьям" },
