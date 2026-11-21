@@ -5,11 +5,18 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+// Keep one verifier per warm Edge isolate so its JWKS cache is reused between moves.
+const authVerifier = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+const EXPECTED_ISSUER = SUPABASE_URL.replace(/\\/$/, "") + "/auth/v1";
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  // Cache preflight so fast bullet/blitz moves don't repeatedly pay OPTIONS RTT.
+  "Access-Control-Max-Age": "600",
 };
 type PlayerColor = "w" | "b";
 type GameRow = Record<string, any>;
@@ -46,13 +53,23 @@ function accountEmail(username: string): string {
 async function publicAuthClient() {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 }
-async function authUser(req: Request) {
-  const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
+async function authUser(req: Request): Promise<{ id: string }> {
+  const token = req.headers.get("Authorization")?.replace(/^Bearer\\s+/i, "");
   if (!token) throw new Error("Нужна авторизация.");
-  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-  const { data, error } = await client.auth.getUser(token);
-  if (error || !data.user) throw new Error("Сетевая сессия истекла. Перезагрузи страницу.");
-  return data.user;
+
+  // getClaims verifies asymmetric Supabase JWTs locally against the cached JWKS.
+  // getUser performs an Auth network request on every game action.
+  const { data, error } = await authVerifier.auth.getClaims(token);
+  const claims = data?.claims as Record<string, unknown> | undefined;
+  if (
+    error
+    || typeof claims?.sub !== "string"
+    || claims.role !== "authenticated"
+    || claims.iss !== EXPECTED_ISSUER
+  ) {
+    throw new Error("Сетевая сессия истекла. Перезагрузи страницу.");
+  }
+  return { id: claims.sub };
 }
 async function participantGame(gameId: string, userId: string): Promise<GameRow> {
   const { data, error } = await admin.from("online_games").select("*").eq("id", gameId).maybeSingle();
