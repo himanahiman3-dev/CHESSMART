@@ -24,6 +24,7 @@ export function AccountAvatar({
   useEffect(() => setImageFailed(false), [src]);
 
   const normalizedSrc = typeof src === "string" ? src.trim() : "";
+  const isRemoteImage = normalizedSrc.startsWith("https://") || normalizedSrc.startsWith("http://");
   const label = name.trim() ? "Аватар " + name.trim() : "Аватар игрока";
   const initial = fallbackText ?? (name.trim().slice(0, 1).toUpperCase() || "?");
 
@@ -31,6 +32,10 @@ export function AccountAvatar({
     return (
       <img
         className={className}
+        // Cross-origin isolation (required for threaded Stockfish) blocks
+        // no-CORS images from Supabase Storage under COEP: require-corp.
+        // Request the public avatar in CORS mode so the browser can display it.
+        crossOrigin={isRemoteImage ? "anonymous" : undefined}
         src={normalizedSrc}
         alt={label}
         loading="eager"
