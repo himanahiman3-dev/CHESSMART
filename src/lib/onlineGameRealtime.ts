@@ -22,7 +22,7 @@ export function isOnlineGameSnapshotNewer(
   if (next.moves.length > current.moves.length) return true;
   const currentTime = current.updated_at ? Date.parse(current.updated_at) : Number.NaN;
   const nextTime = next.updated_at ? Date.parse(next.updated_at) : Number.NaN;
-  if (Number.isFinite(currentTime) && Number.isFinite(nextTime)) return nextTime >= currentTime;
+  if (Number.isFinite(currentTime) && Number.isFinite(nextTime)) return nextTime > currentTime;
   return true;
 }
 
