@@ -6,7 +6,7 @@ import { buildPgnFromSan, buildPgnFromUci, formatSanMoveList, pgnFilename, textF
 import { formatMaterialBalance, gamePhaseLabel, getCapturedMaterial, getGamePhase, getHalfmoveClock, getLegalMoveCount, getPositionInsights, isNearFiftyMoveRule, replaySanHistory, replayUciHistory, terminalStateLabel } from "../src/lib/gameInsights.ts";
 import { classifyGamePhase } from "../src/lib/learningStats.ts";
 import { recordPersonalGameReview } from "../src/lib/playerProfile.ts";
-import { isOnlineGameSnapshotNewer, parseOnlineGameRealtimeFrame } from "../src/lib/onlineGameRealtime.ts";
+import { isOnlineGameSnapshotNewer, ONLINE_GAME_BROADCAST_EVENT, parseOnlineGameBroadcastRecord, parseOnlineGameRealtimeFrame } from "../src/lib/onlineGameRealtime.ts";
 import { determinePuzzleBattleWinner } from "../supabase/functions/puzzle-battle/puzzleBattleCore.ts";
 import { soundForSan } from "../src/lib/sound.ts";
 const start = new Chess().fen();
@@ -219,6 +219,36 @@ assert.equal(onlyBlack.personalReviews[0].counts.blunder, 1);
 assert.equal(onlyBlack.personalReviews[0].counts.best, 0,
   "The player's statistics must exclude the other side's best moves.");
 const topic = "realtime:online-game:00000000-0000-0000-0000-000000000001";
+const broadcastGameId = "00000000-0000-0000-0000-000000000001";
+const broadcastTopic = "topic:" + broadcastGameId;
+const broadcastRecord = {
+  id: broadcastGameId,
+  status: "active",
+  white_id: "white-user",
+  black_id: "black-user",
+  fen: start,
+  moves: [{ uci: "e2e4", san: "e4", color: "w" }],
+  white_ms: 59_900,
+  black_ms: 60_000,
+  increment_ms: 0,
+  rated: false,
+};
+const broadcastEnvelope = {
+  type: "broadcast",
+  event: ONLINE_GAME_BROADCAST_EVENT,
+  payload: { record: broadcastRecord },
+};
+const broadcastFrame = parseOnlineGameRealtimeFrame(JSON.stringify([
+  "10", "10", broadcastTopic, "broadcast", broadcastEnvelope,
+]), broadcastTopic);
+assert.equal(broadcastFrame?.event, "broadcast");
+assert.equal(parseOnlineGameBroadcastRecord(broadcastFrame?.payload, broadcastGameId)?.fen, start,
+  "Private game Broadcast must carry the committed authoritative snapshot.");
+assert.equal(parseOnlineGameBroadcastRecord(broadcastEnvelope, "another-game"), null,
+  "A game broadcast must never be applied to a different game.");
+assert.equal(parseOnlineGameBroadcastRecord({ ...broadcastEnvelope, event: "other" }, broadcastGameId), null,
+  "Unknown broadcast events must be ignored.");
+
 const liveFrame = parseOnlineGameRealtimeFrame(JSON.stringify([
   "9", "9", topic, "postgres_changes",
   { data: {
