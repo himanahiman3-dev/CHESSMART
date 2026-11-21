@@ -4,6 +4,7 @@ import { fenKey } from "../src/lib/format.ts";
 import { positionKey } from "../src/lib/db.ts";
 import { buildPositionCommand } from "../src/lib/engine.ts";
 import { forcedMoveClass } from "../src/lib/forcedMove.ts";
+import { shouldRecheckCriticalPosition } from "../src/lib/criticalPositionRanking.ts";
 import { qBalance } from "../src/lib/see.ts";
 import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES } from "../src/lib/analysisBudget.ts";
 import { summarizeReview } from "../src/lib/learningStats.ts";
@@ -89,6 +90,11 @@ assert.equal(forcedMoveClass(0), null,
   "A position with no legal moves is checkmate or stalemate, not a forced move.");
 assert.equal(forcedMoveClass(2), null,
   "Two or more legal moves must not receive the Forced classification.");
+
+assert.equal(shouldRecheckCriticalPosition(0, 0, 20, false, true), true,
+  "A forced-mate opportunity must be rechecked even when the expected-points curve is flat.");
+assert.equal(shouldRecheckCriticalPosition(0, 0, 10, false, false), false,
+  "Quiet, non-critical positions must not consume deeper-review budget.");
 
 const ordinaryFen = "4k3/8/8/8/8/8/8/R3K3 w - - 0 1";
 const ordinaryChess = new Chess(ordinaryFen);
