@@ -327,7 +327,7 @@ const handleSquareSelection = useCallback((square: Square) => {
 
   return (
     <div
-      className="relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40"
+      className={`cm-game-board relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40 ${interactive || premoveEnabled ? "cm-game-board-interactive" : ""}`}
       style={{ containerType: "inline-size" }}
       onContextMenu={(event) => {
         if (!premove && !promotionDraft) return;
