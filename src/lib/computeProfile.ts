@@ -13,6 +13,9 @@ export interface DeviceAnalysisProfile {
   device: DeviceClass;
   defaultVariant: EngineVariantPreference;
   maxThreads: number;
+  /** Number of independent single-threaded WASM workers used for full-game review. */
+  reviewWorkers: number;
+  reviewHashMb: number;
   hashMb: number;
   timePerMoveMs: number;
   /** Per-ply ceiling used only when the user selects a high target depth. */
@@ -41,13 +44,15 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
       device: "mobile",
       defaultVariant: "lite",
       maxThreads: 1,
+      reviewWorkers: 1,
+      reviewHashMb: 32,
       hashMb: 64,
       timePerMoveMs: 400,
       maxTimePerMoveMs: 1100,
       depthBonus: 0,
-      mainMultiPv: 2,
+      mainMultiPv: 1,
       verifierEnabled,
-      verifierMaxMoves: 1,
+      verifierMaxMoves: highEndPc ? 6 : 4,
       verifierBudgetMs: 900,
       verifierMoveTimeMs: 800,
       tacticalExtraBudgetMs: 2600,
@@ -61,17 +66,20 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
   // Stockfish remains multi-threaded, but must not occupy every logical core on large PCs.
   const renderReserve = cores <= 2 ? 1 : Math.max(2, Math.ceil(cores * 0.25));
   const maxThreads = Math.min(10, Math.max(1, cores - renderReserve));
+  const reviewWorkers = lowResourcePc ? 1 : highEndPc ? 3 : cores >= 6 ? 2 : 1;
   const verifierEnabled = cores >= 6 && (memory === undefined || memory >= 8);
 
   return {
     device: "desktop",
     defaultVariant: "full",
     maxThreads,
+    reviewWorkers,
+    reviewHashMb: 64,
     hashMb: highEndPc ? 512 : memory !== undefined && memory <= 8 ? 128 : 256,
     timePerMoveMs: highEndPc ? 1400 : lowResourcePc ? 650 : 1000,
     maxTimePerMoveMs: lowResourcePc ? 2600 : 4750,
     depthBonus: highEndPc ? 5 : lowResourcePc ? 2 : 3,
-    mainMultiPv: highEndPc ? 4 : lowResourcePc ? 2 : 3,
+    mainMultiPv: 1,
     verifierEnabled,
     verifierMaxMoves: 2,
     verifierBudgetMs: highEndPc ? 5000 : 3600,

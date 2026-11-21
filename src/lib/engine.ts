@@ -30,10 +30,12 @@ export interface SearchOptions {
   fen: string;
   /** Original game path to preserve repetition and draw context. */
   history?: PositionHistory;
-  depth: number;
+  depth?: number;
   multipv: number;
   /** UCI wall-clock search budget for this position (ms). */
   movetimeMs?: number;
+  /** UCI node ceiling; combined with movetime, whichever limit occurs first stops search. */
+  nodes?: number;
   onInfo?: (lines: EngineLine[]) => void;
   /** Если не задано, движок сбрасывается на максимальную силу. */
   strength?: EngineStrength;
@@ -43,6 +45,16 @@ export function buildPositionCommand(fen: string, history?: PositionHistory): st
   if (!history) return `position fen ${fen}`;
   const moves = history.moves.length ? ` moves ${history.moves.join(" ")}` : "";
   return `position fen ${history.startFen}${moves}`;
+}
+
+/** Build a UCI search command with every enabled independent stop limit. */
+export function buildSearchCommand(options: Pick<SearchOptions, "depth" | "nodes" | "movetimeMs">): string {
+  const parts = ["go"];
+  if (options.depth && options.depth > 0) parts.push("depth", String(Math.max(1, Math.floor(options.depth))));
+  if (options.nodes && options.nodes > 0) parts.push("nodes", String(Math.max(1, Math.floor(options.nodes))));
+  if (options.movetimeMs && options.movetimeMs > 0) parts.push("movetime", String(Math.max(1, Math.round(options.movetimeMs))));
+  if (parts.length === 1) parts.push("depth", "22");
+  return parts.join(" ");
 }
 
 const WATCHDOG_GRACE_MS = 250;
@@ -297,11 +309,7 @@ export class StockfishEngine {
           const limit = options.movetimeMs && options.movetimeMs > 0
             ? Math.max(1, Math.round(options.movetimeMs))
             : 0;
-          const requestedDepth = Math.max(1, Math.floor(options.depth));
-          // UCI stops when either depth or movetime is reached, whichever comes first.
-          this.send(limit
-            ? `go depth ${requestedDepth} movetime ${limit}`
-            : `go depth ${requestedDepth}`);
+          this.send(buildSearchCommand(options));
           if (this.dead) return;
           if (limit) {
             // UCI movetime normally sends bestmove itself. This is a safety watchdog
