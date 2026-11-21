@@ -522,6 +522,7 @@ select 'Online SQL migrations, matchmaking, cloud progress, Puzzle Battle rating
 SQL
 
 
+psql -v ON_ERROR_STOP=1 <<'SQL'
 -- Audit migration: preserve private tables while making participant policies and FK lookups efficient.
 do $audit_indexes_rls_test$
 declare
@@ -573,3 +574,5 @@ begin
   end if;
 end;
 $audit_indexes_rls_test$;
+
+SQL
