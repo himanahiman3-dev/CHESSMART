@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Chess } from "chess.js";
+import { Chess, type Square } from "chess.js";
 import { GameBoard, type BoardMove } from "./GameBoard";
 import type { Color, GameReview } from "../types";
 import { GameFinishedReviewOverlay } from "./GameFinishedReviewOverlay";
@@ -584,7 +584,11 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     const resolved = resolvePremove(game.fen, myColor, premove);
     setPremove(null);
     if (!resolved) {
-      setNotice("Premove отменён: ход соперника сделал его нелегальным.");
+      const captureTarget = premove.capture ? new Chess(game.fen).get(premove.to as Square) : null;
+      const captureTargetMissing = premove.capture && (!captureTarget || captureTarget.color === myColor);
+      setNotice(captureTargetMissing
+        ? `Premove-взятие отменено: на клетке ${premove.to} нет фигуры соперника.`
+        : "Premove отменён: ход соперника сделал его нелегальным.");
       playSound("wrong");
       return;
     }
