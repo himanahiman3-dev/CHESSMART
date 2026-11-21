@@ -118,6 +118,21 @@ function isGameRecord(value: unknown, gameId: string): value is Record<string, u
     && typeof record.rated === "boolean";
 }
 
+export const ONLINE_GAME_BROADCAST_EVENT = "game_update";
+
+/** Extract and validate a committed game row from a private Broadcast envelope. */
+export function parseOnlineGameBroadcastRecord(
+  envelope: unknown,
+  gameId: string,
+): Record<string, unknown> | null {
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) return null;
+  const outer = envelope as Record<string, unknown>;
+  if (outer.type !== "broadcast" || outer.event !== ONLINE_GAME_BROADCAST_EVENT) return null;
+  if (!outer.payload || typeof outer.payload !== "object" || Array.isArray(outer.payload)) return null;
+  const record = (outer.payload as Record<string, unknown>).record;
+  return isGameRecord(record, gameId) ? record : null;
+}
+
 /**
  * Subscribes to the authenticated participant-visible row for one live game.
  * The server remains authoritative: notifications carry the committed row,
@@ -141,7 +156,9 @@ export function subscribeToOnlineGameRealtime(
   let sequence = 0;
   let joinRef: string | null = null;
   let retryIndex = 0;
-  const topic = `realtime:online-game:${gameId}`;
+  // The same private topic carries the fast database Broadcast and the
+  // Postgres Changes fallback. Both contain the committed authoritative row.
+  const topic = `topic:${gameId}`;
 
   const nextRef = () => String(++sequence);
   const clearHeartbeat = () => {
@@ -202,9 +219,8 @@ export function subscribeToOnlineGameRealtime(
             schema: "public",
             table: "online_games",
             filter: `id=eq.${gameId}`,
-            select: [...ONLINE_GAME_REALTIME_COLUMNS],
           }],
-          private: false,
+          private: true,
         },
         access_token: accessToken,
       };
@@ -233,7 +249,16 @@ export function subscribeToOnlineGameRealtime(
         return;
       }
 
+      if (frame.event === "broadcast") {
+        // Database-triggered Broadcast arrives only after the game row commits.
+        const record = parseOnlineGameBroadcastRecord(frame.payload, gameId);
+        if (record) onUpdate(record);
+        return;
+      }
+
       if (frame.event === "postgres_changes") {
+        // Retain the original table-change subscription as a recovery path in case
+        // the Broadcast trigger or channel policy is unavailable.
         const data = frame.payload.data;
         if (!data || typeof data !== "object" || Array.isArray(data)) return;
         const change = data as Record<string, unknown>;
