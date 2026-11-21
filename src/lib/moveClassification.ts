@@ -4,8 +4,8 @@ import type { Cls } from "../types";
 export const MOVE_LOSS_LIMITS = {
   excellent: 2,
   good: 5,
-  inaccuracy: 5,
-  mistake: 10,
+  inaccuracy: 10,
+  mistake: 20,
   blunder: 20,
 } as const;
 
@@ -84,7 +84,7 @@ export function qualifiesAsMiss(input: Pick<
 >): boolean {
   if (input.allowedMate) return false;
   if (input.missedMateInOne || input.lostForcedMate) return true;
-  return input.previousOpponentLoss >= MOVE_LOSS_LIMITS.mistake
+  return input.previousOpponentLoss >= MOVE_LOSS_LIMITS.inaccuracy
     && input.winBefore >= MISS_BAND_LIMITS.winningAtLeast
     && input.winAfter <= MISS_BAND_LIMITS.equalOrWorseAtMost;
 }
