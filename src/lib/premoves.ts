@@ -71,7 +71,7 @@ export function getPremoveCaptureMoves(fen: string, color: "w" | "b", from: stri
     const fields = fen.trim().split(/\s+/);
     if (fields.length !== 6) return [];
     const live = new Chess(fen);
-    if (live.turn() === color || live.isGameOver()) return [];
+    if (live.isGameOver()) return [];
     const piece = live.get(from);
     if (!piece || piece.color !== color) return [];
     fields[1] = color;
