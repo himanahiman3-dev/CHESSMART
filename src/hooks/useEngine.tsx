@@ -33,6 +33,8 @@ interface EngineCtx {
   isolated: boolean;
   cachedVariants: Record<EngineVariant, boolean>;
   createVerifier: (signal?: AbortSignal) => Promise<StockfishEngine | null>;
+  /** Creates/reuses independent single-thread Stockfish workers for whole-game review. */
+  createReviewPool: (signal?: AbortSignal) => Promise<StockfishEngine[]>;
   computeProfile: DeviceAnalysisProfile;
 }
 
@@ -71,6 +73,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     return computeProfile.defaultVariant;
   });
   const startedRef = useRef(false);
+  const reviewPoolRef = useRef<{ variant: EngineVariant; engines: StockfishEngine[] } | null>(null);
+  const reviewPoolPromiseRef = useRef<Promise<StockfishEngine[]> | null>(null);
   const isolated = canUseThreads();
 
   // The engine owns its Worker and Blob URLs; release both when the provider unmounts
@@ -78,6 +82,11 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => {
     engine?.terminate();
   }, [engine]);
+
+  useEffect(() => () => {
+    reviewPoolRef.current?.engines.forEach((worker) => worker.terminate());
+    reviewPoolRef.current = null;
+  }, []);
 
   const createVerifier = useCallback(async (signal?: AbortSignal): Promise<StockfishEngine | null> => {
     const selectedVariant = info?.variant ?? variant;
@@ -99,7 +108,63 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     return verifier;
   }, [info?.variant, variant, computeProfile, isolated]);
 
+  const createReviewPool = useCallback(async (signal?: AbortSignal): Promise<StockfishEngine[]> => {
+    if (!engine) throw new Error("Stockfish ещё не готов к анализу.");
+    const selectedVariant = info?.variant ?? variant;
+    const desiredWorkers = Math.max(1, Math.min(4, computeProfile.reviewWorkers || 1));
+
+    // Phones and low-resource desktops keep the primary engine only.
+    if (desiredWorkers <= 1) return [engine];
+    if (reviewPoolRef.current?.variant === selectedVariant
+      && reviewPoolRef.current.engines.length === desiredWorkers) {
+      return reviewPoolRef.current.engines;
+    }
+    if (reviewPoolPromiseRef.current) return reviewPoolPromiseRef.current;
+
+    const creation = (async () => {
+      const created: StockfishEngine[] = [];
+      try {
+        // Single-threaded builds avoid SharedArrayBuffer and do not require COOP/COEP.
+        const singleThreadSet = getFileSet(selectedVariant, false);
+        for (let index = 0; index < desiredWorkers; index++) {
+          if (signal?.aborted) throw new Error("cancelled");
+          const bundle = await prepareEngineFiles(singleThreadSet, () => undefined, signal);
+          if (signal?.aborted) {
+            URL.revokeObjectURL(bundle.jsUrl);
+            URL.revokeObjectURL(bundle.wasmUrl);
+            throw new Error("cancelled");
+          }
+          const worker = await StockfishEngine.create(bundle, computeProfile.reviewHashMb, 1);
+          if (signal?.aborted) {
+            worker.terminate();
+            throw new Error("cancelled");
+          }
+          created.push(worker);
+        }
+        reviewPoolRef.current?.engines.forEach((worker) => worker.terminate());
+        reviewPoolRef.current = { variant: selectedVariant, engines: created };
+        return created;
+      } catch (reason) {
+        created.forEach((worker) => worker.terminate());
+        if (signal?.aborted) throw reason;
+        console.warn("Не удалось создать пул анализа; используем основной Stockfish", reason);
+        return [engine];
+      }
+    })();
+
+    reviewPoolPromiseRef.current = creation;
+    try {
+      return await creation;
+    } finally {
+      reviewPoolPromiseRef.current = null;
+    }
+  }, [engine, info?.variant, variant, computeProfile]);
+
   const setVariant = useCallback((v: EngineVariant) => {
+    if (reviewPoolRef.current && reviewPoolRef.current.variant !== v) {
+      reviewPoolRef.current.engines.forEach((worker) => worker.terminate());
+      reviewPoolRef.current = null;
+    }
     setVariantState(v);
     try {
       localStorage.setItem(LS_KEY, v);
@@ -172,8 +237,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<EngineCtx>(
-    () => ({ engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier, computeProfile }),
-    [engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier, computeProfile]
+    () => ({ engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier, createReviewPool, computeProfile }),
+    [engine, status, progress, info, error, variant, setVariant, start, isolated, cachedVariants, createVerifier, createReviewPool, computeProfile]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

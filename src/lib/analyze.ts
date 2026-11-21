@@ -73,7 +73,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { gameBudgetMs, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
+import { estimateParallelBudgetMs, resolveAnalysisBudget, type AnalysisConfig } from "./analysisBudget";
 import { isSacrificeVerificationCandidate, rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { classifyMove } from "./moveClassification";
 import { hasOnlyLegalMove } from "./forcedMove";
@@ -121,6 +121,8 @@ export interface ReviewComputeProfile {
   verifierMoveTimeMs?: number;
   /** Total extra verification budget supplied by the device profile. */
   tacticalExtraBudgetMs?: number;
+  device?: "desktop" | "mobile";
+  reviewWorkers?: number;
 }
 
 export interface AnalyzeProgress {
@@ -130,10 +132,12 @@ export interface AnalyzeProgress {
   targetDepth: number;
   cached: number;
   fen: string;
-  /** Общий бюджет времени на партию, мс. */
+  /** Approximate parallel budget; not a completion-time guarantee. */
   budgetMs?: number;
-  /** Сколько времени уже прошло с начала анализа, мс. */
   elapsedMs?: number;
+  activeWorkers?: number;
+  queued?: number;
+  stage?: "scan" | "verify" | "finalize";
 }
 
 function terminalEval(fen: string): PositionEval | null {
@@ -153,7 +157,9 @@ export async function evaluatePosition(
   signal?: AbortSignal,
   onInfo?: (lines: EngineLine[]) => void,
   movetimeMs?: number,
-  history?: PositionHistory
+  history?: PositionHistory,
+  nodes?: number,
+  depthLimit?: number,
 ): Promise<{ evalResult: PositionEval; fromCache: boolean }> {
   const term = terminalEval(fen);
   if (term) return { evalResult: term, fromCache: true };
@@ -164,7 +170,7 @@ export async function evaluatePosition(
   // A shallow timed-out cache entry must not skip a fresh timed search.
   const requiredCacheDepth = depth;
   if (cached && cached.depth >= requiredCacheDepth) return { evalResult: cached, fromCache: true };
-  const handle = engine.search({ fen, depth, multipv, movetimeMs, onInfo, history });
+  const handle = engine.search({ fen, depth: depthLimit, multipv, movetimeMs, nodes, onInfo, history });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
   let lines: EngineLine[];
@@ -290,154 +296,315 @@ export function selectCriticalPositions(
  * Runs the timed main pass, then spends a small device-aware reserve on critical
  * positions so shallow MultiPV results cannot hide tactical errors, mate threats or sacrifices.
  */
+/**
+ * Two-pass whole-game review: concurrent MultiPV=1 scan, then targeted MultiPV=2 checks.
+ * Independent positions are distributed across a small pool of local Stockfish workers.
+ */
 export async function reviewGame(
   pgn: string,
-  timePerPositionMs: number,
-  engine: StockfishEngine,
+  analysisConfig: AnalysisConfig | number,
+  engineOrPool: StockfishEngine | readonly StockfishEngine[],
   onProgress: (p: AnalyzeProgress) => void,
   signal?: AbortSignal,
   computeProfile?: ReviewComputeProfile
 ): Promise<GameReview> {
   const game = parseGame(pgn);
   const N = game.moves.length;
-  const total = N + 1;
-  const movetimeMs = normalizeAnalysisTimeMs(timePerPositionMs);
-  const targetDepth = REVIEW_TARGET_DEPTH;
-  const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
-  const maxVerificationChecks = Math.max(0, Math.min(3,
-    Math.floor(computeProfile?.verifierMaxMoves ?? 1)));
-  const progressTotal = total + maxVerificationChecks;
-  const budgetMs = gameBudgetMs(N, movetimeMs);
+  const totalPositions = N + 1;
+  const engines: StockfishEngine[] = Array.isArray(engineOrPool)
+    ? [...engineOrPool]
+    : [engineOrPool as StockfishEngine];
+  if (!engines.length) throw new Error("Пул Stockfish пуст.");
+
+  const budget = resolveAnalysisBudget(
+    analysisConfig,
+    { device: computeProfile?.device, reviewWorkers: computeProfile?.reviewWorkers },
+    N,
+  );
+  const maxVerificationChecks = Math.max(0, Math.min(10,
+    Math.floor(computeProfile?.verifierMaxMoves ?? 4)));
+  const progressTotal = totalPositions + maxVerificationChecks;
   const startedAt = now();
-
-  engine.newGame();
-  const positions: PositionEval[] = [];
+  const positions: Array<PositionEval | undefined> = new Array(totalPositions);
+  const forcedMoves = new Map<number, string>();
+  const tasks: number[] = [];
   let cachedHits = 0;
+  let completedTasks = 0;
+  let activeWorkers = 0;
+  let terminalPositions = 0;
 
-  for (let i = 0; i <= N; i++) {
+  for (let i = 0; i < totalPositions; i++) {
     if (signal?.aborted) throw new Error("cancelled");
-    const fen = game.fens[i];
-    const history = {
-      startFen: game.startFen,
-      moves: game.moves.slice(0, i).map((move) => move.uci),
-    };
+    const terminal = terminalEval(game.fens[i]);
+    if (terminal) {
+      positions[i] = terminal;
+      terminalPositions++;
+      continue;
+    }
 
-    onProgress({
-      done: i,
-      total: progressTotal,
-      depth: 0,
-      targetDepth,
-      cached: cachedHits,
-      fen,
-      budgetMs,
-      elapsedMs: now() - startedAt,
-    });
-
-    const { evalResult, fromCache } = await evaluatePosition(
-      engine,
-      fen,
-      targetDepth,
-      mainMultiPv,
-      signal,
-      (lines) => {
-        onProgress({
-          done: i,
-          total: progressTotal,
-          depth: lines.length ? Math.min(...lines.map((line) => line.depth)) : 0,
-          targetDepth,
-          cached: cachedHits,
-          fen,
-          budgetMs,
-          elapsedMs: now() - startedAt,
-        });
-      },
-      movetimeMs,
-      history
-    );
-
-    if (fromCache) cachedHits++;
-    positions.push(evalResult);
-    onProgress({
-      done: i + 1,
-      total: progressTotal,
-      depth: evalResult.depth,
-      targetDepth,
-      cached: cachedHits,
-      fen,
-      budgetMs,
-      elapsedMs: now() - startedAt,
-    });
+    // If there is exactly one legal move, reuse the successor's White-centric
+    // evaluation. This saves one search without inventing a score or a new label.
+    if (i < N) {
+      const legal = new Chess(game.fens[i]).moves({ verbose: true });
+      if (legal.length === 1) {
+        const forcedUci = legal[0].from + legal[0].to + (legal[0].promotion ?? "");
+        if (forcedUci === game.moves[i].uci) {
+          forcedMoves.set(i, forcedUci);
+          continue;
+        }
+      }
+    }
+    tasks.push(i);
   }
 
-  // The first pass is deliberately time-bounded. Spend the device-aware reserve
-  // on critical positions of every type: large evaluation swings, tactical errors,
-  // forced-mate opportunities and sound sacrifices. Reserve one slot for the best
-  // sacrifice candidate so an ordinary blunder cannot starve Brilliant verification.
-  const rankedCriticalCandidates = maxVerificationChecks > 0
-    ? selectCriticalPositions(game, positions, game.moves.length, false)
-    : [];
-  // The combined ranking already includes every sacrifice candidate, so no
-  // second pass through detectSacrifice() is needed just to reserve one slot.
-  const bestSacrificeCandidate = rankedCriticalCandidates.find((candidate) => candidate.sacrifice);
-  const verificationCandidates = [
-    ...(bestSacrificeCandidate ? [bestSacrificeCandidate] : []),
-    ...rankedCriticalCandidates.filter((candidate) => candidate.index !== bestSacrificeCandidate?.index),
-  ].slice(0, maxVerificationChecks);
-  const perVerificationBudget = Math.max(300, Math.min(
-    computeProfile?.verifierMoveTimeMs ?? 900,
-    Math.floor((computeProfile?.tacticalExtraBudgetMs ?? 1800) / Math.max(1, maxVerificationChecks || 1)),
-  ));
+  // Current ECO data stores opening names/theory labels, not Polyglot positions
+  // with precomputed scores. Keep these positions in the scan rather than fabricating evals.
+  for (const worker of engines) worker.newGame();
+  const scanBudgetMs = estimateParallelBudgetMs(tasks.length, budget.movetimeMs, engines.length);
+  const doneCount = () => terminalPositions + completedTasks;
 
-  for (let check = 0; check < verificationCandidates.length; check++) {
-    if (signal?.aborted) throw new Error("cancelled");
-    const candidate = verificationCandidates[check];
-    const move = game.moves[candidate.index];
-    const history = {
+  onProgress({
+    done: doneCount(),
+    total: progressTotal,
+    depth: 0,
+    targetDepth: budget.targetDepth,
+    cached: cachedHits,
+    fen: game.fens[0],
+    budgetMs: scanBudgetMs,
+    elapsedMs: now() - startedAt,
+    activeWorkers: 0,
+    queued: tasks.length,
+    stage: "scan",
+  });
+
+  let cursor = 0;
+  let firstWorkerError: unknown = null;
+  await Promise.all(engines.map(async (worker) => {
+    while (!signal?.aborted && !firstWorkerError) {
+      const taskPosition = cursor++;
+      if (taskPosition >= tasks.length) return;
+      const index = tasks[taskPosition];
+      const fen = game.fens[index];
+      const history = {
+        startFen: game.startFen,
+        moves: game.moves.slice(0, index).map((move) => move.uci),
+      };
+      activeWorkers++;
+      onProgress({
+        done: doneCount(),
+        total: progressTotal,
+        depth: 0,
+        targetDepth: budget.targetDepth,
+        cached: cachedHits,
+        fen,
+        budgetMs: scanBudgetMs,
+        elapsedMs: now() - startedAt,
+        activeWorkers,
+        queued: Math.max(0, tasks.length - cursor),
+        stage: "scan",
+      });
+
+      try {
+        const { evalResult, fromCache } = await evaluatePosition(
+          worker,
+          fen,
+          budget.targetDepth,
+          1,
+          signal,
+          (lines) => {
+            onProgress({
+              done: doneCount(),
+              total: progressTotal,
+              depth: lines.length ? Math.min(...lines.map((line) => line.depth)) : 0,
+              targetDepth: budget.targetDepth,
+              cached: cachedHits,
+              fen,
+              budgetMs: scanBudgetMs,
+              elapsedMs: now() - startedAt,
+              activeWorkers,
+              queued: Math.max(0, tasks.length - cursor),
+              stage: "scan",
+            });
+          },
+          budget.movetimeMs,
+          history,
+          budget.nodes,
+          budget.depthLimit,
+        );
+        positions[index] = evalResult;
+        if (fromCache) cachedHits++;
+        completedTasks++;
+      } catch (reason) {
+        firstWorkerError ??= reason;
+      } finally {
+        activeWorkers = Math.max(0, activeWorkers - 1);
+      }
+
+      onProgress({
+        done: doneCount(),
+        total: progressTotal,
+        depth: positions[index]?.depth ?? 0,
+        targetDepth: budget.targetDepth,
+        cached: cachedHits,
+        fen,
+        budgetMs: scanBudgetMs,
+        elapsedMs: now() - startedAt,
+        activeWorkers,
+        queued: Math.max(0, tasks.length - cursor),
+        stage: "scan",
+      });
+    }
+  }));
+  if (signal?.aborted) throw new Error("cancelled");
+  if (firstWorkerError) throw firstWorkerError;
+
+  // Resolve chains of forced positions backwards from a fully evaluated child.
+  for (let i = N - 1; i >= 0; i--) {
+    const forcedUci = forcedMoves.get(i);
+    if (!forcedUci) continue;
+    const child = positions[i + 1];
+    if (!child) throw new Error("Не удалось восстановить оценку вынужденной позиции.");
+    positions[i] = {
+      fen: game.fens[i],
+      depth: child.depth,
+      lines: child.lines.map((line) => ({ ...line, pv: [forcedUci, ...line.pv] })),
+    };
+  }
+
+  const completePositions = positions.map((position, index) => {
+    if (position) return position;
+    const fallback = terminalEval(game.fens[index]);
+    if (fallback) return fallback;
+    throw new Error("Stockfish не вернул оценку для одной из позиций.");
+  });
+
+  const scanDone = totalPositions;
+  onProgress({
+    done: scanDone,
+    total: progressTotal,
+    depth: completePositions.reduce(
+      (min, position) => position.depth > 0 ? Math.min(min, position.depth) : min,
+      budget.targetDepth,
+    ),
+    targetDepth: budget.targetDepth,
+    cached: cachedHits,
+    fen: game.fens[N],
+    budgetMs: scanBudgetMs,
+    elapsedMs: now() - startedAt,
+    activeWorkers: 0,
+    queued: 0,
+    stage: "verify",
+  });
+
+  if (signal?.aborted) throw new Error("cancelled");
+  const rankedCriticalCandidates = maxVerificationChecks > 0
+    ? selectCriticalPositions(game, completePositions, game.moves.length, false)
+    : [];
+  // Reserve verification slots for sacrifices first so ordinary evaluation swings
+  // cannot starve promising Brilliant candidates.
+  const sacrificeCandidates = rankedCriticalCandidates.filter((candidate) => candidate.sacrifice);
+  const otherCandidates = rankedCriticalCandidates.filter((candidate) => !candidate.sacrifice);
+  const verificationCandidates = [...sacrificeCandidates, ...otherCandidates].slice(0, maxVerificationChecks);
+  const verifierTasks = verificationCandidates.map((candidate) => ({
+    candidate,
+    move: game.moves[candidate.index],
+    history: {
       startFen: game.startFen,
       moves: game.moves.slice(0, candidate.index).map((entry) => entry.uci),
-    };
-    const { evalResult, fromCache } = await evaluatePosition(
-      engine,
-      move.fenBefore,
-      targetDepth + 6,
-      mainMultiPv,
-      signal,
-      undefined,
-      perVerificationBudget,
-      history,
-    );
-    const previous = positions[candidate.index];
-    if (evalResult.depth > previous.depth
-      || (evalResult.depth === previous.depth && evalResult.lines.length > previous.lines.length)) {
-      positions[candidate.index] = evalResult;
-    }
-    if (fromCache) cachedHits++;
-    onProgress({
-      done: total + check + 1,
-      total: progressTotal,
-      depth: evalResult.depth,
-      targetDepth: targetDepth + 6,
-      cached: cachedHits,
-      fen: move.fenBefore,
-      budgetMs: budgetMs + verificationCandidates.length * perVerificationBudget,
-      elapsedMs: now() - startedAt,
-    });
-  }
+    },
+  }));
+  const verifierEstimateMs = estimateParallelBudgetMs(
+    verifierTasks.length,
+    budget.verifierMovetimeMs,
+    engines.length,
+  );
+  let verifyCursor = 0;
+  let completedVerifications = 0;
+  firstWorkerError = null;
 
-  // If fewer candidates existed than the device's maximum, finish the progress
-  // bar cleanly without creating dummy searches.
+  await Promise.all(engines.map(async (worker) => {
+    while (!signal?.aborted && !firstWorkerError) {
+      const taskIndex = verifyCursor++;
+      if (taskIndex >= verifierTasks.length) return;
+      const task = verifierTasks[taskIndex];
+      const { candidate, move, history } = task;
+      activeWorkers++;
+      onProgress({
+        done: scanDone + completedVerifications,
+        total: progressTotal,
+        depth: 0,
+        targetDepth: budget.verifierDepth,
+        cached: cachedHits,
+        fen: move.fenBefore,
+        budgetMs: scanBudgetMs + verifierEstimateMs,
+        elapsedMs: now() - startedAt,
+        activeWorkers,
+        queued: Math.max(0, verifierTasks.length - verifyCursor),
+        stage: "verify",
+      });
+
+      try {
+        const { evalResult, fromCache } = await evaluatePosition(
+          worker,
+          move.fenBefore,
+          budget.verifierDepth,
+          2,
+          signal,
+          undefined,
+          budget.verifierMovetimeMs,
+          history,
+          budget.verifierNodes,
+          budget.depthLimit === undefined ? undefined : budget.verifierDepth,
+        );
+        const previous = completePositions[candidate.index];
+        if (evalResult.depth > previous.depth
+          || (evalResult.depth === previous.depth && evalResult.lines.length > previous.lines.length)) {
+          completePositions[candidate.index] = evalResult;
+        }
+        if (fromCache) cachedHits++;
+        completedVerifications++;
+      } catch (reason) {
+        firstWorkerError ??= reason;
+      } finally {
+        activeWorkers = Math.max(0, activeWorkers - 1);
+      }
+
+      onProgress({
+        done: scanDone + completedVerifications,
+        total: progressTotal,
+        depth: completePositions[candidate.index]?.depth ?? 0,
+        targetDepth: budget.verifierDepth,
+        cached: cachedHits,
+        fen: move.fenBefore,
+        budgetMs: scanBudgetMs + verifierEstimateMs,
+        elapsedMs: now() - startedAt,
+        activeWorkers,
+        queued: Math.max(0, verifierTasks.length - verifyCursor),
+        stage: "verify",
+      });
+    }
+  }));
+  if (signal?.aborted) throw new Error("cancelled");
+  if (firstWorkerError) throw firstWorkerError;
+
   onProgress({
     done: progressTotal,
     total: progressTotal,
-    depth: positions.reduce((min, position) => position.depth > 0 ? Math.min(min, position.depth) : min, targetDepth),
-    targetDepth: targetDepth + 6,
+    depth: completePositions.reduce(
+      (min, position) => position.depth > 0 ? Math.min(min, position.depth) : min,
+      budget.targetDepth,
+    ),
+    targetDepth: budget.verifierDepth,
     cached: cachedHits,
     fen: game.fens[N],
-    budgetMs: budgetMs + verificationCandidates.length * perVerificationBudget,
+    budgetMs: scanBudgetMs + verifierEstimateMs,
     elapsedMs: now() - startedAt,
+    activeWorkers: 0,
+    queued: 0,
+    stage: "finalize",
   });
 
-  return buildReview(game, positions, targetDepth);
+  return buildReview(game, completePositions, budget.targetDepth);
 }
 
 export function buildReview(
