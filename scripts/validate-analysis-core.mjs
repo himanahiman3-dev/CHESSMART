@@ -7,12 +7,20 @@ import { forcedMoveClass } from "../src/lib/forcedMove.ts";
 import { qBalance } from "../src/lib/see.ts";
 import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES } from "../src/lib/analysisBudget.ts";
 import { summarizeReview } from "../src/lib/learningStats.ts";
+import { getDeviceAnalysisProfile } from "../src/lib/computeProfile.ts";
 
 assert.equal(REVIEW_TARGET_DEPTH, 22, "Timed game review uses depth 22 as its maximum target.");
 assert.equal(ANALYSIS_TIME_MODES[0].timeMs, 300, "Fast mode gives each position 300 ms.");
 assert.equal(ANALYSIS_TIME_MODES[1].timeMs, 1000, "Optimal mode gives each position 1000 ms.");
 assert.equal(ANALYSIS_TIME_MODES[2].timeMs, 3000, "Deep mode gives each position 3000 ms.");
 assert.equal(normalizeAnalysisTimeMs(1700), 1000, "Unknown time values fall back to the optimal mode.");
+
+assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 4 }).maxThreads, 2,
+  "A four-thread desktop must reserve two logical cores for UI and OS work.");
+assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 8 }).maxThreads, 6,
+  "A typical desktop must keep two logical cores available for rendering.");
+assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 32 }).maxThreads, 10,
+  "Large desktop CPUs must cap Stockfish worker count to protect browser responsiveness.");
 assert.equal(gameBudgetMs(10, 300), 3300, "A 10-ply game reviews 11 positions at 300 ms each.");
 assert.equal(gameBudgetMs(10, 1000), 11000, "A 10-ply game reviews 11 positions at one second each.");
 assert.equal(gameBudgetMs(10, 3000), 33000, "A 10-ply game reviews 11 positions at three seconds each.");

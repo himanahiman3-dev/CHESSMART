@@ -1,7 +1,23 @@
+import { memo, useMemo } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import type { AnalyzeProgress } from "../lib/analyze";
 import { Logo } from "./EngineLoader";
+
+const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+const AnalyzingBoard = memo(function AnalyzingBoard({ fen }: { fen: string }) {
+  const options = useMemo(() => ({
+    position: fen,
+    allowDragging: false,
+    darkSquareStyle: { backgroundColor: "#73905d" },
+    lightSquareStyle: { backgroundColor: "#d6dfc3" },
+    showNotation: true,
+    animationDurationInMs: 120,
+  }), [fen]);
+
+  return <Chessboard options={options} />;
+});
 
 export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgress | null; onCancel: () => void }) {
   const total = progress?.total ?? 1;
@@ -11,14 +27,14 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
   const elapsed = Math.max(0, Math.floor((progress?.elapsedMs ?? 0) / 1000));
   const mins = Math.floor(elapsed / 60);
   const secs = String(elapsed % 60).padStart(2, "0");
-  let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-  if (progress?.fen) {
+  const fen = useMemo(() => {
+    if (!progress?.fen) return START_FEN;
     try {
-      fen = new Chess(progress.fen).fen();
+      return new Chess(progress.fen).fen();
     } catch {
-      /* keep the starting position as a safe visual fallback */
+      return START_FEN;
     }
-  }
+  }, [progress?.fen]);
 
   return (
     <main className="analyzing-screen relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1d211c] px-4 py-8 text-[#f0f2eb]">
@@ -55,16 +71,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
                 <span className="rounded-full bg-[#34432b] px-2 py-1 text-[8px] font-bold text-[#b5d98e]">LIVE</span>
               </div>
               <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-xl border border-black/20 shadow-2xl shadow-black/20">
-                <Chessboard
-                  options={{
-                    position: fen,
-                    allowDragging: false,
-                    darkSquareStyle: { backgroundColor: "#73905d" },
-                    lightSquareStyle: { backgroundColor: "#d6dfc3" },
-                    showNotation: true,
-                    animationDurationInMs: 120,
-                  }}
-                />
+                <AnalyzingBoard fen={fen} />
               </div>
               <div className="mt-3 flex items-center justify-between px-1 text-[9px] text-[#7f8a76]">
                 <span>Текущая FEN-позиция</span>

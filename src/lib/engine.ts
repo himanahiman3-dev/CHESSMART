@@ -46,6 +46,8 @@ export function buildPositionCommand(fen: string, history?: PositionHistory): st
 }
 
 const WATCHDOG_GRACE_MS = 250;
+// UI consumers only need fresh lines several times per second; every UCI result is still parsed.
+const INFO_CALLBACK_INTERVAL_MS = 100;
 const ENGINE_ERROR_PREFIX = "\u0000stockfish-error:";
 
 function releaseBundleUrls(bundle: EngineBundle): void {
@@ -213,10 +215,52 @@ export class StockfishEngine {
           active = true;
           const lines = new Map<number, EngineLine>();
           const sorted = () => Array.from(lines.values()).sort((a, b) => a.multipv - b.multipv);
+          let lastInfoNotificationAt = Number.NEGATIVE_INFINITY;
+          let pendingInfo: EngineLine[] | null = null;
+          let infoTimer: ReturnType<typeof setTimeout> | undefined;
+          const now = () => typeof performance !== "undefined" ? performance.now() : Date.now();
           const cleanup = () => {
             this.listeners.delete(handler);
             active = false;
             if (watchdog) clearTimeout(watchdog);
+            if (infoTimer) clearTimeout(infoTimer);
+            infoTimer = undefined;
+            pendingInfo = null;
+          };
+          const flushInfo = () => {
+            if (infoTimer) clearTimeout(infoTimer);
+            infoTimer = undefined;
+            const latest = pendingInfo;
+            pendingInfo = null;
+            if (latest && options.onInfo) {
+              lastInfoNotificationAt = now();
+              options.onInfo(latest);
+            }
+          };
+          const notifyInfo = () => {
+            if (!options.onInfo) return;
+            pendingInfo = sorted();
+            const currentTime = now();
+            const waitMs = INFO_CALLBACK_INTERVAL_MS - (currentTime - lastInfoNotificationAt);
+            if (waitMs <= 0) {
+              if (infoTimer) clearTimeout(infoTimer);
+              infoTimer = undefined;
+              const latest = pendingInfo;
+              pendingInfo = null;
+              lastInfoNotificationAt = currentTime;
+              if (latest) options.onInfo(latest);
+              return;
+            }
+            if (infoTimer === undefined) {
+              infoTimer = setTimeout(() => {
+                infoTimer = undefined;
+                const latest = pendingInfo;
+                pendingInfo = null;
+                if (!latest || !active || !options.onInfo) return;
+                lastInfoNotificationAt = now();
+                options.onInfo(latest);
+              }, waitMs);
+            }
           };
           const handler = (line: string) => {
             if (line.startsWith(ENGINE_ERROR_PREFIX)) {
@@ -228,8 +272,7 @@ export class StockfishEngine {
               const parsed = parseInfo(line, turn);
               if (parsed) {
                 lines.set(parsed.multipv, parsed);
-                const currentLines = sorted();
-                options.onInfo?.(currentLines);
+                notifyInfo();
 
                 // Preserve the latest completed info line for every MultiPV index.
                 // If UCI movetime expires mid-iteration, the last completed line remains usable.
@@ -238,6 +281,8 @@ export class StockfishEngine {
                 if (bound && !lines.has(bound.multipv)) lines.set(bound.multipv, bound);
               }
             } else if (line.startsWith("bestmove")) {
+              // Flush the newest coalesced line before resolving so the UI never ends on stale data.
+              flushInfo();
               cleanup();
               resolve(sorted());
             }

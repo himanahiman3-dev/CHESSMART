@@ -47,7 +47,12 @@ class FakeWorker {
     } else if (command === "isready") {
       queueMicrotask(() => this.line("readyok"));
     } else if (command.startsWith("go ")) {
-      if (this.mode === "timed-partial") {
+      if (this.mode === "info-burst") {
+        for (let depth = 8; depth <= 19; depth++) {
+          this.line(`info depth ${depth} multipv 1 score cp ${depth * 2} pv e2e4 e7e5`);
+        }
+        this.line("bestmove e2e4");
+      } else if (this.mode === "timed-partial") {
         queueMicrotask(() => this.line("info depth 16 multipv 1 score cp 31 pv e2e4 e7e5"));
         setTimeout(() => this.line("bestmove e2e4"), 10);
       } else if (this.mode === "timed-watchdog") {
@@ -101,6 +106,22 @@ try {
   assert.ok(workers.at(-1).terminated, "Terminating the engine must terminate its Worker.");
   assert.ok(revoked.has(successBundle.jsUrl) && revoked.has(successBundle.wasmUrl),
     "Terminating the engine must revoke both Blob URLs.");
+
+  nextMode = "info-burst";
+  const burstBundle = makeBundle();
+  const burstEngine = await StockfishEngine.create(burstBundle, 64);
+  let infoNotifications = 0;
+  const burstResult = await burstEngine.search({
+    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    depth: 24,
+    multipv: 1,
+    onInfo: () => { infoNotifications += 1; },
+  }).promise;
+  assert.ok(infoNotifications <= 2,
+    `A burst of UCI updates must be coalesced for the UI; got ${infoNotifications} callbacks.`);
+  assert.equal(burstResult[0]?.depth, 19,
+    "Coalescing UI notifications must not discard the latest engine evaluation.");
+  burstEngine.terminate();
 
   nextMode = "timed-partial";
   const timedBundle = makeBundle();
