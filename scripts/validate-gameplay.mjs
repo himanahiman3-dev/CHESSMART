@@ -42,7 +42,7 @@ const afterWhiteD4 = new Chess(beforeWhiteD4.fen());
 afterWhiteD4.move("d4");
 assert.equal(resolvePremove(afterWhiteD4.fen(), "b", blackEnPassantPremove)?.san, "exd3");
 const afterWhiteD3 = new Chess(beforeWhiteD4.fen());
-afterWhiteD3.move("d3");
+afterWhiteD3.move("Kf2");
 assert.equal(resolvePremove(afterWhiteD3.fen(), "b", blackEnPassantPremove), null);
 assert.equal(formatPremove(pawnCapture), "e4 → d5 ×");
 
