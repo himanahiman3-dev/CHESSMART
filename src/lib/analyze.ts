@@ -73,7 +73,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /* ------------------------------------------------------------------ */
 
 import { gameBudgetMs, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
-import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
+import { isSacrificeVerificationCandidate, rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { forcedMoveClass } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
@@ -267,8 +267,13 @@ export function selectCriticalPositions(
     // A sound piece sacrifice may be the engine's first choice and therefore lose
     // zero expected points. It still needs a deeper verification pass: filtering
     // only by evaluation loss was silently excluding exactly these Brilliant candidates.
-    const sacrificeCandidate = sacrifice && legal > 1
-      && (best.pv[0] === move.uci || estimatedLoss <= BRILLIANT_MAX_LOSS);
+    const sacrificeCandidate = isSacrificeVerificationCandidate(
+      sacrifice,
+      legal,
+      best.pv[0] === move.uci,
+      estimatedLoss,
+      BRILLIANT_MAX_LOSS,
+    );
     if (sacrificesOnly && !sacrificeCandidate) continue;
 
     if (!shouldRecheckCriticalPosition(estimatedLoss, secondLineGap, legal, tactical)
