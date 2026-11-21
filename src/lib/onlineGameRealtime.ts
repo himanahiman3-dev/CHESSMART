@@ -118,6 +118,21 @@ function isGameRecord(value: unknown, gameId: string): value is Record<string, u
     && typeof record.rated === "boolean";
 }
 
+export const ONLINE_GAME_BROADCAST_EVENT = "game_update";
+
+/** Extract and validate a committed game row from a private Broadcast envelope. */
+export function parseOnlineGameBroadcastRecord(
+  envelope: unknown,
+  gameId: string,
+): Record<string, unknown> | null {
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) return null;
+  const outer = envelope as Record<string, unknown>;
+  if (outer.type !== "broadcast" || outer.event !== ONLINE_GAME_BROADCAST_EVENT) return null;
+  if (!outer.payload || typeof outer.payload !== "object" || Array.isArray(outer.payload)) return null;
+  const record = (outer.payload as Record<string, unknown>).record;
+  return isGameRecord(record, gameId) ? record : null;
+}
+
 /**
  * Subscribes to the authenticated participant-visible row for one live game.
  * The server remains authoritative: notifications carry the committed row,
@@ -236,12 +251,8 @@ export function subscribeToOnlineGameRealtime(
 
       if (frame.event === "broadcast") {
         // Database-triggered Broadcast arrives only after the game row commits.
-        const eventName = frame.payload.event;
-        const payload = frame.payload.payload;
-        if (eventName === "game_update" && payload && typeof payload === "object" && !Array.isArray(payload)) {
-          const record = (payload as Record<string, unknown>).record;
-          if (isGameRecord(record, gameId)) onUpdate(record);
-        }
+        const record = parseOnlineGameBroadcastRecord(frame.payload, gameId);
+        if (record) onUpdate(record);
         return;
       }
 
