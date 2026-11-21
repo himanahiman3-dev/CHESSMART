@@ -246,6 +246,18 @@ assert.equal(isOnlineGameSnapshotNewer(
 ), false, "An older completed row must not overwrite the final row with newer clocks or ratings.");
 assert.equal(isOnlineGameSnapshotNewer({ ...snapshot, status: "completed" }, snapshot), false,
   "A completed game must never be reopened by a late active snapshot.");
+assert.equal(isOnlineGameSnapshotNewer(
+  { ...snapshot, updated_at: null },
+  { ...snapshot, updated_at: null },
+), false, "Same-ply snapshots without timestamps have no provable ordering.");
+assert.equal(isOnlineGameSnapshotNewer(
+  snapshot,
+  { ...snapshot, updated_at: null },
+), false, "An unordered snapshot must not replace one with a valid timestamp.");
+assert.equal(isOnlineGameSnapshotNewer(
+  { ...snapshot, updated_at: null },
+  { ...snapshot, updated_at: "2026-11-21T12:00:06.000Z" },
+), true, "A timestamped snapshot can safely replace one without ordering metadata.");
 assert.equal(parseOnlineGameRealtimeFrame(JSON.stringify({ event: "postgres_changes" }), topic), null);
 
 console.log("Premove, gameplay, personal move-quality, and Realtime transport validation passed.");
