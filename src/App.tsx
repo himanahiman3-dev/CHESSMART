@@ -51,26 +51,83 @@ function BrandMark() {
 
 
 function SidebarIcon({ name }: { name: string }) {
-  const paths: Record<string, ReactNode> = {
-    home: <><path d="m3 10 9-7 9 7" /><path d="M5 9v11h14V9M9 20v-6h6v6" /></>,
-    play: <><path d="M7 4.5v15l12-7.5z" /></>,
-    puzzle: <><path d="M8 4h3a2 2 0 1 1 4 0h3v5a2 2 0 1 1 0 4v7h-5a2 2 0 1 0-4 0H5v-6a2 2 0 1 1 0-4V4z" /></>,
-    book: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21z" /><path d="M4 5.5v15.2M8 7h8M8 11h8" /></>,
-    analysis: <><path d="M4 19V5M4 19h17" /><path d="m7 15 4-4 3 2 5-7" /></>,
-    news: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h4v4H7zM14 8h4M14 12h4M7 16h11" /></>,
-    online: <><path d="M5 12a10 10 0 0 1 14 0M8 15a6 6 0 0 1 8 0M11 18a2 2 0 0 1 2 0" /><circle cx="12" cy="20" r=".8" fill="currentColor" stroke="none" /></>,
-    more: <><circle cx="5" cy="12" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="19" cy="12" r="1" fill="currentColor" /></>,
-    lessons: <><path d="m2 9 10-5 10 5-10 5z" /><path d="M6 11v5c3.5 3 8.5 3 12 0v-5M22 9v7" /></>,
-    train: <><path d="M4 9v6M8 6v12M16 6v12M20 9v6M2 12h20" /></>,
-    community: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
-    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></>,
-    collapse: <><path d="M3 4h18M3 20h18M9 4v16M16 9l-3 3 3 3" /></>,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a8 8 0 0 1-1.5.9l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.5-.9l-1.7.6-1.4-2.4 1.4-1.1a7 7 0 0 1 0-1.8L6.3 12l1.4-2.4 1.7.6a8 8 0 0 1 1.5-.9l.3-1.8H14l.3 1.8a8 8 0 0 1 1.5.9l1.7-.6 1.4 2.4-1.4 1.1a7 7 0 0 1-.1 1.9Z" transform="translate(0 -1)" /></>,
-    help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.6 2.6 0 1 1 4.7 1.5c-.8 1-2.2 1.3-2.2 3M12 17.5h.01" /></>,
+  const drawings: Record<string, ReactNode> = {
+    play: <>
+      <ellipse cx="18" cy="31" rx="12" ry="2.8" fill="#4e8538" opacity=".38" />
+      <path d="M8 28.5c.7-2.9 3.5-4.5 6.5-5.3-2.3-1.8-3.5-4.1-3.5-6.7 0-3 1.5-5.2 4-6.4-.9-1.2-1.1-2.6-.5-4 2.5.8 4.1 2.4 4.8 4.6 3.1.2 5.1 2.5 5.1 5.7 0 2.7-1.4 5.2-3.7 6.9 3.2.9 5.2 2.5 6 5.2H8Z" fill="url(#cm-play-fill)" stroke="#d8e2d0" strokeWidth="1.1"/>
+      <circle cx="18" cy="9.5" r="2.4" fill="#a4d85d" stroke="#527d36" strokeWidth="1"/>
+      <path d="M11 29h14" stroke="#eaf2df" strokeWidth="1.2" strokeLinecap="round" opacity=".9"/>
+    </>,
+    puzzle: <>
+      <path d="M8 7h7.3c-.1-2 1.1-3.5 2.9-3.5 1.9 0 3.1 1.5 3 3.5H28v7.4c2-.1 3.6 1.1 3.6 3 0 1.8-1.6 3-3.6 2.9V28h-7.3c.1-2-1.1-3.6-3-3.6-1.8 0-3 1.6-2.9 3.6H7.5v-7.4c-2 .1-3.5-1.1-3.5-2.9s1.5-3.1 3.5-3V7Z" fill="url(#cm-puzzle-fill)" stroke="#a95b28" strokeWidth="1.1"/>
+      <path d="M9.5 9h5.2M10 11.2v3.6" stroke="#ffd39b" strokeWidth="1.2" strokeLinecap="round" opacity=".85"/>
+    </>,
+    lessons: <>
+      <path d="m4 12.5 14-7 14 7-14 7-14-7Z" fill="url(#cm-learn-fill)" stroke="#3c669e" strokeWidth="1.1"/>
+      <path d="M10 16v7.2c4.8 3.6 11.2 3.6 16 0V16" fill="#4a8bc4" stroke="#315d8c" strokeWidth="1"/>
+      <path d="M31.5 13v9" stroke="#9dc9ec" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="31.5" cy="23.5" r="1.8" fill="#e1b858"/>
+    </>,
+    train: <>
+      <rect x="4" y="5" width="28" height="26" rx="5" fill="#344a68" stroke="#5879a0" strokeWidth="1"/>
+      <path d="M9 25V19h4v6M16 25V14h4v11M23 25V10h4v15" fill="#63bdc7" stroke="#2e8290" strokeWidth=".8"/>
+      <path d="m8 15 7-5 5 2 8-6" fill="none" stroke="#b9e18a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="28" cy="6" r="2" fill="#c4e98f"/>
+    </>,
+    news: <>
+      <rect x="5" y="5" width="26" height="26" rx="3" fill="#dedbd3" stroke="#8c8981" strokeWidth="1.2"/>
+      <path d="M9 10h18v3H9z" fill="#d46a4f"/>
+      <rect x="9" y="16" width="7" height="7" rx="1" fill="#7f9b65"/>
+      <path d="M19 16h8M19 19h8M9 26h18" stroke="#77756f" strokeWidth="1.4" strokeLinecap="round"/>
+    </>,
+    community: <>
+      <circle cx="13" cy="12" r="5" fill="#d6a66e" stroke="#a9784b" strokeWidth="1"/>
+      <circle cx="25" cy="13" r="4.2" fill="#8cb7d8" stroke="#547f9f" strokeWidth="1"/>
+      <path d="M4.5 29c.5-5 3.6-8 8.5-8s8 3 8.5 8H4.5Z" fill="#9b765b" stroke="#74523e" strokeWidth="1"/>
+      <path d="M19 28.5c.5-4.3 2.7-6.7 6.2-6.7s5.7 2.4 6.2 6.7H19Z" fill="#688eac" stroke="#456980" strokeWidth="1"/>
+    </>,
+    more: <>
+      <circle cx="8" cy="18" r="3.2" fill="#c9c8c3"/>
+      <circle cx="18" cy="18" r="3.2" fill="#a6a49e"/>
+      <circle cx="28" cy="18" r="3.2" fill="#85837d"/>
+    </>,
+    search: <>
+      <circle cx="15.5" cy="15.5" r="8.5" fill="none" stroke="currentColor" strokeWidth="2.4"/>
+      <path d="m22 22 7 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"/>
+    </>,
+    collapse: <>
+      <rect x="4" y="5" width="28" height="26" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/>
+      <path d="M13 5v26M22 13l-5 5 5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </>,
+    settings: <>
+      <path d="m18 4 2 1 2.4-.6 2.1 2.1-.6 2.4 1 2 2.4 1v3l-2.4 1-1 2 .6 2.4-2.1 2.1-2.4-.6-2 1-1 2.4h-3l-1-2.4-2-1-2.4.6-2.1-2.1.6-2.4-1-2-2.4-1v-3l2.4-1 1-2-.6-2.4 2.1-2.1 2.4.6 2-1 1-2.4h3L18 4Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+      <circle cx="16.5" cy="14.5" r="4" fill="none" stroke="currentColor" strokeWidth="1.8"/>
+    </>,
+    help: <>
+      <circle cx="18" cy="18" r="13" fill="none" stroke="currentColor" strokeWidth="2"/>
+      <path d="M14 14a4.2 4.2 0 1 1 6.6 3.4c-1.7 1.2-2.6 2-2.6 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="18" cy="26" r="1.3" fill="currentColor"/>
+    </>,
   };
-  return <svg className="cm-side-svg" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name] ?? paths.more}</svg>;
+  const colored = ["play", "puzzle", "lessons", "train", "news", "community", "more"].includes(name);
+  return (
+    <svg
+      className={`cm-side-svg cm-side-svg-${name}`}
+      viewBox="0 0 36 36"
+      aria-hidden="true"
+      fill="none"
+      stroke={colored ? "none" : "currentColor"}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {name === "play" && <defs><linearGradient id="cm-play-fill" x1="9" y1="6" x2="29" y2="29" gradientUnits="userSpaceOnUse"><stop stopColor="#fff"/><stop offset="1" stopColor="#c6d3bd"/></linearGradient></defs>}
+      {name === "puzzle" && <defs><linearGradient id="cm-puzzle-fill" x1="6" y1="5" x2="29" y2="30" gradientUnits="userSpaceOnUse"><stop stopColor="#ffb04f"/><stop offset="1" stopColor="#e87827"/></linearGradient></defs>}
+      {name === "lessons" && <defs><linearGradient id="cm-learn-fill" x1="4" y1="6" x2="32" y2="20" gradientUnits="userSpaceOnUse"><stop stopColor="#8dd0f1"/><stop offset="1" stopColor="#457fc1"/></linearGradient></defs>}
+      {drawings[name] ?? drawings.more}
+    </svg>
+  );
 }
-
 function AvatarPlaceholder({ accountProfile, name }: { accountProfile: AccountProfile | null; name: string }) {
   return accountProfile?.avatar_url
     ? <img className="cm-sidebar-avatar" src={accountProfile.avatar_url} alt="" />
@@ -337,24 +394,24 @@ function Main() {
   ];
   const filteredSearchTargets = searchTargets.filter((item) => item.label.toLowerCase().includes(searchTerm.trim().toLowerCase()));
 
-  const sidebarGroups: Array<{ id: string; label: string; icon: string; items: Array<{ id: MainMode; label: string }> }> = [
-    { id: "play", label: "Играть", icon: "play", items: [
+  const sidebarGroups: Array<{ id: string; label: string; icon: string; landing: MainMode; items: Array<{ id: MainMode; label: string }> }> = [
+    { id: "play", label: "Играть", icon: "play", landing: "playHub", items: [
       { id: "playHub", label: "Главная" },
       { id: "online", label: "Играть по сети" },
       { id: "play", label: "Против бота" },
       { id: "battle", label: "Дуэль задач" },
     ] },
-    { id: "puzzles", label: "Задачи", icon: "puzzle", items: [
+    { id: "puzzles", label: "Задачи", icon: "puzzle", landing: "puzzles", items: [
       { id: "puzzles", label: "Библиотека задач" },
       { id: "daily", label: "Ежедневная задача" },
     ] },
-    { id: "learn", label: "Учёба", icon: "lessons", items: [
+    { id: "learn", label: "Учёба", icon: "lessons", landing: "lessons", items: [
       { id: "lessons", label: "Учебный план" },
       { id: "academy", label: "Академия" },
       { id: "coach", label: "Персональный тренер" },
       { id: "openings", label: "Дебюты и варианты" },
     ] },
-    { id: "train", label: "Тренировка", icon: "train", items: [
+    { id: "train", label: "Тренировка", icon: "train", landing: "review", items: [
       { id: "review", label: "Анализ партий" },
       { id: "mistakes", label: "Тренажёр ошибок" },
       { id: "endgame", label: "Тренировка эндшпиля" },
@@ -362,15 +419,15 @@ function Main() {
       { id: "diagnostics", label: "Grandmaster 300" },
       { id: "systems", label: "Системы и диагностика" },
     ] },
-    { id: "news", label: "Новости", icon: "news", items: [
+    { id: "news", label: "Новости", icon: "news", landing: "news", items: [
       { id: "news", label: "Изменения CHESSMART" },
     ] },
-    { id: "community", label: "Сообщество", icon: "community", items: [
+    { id: "community", label: "Сообщество", icon: "community", landing: "profile", items: [
       { id: "profile", label: "Профиль игрока" },
       { id: "stats", label: "Статистика" },
       { id: "profileDetails", label: "Архив партий" },
     ] },
-    { id: "other", label: "Ещё", icon: "more", items: [
+    { id: "other", label: "Ещё", icon: "more", landing: "settings", items: [
       { id: "settings", label: "Настройки" },
     ] },
   ];
@@ -411,33 +468,39 @@ function Main() {
             const expanded = expandedNav === group.id;
             const active = currentNavGroup === group.id;
             return (
-              <div key={group.id} className={expanded ? "cm-side-group cm-nav-group expanded" : "cm-side-group cm-nav-group"}>
+              <div
+                key={group.id}
+                data-nav-id={group.id}
+                className={expanded ? "cm-side-group cm-nav-group expanded" : "cm-side-group cm-nav-group"}
+              >
                 <button
                   type="button"
-                  onClick={() => setExpandedNav((current) => current === group.id ? null : group.id)}
+                  onClick={() => {
+                    const shouldExpand = expandedNav !== group.id;
+                    changeMode(group.landing);
+                    setExpandedNav(shouldExpand ? group.id : null);
+                  }}
                   aria-expanded={expanded}
                   aria-current={active ? "page" : undefined}
                   className={active ? "cm-side-item cm-nav-parent active" : "cm-side-item cm-nav-parent"}
                 >
                   <span className="cm-side-icon"><SidebarIcon name={group.icon} /></span>
                   <span>{group.label}</span>
-                  <span className="cm-side-chevron" aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
+                  <span className="cm-side-chevron" aria-hidden="true">›</span>
                 </button>
-                {expanded && (
-                  <div className="cm-side-submenu cm-nav-submenu">
-                    {group.items.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={mode === item.id || (mode === "home" && item.id === "playHub") ? "active" : ""}
-                        aria-current={mode === item.id ? "page" : undefined}
-                        onClick={() => changeMode(item.id)}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="cm-side-submenu cm-nav-submenu" aria-label={`Разделы: ${group.label}`}>
+                  {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={mode === item.id || (mode === "home" && item.id === "playHub") ? "active" : ""}
+                      aria-current={mode === item.id ? "page" : undefined}
+                      onClick={() => changeMode(item.id)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             );
           })}
@@ -484,11 +547,11 @@ function Main() {
         <main className="cm-main-content mobile-app-main">{page}</main>
       </div>
       <nav className="cm-mobile-nav" aria-label="Мобильная навигация">
-        <button type="button" onClick={() => changeMode("playHub")} className={currentNavGroup === "play" ? "active" : ""}><span>♟</span>Играть</button>
-        <button type="button" onClick={() => changeMode("puzzles")} className={currentNavGroup === "puzzles" ? "active" : ""}><span>◆</span>Задачи</button>
-        <button type="button" onClick={() => changeMode("lessons")} className={currentNavGroup === "learn" ? "active" : ""}><span>♜</span>Учёба</button>
-        <button type="button" onClick={() => changeMode("review")} className={currentNavGroup === "train" ? "active" : ""}><span>⌁</span>Тренировка</button>
-        <button type="button" onClick={() => setMobileMore((open) => !open)} className={mobileMore ? "active" : ""} aria-expanded={mobileMore} aria-haspopup="dialog"><span>•••</span>Ещё</button>
+        <button type="button" onClick={() => changeMode("playHub")} className={currentNavGroup === "play" ? "active" : ""}><span className="cm-mobile-nav-icon"><SidebarIcon name="play" /></span><span>Играть</span></button>
+        <button type="button" onClick={() => changeMode("puzzles")} className={currentNavGroup === "puzzles" ? "active" : ""}><span className="cm-mobile-nav-icon"><SidebarIcon name="puzzle" /></span><span>Задачи</span></button>
+        <button type="button" onClick={() => changeMode("lessons")} className={currentNavGroup === "learn" ? "active" : ""}><span className="cm-mobile-nav-icon"><SidebarIcon name="lessons" /></span><span>Учёба</span></button>
+        <button type="button" onClick={() => changeMode("review")} className={currentNavGroup === "train" ? "active" : ""}><span className="cm-mobile-nav-icon"><SidebarIcon name="train" /></span><span>Тренировка</span></button>
+        <button type="button" onClick={() => setMobileMore((open) => !open)} className={mobileMore ? "active" : ""} aria-expanded={mobileMore} aria-haspopup="dialog"><span className="cm-mobile-nav-icon"><SidebarIcon name="more" /></span><span>Ещё</span></button>
       </nav>
       {mobileMore && (
         <div className="cm-mobile-more-backdrop" onClick={() => setMobileMore(false)}>
