@@ -141,7 +141,9 @@ export function subscribeToOnlineGameRealtime(
   let sequence = 0;
   let joinRef: string | null = null;
   let retryIndex = 0;
-  const topic = `realtime:online-game:${gameId}`;
+  // The same private topic carries the fast database Broadcast and the
+  // Postgres Changes fallback. Both contain the committed authoritative row.
+  const topic = `topic:${gameId}`;
 
   const nextRef = () => String(++sequence);
   const clearHeartbeat = () => {
@@ -202,9 +204,8 @@ export function subscribeToOnlineGameRealtime(
             schema: "public",
             table: "online_games",
             filter: `id=eq.${gameId}`,
-            select: [...ONLINE_GAME_REALTIME_COLUMNS],
           }],
-          private: false,
+          private: true,
         },
         access_token: accessToken,
       };
@@ -233,7 +234,20 @@ export function subscribeToOnlineGameRealtime(
         return;
       }
 
+      if (frame.event === "broadcast") {
+        // Database-triggered Broadcast arrives only after the game row commits.
+        const eventName = frame.payload.event;
+        const payload = frame.payload.payload;
+        if (eventName === "game_update" && payload && typeof payload === "object" && !Array.isArray(payload)) {
+          const record = (payload as Record<string, unknown>).record;
+          if (isGameRecord(record, gameId)) onUpdate(record);
+        }
+        return;
+      }
+
       if (frame.event === "postgres_changes") {
+        // Retain the original table-change subscription as a recovery path in case
+        // the Broadcast trigger or channel policy is unavailable.
         const data = frame.payload.data;
         if (!data || typeof data !== "object" || Array.isArray(data)) return;
         const change = data as Record<string, unknown>;
