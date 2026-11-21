@@ -50,7 +50,17 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
   const [exportNotice, setExportNotice] = useState("");
   const finishedRef = useRef(false);
   const terminalSoundPlayedRef = useRef(false);
-  const game = useMemo(() => new Chess(fen), [fen]);
+  // Rebuild the full move history when possible. Loading only the current FEN
+  // discards repetition counters, so a genuine threefold draw would be missed.
+  const game = useMemo(() => {
+    try {
+      const replayed = replaySanHistory(lastSan);
+      if (replayed.fen() === fen) return replayed;
+    } catch {
+      // Fall back to the authoritative local FEN if a stored move list is inconsistent.
+    }
+    return new Chess(fen);
+  }, [fen, lastSan]);
   const botColor = playerColor === "w" ? "b" : "w";
   const strength = useMemo(() => botStrengthForElo(botElo), [botElo]);
   // While a premove is waiting to execute, lock manual input so it cannot race
@@ -268,7 +278,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
     setExportNotice(await copyText(formatSanMoveList(lastSan)) ? "Список ходов скопирован." : "Не удалось скопировать ходы.");
   };
   const undoTurn = () => {
-    if (!started || thinking || finished || !lastSan.length) return;
+    if (!started || thinking || finished || premoves.length > 0 || !lastSan.length) return;
     try {
       const replay = replaySanHistory(lastSan);
       const count = Math.min(2, lastSan.length);
@@ -284,7 +294,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
     }
   };
   const redoTurn = () => {
-    if (!started || thinking || finished || !redoSan.length) return;
+    if (!started || thinking || finished || premoves.length > 0 || !redoSan.length) return;
     try {
       const replay = replaySanHistory(lastSan);
       const restored: string[] = [];
@@ -357,8 +367,8 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
               <span className="text-xs text-[#a7a6a2]">{thinking ? "Движок думает…" : game.isCheck() ? "Шах" : ""}</span>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button onClick={undoTurn} disabled={!started || thinking || lastSan.length < 2} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Отменить ход</button>
-              <button onClick={redoTurn} disabled={!started || thinking || !redoSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Повторить</button>
+              <button onClick={undoTurn} disabled={!started || thinking || premoves.length > 0 || lastSan.length < 2} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Отменить ход</button>
+              <button onClick={redoTurn} disabled={!started || thinking || premoves.length > 0 || !redoSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Повторить</button>
               <button onClick={() => setBoardFlipped((value) => !value)} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold">Перевернуть доску</button>
               <button onClick={() => void copyFen()} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold">Копировать FEN</button>
               <button onClick={() => void copyPgn()} disabled={!lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Копировать PGN</button>
