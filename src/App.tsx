@@ -332,6 +332,18 @@ function Main() {
     { id: "puzzles", label: "Задачи", icon: "puzzle" },
     { id: "lessons", label: "Учёба", icon: "lessons" },
   ];
+  const mobileMoreNavigation: Array<{ id: MainMode; label: string; description: string }> = [
+    { id: "review", label: "Анализ партий", description: "Разбор ходов и Stockfish" },
+    { id: "online", label: "Играть по сети", description: "Живые партии и вызовы друзьям" },
+    { id: "coach", label: "Тренер", description: "Персональные подсказки" },
+    { id: "battle", label: "Турниры и соревнования", description: "Шахматные испытания" },
+    { id: "academy", label: "Академия", description: "План обучения" },
+    { id: "openings", label: "Варианты и дебюты", description: "Изучение дебютов" },
+    { id: "stats", label: "Статистика", description: "Твои результаты" },
+    { id: "news", label: "Новости", description: "Изменения CHESSMART" },
+    { id: "settings", label: "Настройки", description: "Профиль и интерфейс" },
+    { id: "systems", label: "Помощь", description: "Инструменты и диагностика" },
+  ];
 
   return (
     <div className={sidebarCollapsed ? "cm-app-shell cm-sidebar-is-collapsed" : "cm-app-shell"}>
@@ -408,8 +420,35 @@ function Main() {
         <button type="button" onClick={() => changeMode("puzzles")} className={mode === "puzzles" ? "active" : ""}><span>◆</span>Задачи</button>
         <button type="button" onClick={() => changeMode("lessons")} className={mode === "lessons" ? "active" : ""}><span>♜</span>Учёба</button>
         <button type="button" onClick={() => changeMode("profile")} className={mode === "profile" ? "active" : ""}><span>♙</span>Профиль</button>
-        <button type="button" onClick={() => setMoreOpen((open) => !open)} className={moreOpen ? "active" : ""}><span>•••</span>Ещё</button>
+        <button type="button" onClick={() => { setMobileMore((open) => !open); setMoreOpen(false); }} className={mobileMore ? "active" : ""} aria-expanded={mobileMore} aria-haspopup="dialog"><span>•••</span>Ещё</button>
       </nav>
+      {mobileMore && (
+        <div className="cm-mobile-more-backdrop" onClick={() => setMobileMore(false)}>
+          <section
+            className="cm-mobile-more-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cm-mobile-more-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="cm-mobile-more-header">
+              <div>
+                <h2 id="cm-mobile-more-title">Ещё в CHESSMART</h2>
+                <p>Разделы, инструменты и настройки</p>
+              </div>
+              <button type="button" onClick={() => setMobileMore(false)} aria-label="Закрыть меню">×</button>
+            </header>
+            <div className="cm-mobile-more-grid">
+              {mobileMoreNavigation.map((item) => (
+                <button type="button" key={item.id} onClick={() => changeMode(item.id)} className={mode === item.id ? "active" : ""}>
+                  <strong>{item.label}</strong>
+                  <small>{item.description}</small>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
