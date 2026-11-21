@@ -93,10 +93,10 @@ export function qualifiesAsMiss(input: Pick<
 export function classifyMove(input: MoveClassificationInput): Cls {
   if (input.forced) return "forced";
   if (input.book) return "book";
+  if (input.allowedMate) return "blunder";
   if (input.brilliant) return "brilliant";
   if (qualifiesAsMiss(input)) return "miss";
   if (qualifiesAsGreat(input)) return "great";
   if (input.playedIsBest) return "best";
-  if (input.allowedMate) return "blunder";
   return classifyOrdinaryMove(input.winLoss);
 }
