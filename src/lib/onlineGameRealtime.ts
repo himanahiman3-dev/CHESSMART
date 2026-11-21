@@ -1,5 +1,35 @@
 export type OnlineRealtimeStatus = "connecting" | "connected" | "disconnected";
 
+export interface OnlineGameSnapshotOrder {
+  id: string;
+  status: "waiting" | "active" | "completed" | string;
+  moves: readonly unknown[];
+  updated_at?: string | null;
+}
+
+/** Ignore delayed responses/events so they can never roll the online board backwards. */
+export function isOnlineGameSnapshotNewer(
+  current: OnlineGameSnapshotOrder,
+  next: OnlineGameSnapshotOrder,
+): boolean {
+  if (current.id !== next.id || next.moves.length < current.moves.length) return false;
+
+  const currentTime = current.updated_at ? Date.parse(current.updated_at) : Number.NaN;
+  const nextTime = next.updated_at ? Date.parse(next.updated_at) : Number.NaN;
+  // Check timestamps before status progression: even an old "completed"
+  // notification must not replace a later authoritative final row.
+  if (Number.isFinite(currentTime) && Number.isFinite(nextTime) && nextTime < currentTime) return false;
+  if (current.status === "completed" && next.status !== "completed") return false;
+
+  const statusRank: Record<string, number> = { waiting: 0, active: 1, completed: 2 };
+  const currentRank = statusRank[current.status] ?? -1;
+  const nextRank = statusRank[next.status] ?? -1;
+  if (nextRank !== currentRank) return nextRank > currentRank;
+  if (next.moves.length > current.moves.length) return true;
+  if (Number.isFinite(currentTime) && Number.isFinite(nextTime)) return nextTime > currentTime;
+  return true;
+}
+
 export interface OnlineGameRealtimeOptions {
   projectUrl: string;
   publishableKey: string;
@@ -30,6 +60,7 @@ export const ONLINE_GAME_REALTIME_COLUMNS = [
   "reason",
   "white_rating",
   "black_rating",
+  "updated_at",
 ] as const;
 
 const HEARTBEAT_INTERVAL_MS = 20_000;

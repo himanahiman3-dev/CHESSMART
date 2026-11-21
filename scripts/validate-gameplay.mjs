@@ -6,7 +6,8 @@ import { buildPgnFromSan, buildPgnFromUci, formatSanMoveList, pgnFilename, textF
 import { formatMaterialBalance, gamePhaseLabel, getCapturedMaterial, getGamePhase, getHalfmoveClock, getLegalMoveCount, getPositionInsights, isNearFiftyMoveRule, replaySanHistory, replayUciHistory, terminalStateLabel } from "../src/lib/gameInsights.ts";
 import { classifyGamePhase } from "../src/lib/learningStats.ts";
 import { recordPersonalGameReview } from "../src/lib/playerProfile.ts";
-import { parseOnlineGameRealtimeFrame } from "../src/lib/onlineGameRealtime.ts";
+import { isOnlineGameSnapshotNewer, parseOnlineGameRealtimeFrame } from "../src/lib/onlineGameRealtime.ts";
+import { determinePuzzleBattleWinner } from "../supabase/functions/puzzle-battle/puzzleBattleCore.ts";
 import { soundForSan } from "../src/lib/sound.ts";
 const start = new Chess().fen();
 assert.equal(isChessSquare("e4"), true); assert.equal(isChessSquare("i9"), false);
@@ -32,6 +33,17 @@ assert.equal(resolvePremove(afterBlackD5.fen(), "w", pawnCapture)?.san, "exd5");
 const afterBlackNf6 = new Chess(afterE4.fen()); afterBlackNf6.move("Nf6");
 assert.equal(resolvePremove(afterBlackNf6.fen(), "w", pawnCapture), null,
   "A capture-intent premove must be cancelled when the target square stays empty.");
+
+// En passant captures land on an empty square, but are still real pawn captures.
+const beforeWhiteD4 = new Chess("4k3/8/8/8/4p3/8/3P4/4K3 w - - 0 1");
+const blackEnPassantPremove = createCapturePremove(beforeWhiteD4.fen(), "b", "e4", "d3");
+assert.ok(blackEnPassantPremove, "A pawn can queue a possible en-passant destination.");
+const afterWhiteD4 = new Chess(beforeWhiteD4.fen());
+afterWhiteD4.move("d4");
+assert.equal(resolvePremove(afterWhiteD4.fen(), "b", blackEnPassantPremove)?.san, "exd3");
+const afterWhiteD3 = new Chess(beforeWhiteD4.fen());
+afterWhiteD3.move("Kf2");
+assert.equal(resolvePremove(afterWhiteD3.fen(), "b", blackEnPassantPremove), null);
 assert.equal(formatPremove(pawnCapture), "e4 → d5 ×");
 
 const queenBefore = "4k3/8/3r4/8/3Q4/8/8/4K3 b - - 0 1";
@@ -165,6 +177,33 @@ assert.equal(parseOnlineGameRealtimeFrame(JSON.stringify([
   null, null, "realtime:another-game", "postgres_changes", {},
 ]), topic), null, "Events from other games must be ignored.");
 assert.equal(parseOnlineGameRealtimeFrame("not-json", topic), null);
+
+assert.equal(determinePuzzleBattleWinner([
+  { user_id: "white", score: 5, mistakes: 3 },
+  { user_id: "black", score: 4, mistakes: 0 },
+]), "white", "Higher puzzle score wins before any tiebreaker.");
+assert.equal(determinePuzzleBattleWinner([
+  { user_id: "white", score: 5, mistakes: 2 },
+  { user_id: "black", score: 5, mistakes: 1 },
+]), "black", "Fewer mistakes break a tied puzzle score.");
+assert.equal(determinePuzzleBattleWinner([
+  { user_id: "white", score: 5, mistakes: 1 },
+  { user_id: "black", score: 5, mistakes: 1 },
+]), null, "Identical score and mistake counts produce a draw.");
+
+const snapshot = { id: "game-1", status: "active", moves: [{ uci: "e2e4" }], updated_at: "2026-11-21T12:00:05.000Z" };
+assert.equal(isOnlineGameSnapshotNewer(snapshot, { ...snapshot, moves: [] }), false,
+  "An out-of-order response must not roll the board back to fewer moves.");
+assert.equal(isOnlineGameSnapshotNewer(snapshot, { ...snapshot, updated_at: "2026-11-21T12:00:04.000Z" }), false,
+  "A stale poll response must not overwrite a newer snapshot.");
+assert.equal(isOnlineGameSnapshotNewer(snapshot, { ...snapshot, moves: [...snapshot.moves, { uci: "e7e5" }] }), true);
+assert.equal(isOnlineGameSnapshotNewer(snapshot, { ...snapshot, status: "completed" }), true);
+assert.equal(isOnlineGameSnapshotNewer(
+  { ...snapshot, status: "completed", updated_at: "2026-11-21T12:00:07.000Z" },
+  { ...snapshot, status: "completed", updated_at: "2026-11-21T12:00:06.000Z" },
+), false, "An older completed row must not overwrite the final row with newer clocks or ratings.");
+assert.equal(isOnlineGameSnapshotNewer({ ...snapshot, status: "completed" }, snapshot), false,
+  "A completed game must never be reopened by a late active snapshot.");
 assert.equal(parseOnlineGameRealtimeFrame(JSON.stringify({ event: "postgres_changes" }), topic), null);
 
 console.log("Premove, gameplay, personal move-quality, and Realtime transport validation passed.");

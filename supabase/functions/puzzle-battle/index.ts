@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Chess, type Square } from "npm:chess.js@1.4.0";
+import { determinePuzzleBattleWinner } from "./puzzleBattleCore.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -134,7 +135,7 @@ async function completeExpiredBattle(battleId: string, players: BattlePlayer[]) 
   if (!first) return;
   const second = players.find((player) => player.user_id !== first.user_id);
   if (!second) return;
-  const winnerId = first.score > second.score ? first.user_id : second.score > first.score ? second.user_id : null;
+  const winnerId = determinePuzzleBattleWinner([first, second]);
   await admin.from("puzzle_battle_players").update({ completed: true }).eq("battle_id", battleId);
   await admin.from("puzzle_battles").update({
     status: "completed",

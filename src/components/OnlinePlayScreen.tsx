@@ -10,7 +10,7 @@ import { playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/s
 import { buildPgnFromUci, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
 import { replayUciHistory, getPositionInsights, formatMaterialBalance, gamePhaseLabel, terminalStateLabel, isNearFiftyMoveRule } from "../lib/gameInsights";
 import { getOnlinePollDelay } from "../lib/systemsSuite";
-import { subscribeToOnlineGameRealtime } from "../lib/onlineGameRealtime";
+import { isOnlineGameSnapshotNewer, subscribeToOnlineGameRealtime } from "../lib/onlineGameRealtime";
 import { loadSavedOnlineRated, loadSavedOnlineTimeControl, saveOnlineRated, saveOnlineTimeControl, type OnlineTimeControl } from "../lib/onlinePreferences";
 
 interface OnlineSession {
@@ -53,6 +53,7 @@ interface OnlineGame {
   black_rating: number | null;
   minutes: number;
   increment_seconds: number;
+  updated_at?: string | null;
 }
 interface Invitation {
   id: string;
@@ -216,6 +217,17 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
 
   useEffect(() => { gameRef.current = game; }, [game]);
 
+  const applyGameSnapshot = useCallback((next: OnlineGame, expectedCurrentId?: string): boolean => {
+    const current = gameRef.current;
+    // A request started for a previous room must not resurrect it after leaving.
+    if (expectedCurrentId && (!current || current.id !== expectedCurrentId)) return false;
+    if (current?.id === next.id && !isOnlineGameSnapshotNewer(current, next)) return false;
+    gameRef.current = next;
+    setGame(next);
+    return true;
+  }, []);
+
+
   const playGameStartOnce = (gameId: string) => {
     if (startedSoundGameIdRef.current === gameId) return;
     startedSoundGameIdRef.current = gameId;
@@ -276,13 +288,13 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
         setSession(saved);
         if (profileData.game) {
           if (!cancelled) {
-            setGame(profileData.game);
+            applyGameSnapshot(profileData.game);
             localStorage.setItem(GAME_KEY, profileData.game.id);
           }
         } else if (storedId) {
           try {
             const data = await callAction(url, key, saved, "get", { gameId: storedId });
-            if (!cancelled && data.game) setGame(data.game);
+            if (!cancelled && data.game) applyGameSnapshot(data.game);
           } catch { localStorage.removeItem(GAME_KEY); }
         }
       } catch {
@@ -294,7 +306,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     };
     void connect();
     return () => { cancelled = true; };
-  }, [configured, url, key]);
+  }, [configured, url, key, applyGameSnapshot]);
 
   const authenticate = async () => {
     setBusy(true); setError(null); setNotice(null);
@@ -327,7 +339,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     clearAccountProfile();
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(GAME_KEY);
-    setSession(null); setOnlineProfile(null); setGame(null); setSearching(false);
+    setSession(null); setOnlineProfile(null); gameRef.current = null; setGame(null); setSearching(false);
     invitationIdsRef.current.clear();
     invitationListInitializedRef.current = false;
     setInvitations([]); setError(null); setNotice("Ты вышел из аккаунта на этом устройстве.");
@@ -352,27 +364,29 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     try {
       const data = await callAction(url, key, session, "get", { gameId: game.id });
       if (data.game) {
-        const oldCount = game?.moves.length ?? 0;
-        const latest = data.game.moves.at(-1);
-        const hasNewMove = data.game.moves.length > oldCount;
-        if (game?.status === "waiting" && data.game.status === "active") {
-          playGameStartOnce(data.game.id);
-        }
-        if (hasNewMove && latest) {
-          const ownColor = data.game.white_id === session.user.id ? "w" : "b";
-          if (latest.color !== ownColor) {
-            playSound(soundForSan(
-              latest.san,
-              data.game.status === "completed",
-              undefined,
-              latest.premove ? "premove" : "opponent",
-            ));
+        const current = gameRef.current;
+        const oldCount = current?.id === game.id ? current.moves.length : game.moves.length;
+        if (applyGameSnapshot(data.game, game.id)) {
+          const latest = data.game.moves.at(-1);
+          const hasNewMove = data.game.moves.length > oldCount;
+          if (current?.status === "waiting" && data.game.status === "active") {
+            playGameStartOnce(data.game.id);
           }
-          if (data.game.status === "completed") endedSoundGameIdRef.current = data.game.id;
-        } else if (game?.status === "active" && data.game.status === "completed") {
-          playGameEndOnce(data.game.id);
+          if (hasNewMove && latest) {
+            const ownColor = data.game.white_id === session.user.id ? "w" : "b";
+            if (latest.color !== ownColor) {
+              playSound(soundForSan(
+                latest.san,
+                data.game.status === "completed",
+                undefined,
+                latest.premove ? "premove" : "opponent",
+              ));
+            }
+            if (data.game.status === "completed") endedSoundGameIdRef.current = data.game.id;
+          } else if (current?.status === "active" && data.game.status === "completed") {
+            playGameEndOnce(data.game.id);
+          }
         }
-        setGame(data.game);
       }
       gamePollFailuresRef.current = 0;
       setConnectionOnline(true);
@@ -384,7 +398,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     } finally {
       refreshInFlightRef.current = false;
     }
-  }, [session, game?.id, game?.status, game?.moves.length, url, key]);
+  }, [session, game?.id, game?.status, game?.moves.length, url, key, applyGameSnapshot]);
 
   // Push committed game rows over one authenticated Realtime channel per game.
   // Polling below remains a low-frequency safety net while this channel is healthy.
@@ -405,6 +419,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
         if (!current || current.id !== game.id || record.id !== game.id) return;
         if (typeof record.fen !== "string" || !Array.isArray(record.moves) || typeof record.status !== "string") return;
         const next = { ...current, ...record } as OnlineGame;
+        if (!isOnlineGameSnapshotNewer(current, next)) return;
         const latest = next.moves.at(-1);
         const hasNewMove = next.moves.length > current.moves.length;
         if (current.status === "waiting" && next.status === "active") playGameStartOnce(next.id);
@@ -416,14 +431,13 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
         } else if (current.status === "active" && next.status === "completed") {
           playGameEndOnce(next.id);
         }
-        gameRef.current = next;
-        setGame(next);
+        if (!applyGameSnapshot(next, game.id)) return;
         gamePollFailuresRef.current = 0;
         setConnectionOnline(true);
         setLastSync(Date.now());
       },
     });
-  }, [session, game?.id, game?.status, url, key]);
+  }, [session, game?.id, game?.status, url, key, applyGameSnapshot]);
 
   useEffect(() => { setSoundEnabled(preferences.soundEnabled); }, [preferences.soundEnabled]);
   useEffect(() => { saveOnlineTimeControl(timeControl); }, [timeControl]);
@@ -519,7 +533,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       const [minutes, increment] = timeControl.split("+").map(Number);
       const data = await callAction(url, key, session, "find_match", { minutes, increment, rated });
       if (data.game) {
-        setGame(data.game);
+        applyGameSnapshot(data.game);
         if (data.game.status === "active") playGameStartOnce(data.game.id);
         setSearching(false);
         setNotice("Соперник найден. Удачной партии!");
@@ -532,7 +546,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       setSearching(false);
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally { searchBusyRef.current = false; }
-  }, [session, timeControl, rated, url, key]);
+  }, [session, timeControl, rated, url, key, applyGameSnapshot]);
 
   useEffect(() => {
     if (!searching || !session || game) return;
@@ -620,14 +634,14 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       .then((data) => {
         if (data.game) {
           if (game.status === "active" && data.game.status === "completed") playGameEndOnce(data.game.id);
-          setGame(data.game);
+          applyGameSnapshot(data.game, game.id);
         }
       })
       .catch((reason: unknown) => {
         timeoutRequestedRef.current = false;
         setError(reason instanceof Error ? reason.message : String(reason));
       });
-  }, [session, game?.id, game?.fen, game?.status, turn, whiteClock, blackClock, now, url, key]);
+  }, [session, game?.id, game?.fen, game?.status, turn, whiteClock, blackClock, now, url, key, applyGameSnapshot]);
 
   const isMyTurn = !!game && game.status === "active" && !!myColor && turn === myColor && !movePending;
   const canQueuePremove = !!game && game.status === "active" && !!myColor && turn !== myColor && preferences.premovesEnabled && !movePending;
@@ -663,7 +677,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
 
   const rememberGame = (next: OnlineGame) => {
     if (next.status === "active") playGameStartOnce(next.id);
-    setGame(next);
+    applyGameSnapshot(next);
     localStorage.setItem(GAME_KEY, next.id);
     setSearching(false);
     setError(null);
@@ -751,8 +765,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
         }, controller.signal);
         if (!data.game) throw new Error("Сервер не вернул обновлённую партию.");
         if (data.game.status === "completed") endedSoundGameIdRef.current = data.game.id;
-        gameRef.current = data.game;
-        setGame(data.game);
+        applyGameSnapshot(data.game, gameId);
         playSound(soundForSan(
           move.san,
           data.game.status === "completed",
@@ -767,8 +780,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
         try {
           const latest = await callAction(url, key, session, "get", { gameId }, syncController.signal);
           if (!latest.game) throw new Error("Не удалось получить актуальную позицию.");
-          gameRef.current = latest.game;
-          setGame(latest.game);
+          applyGameSnapshot(latest.game, gameId);
           const committedMove = latest.game.moves[previousMoveCount];
           const moveWasCommitted = latest.game.moves.length > previousMoveCount
             && committedMove?.uci === move.uci
@@ -789,13 +801,16 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
         }
       } finally {
         window.clearTimeout(requestTimeout);
-        if (moveRequestRef.current === controller) moveRequestRef.current = null;
-        movePendingRef.current = false;
-        setMovePending(false);
+        // An aborted request from the previous game must not unlock a newer move.
+        if (moveRequestRef.current === controller) {
+          moveRequestRef.current = null;
+          movePendingRef.current = false;
+          setMovePending(false);
+        }
       }
     })();
     return true;
-  }, [session, game?.id, game?.moves.length, isMyTurn, myColor, url, key]);
+  }, [session, game?.id, game?.moves.length, isMyTurn, myColor, url, key, applyGameSnapshot]);
 
   const handleBoardMove = useCallback((move: BoardMove) => sendMove(move, false), [sendMove]);
   const queueBoardPremove = useCallback((next: Premove) => {
@@ -819,7 +834,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       const data = await callAction(url, key, session, "resign", { gameId: game.id });
       if (data.game) {
         if (game.status === "active" && data.game.status === "completed") playGameEndOnce(data.game.id);
-        setGame(data.game);
+        applyGameSnapshot(data.game, game.id);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -883,6 +898,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     premoveGameIdRef.current = null;
     setPremove(null);
     localStorage.removeItem(GAME_KEY);
+    gameRef.current = null;
     setGame(null);
     setInviteTarget("");
     setInviteCode("");

@@ -104,6 +104,7 @@ export const GameBoard = memo(function GameBoard({
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [captureModifierPressed, setCaptureModifierPressed] = useState(false);
+  const [captureModeEnabled, setCaptureModeEnabled] = useState(false);
   const [promotionDraft, setPromotionDraft] = useState<{ from: string; to: string; kind: "move" | "premove"; capture?: boolean } | null>(null);
 
   useEffect(() => {
@@ -126,6 +127,7 @@ export const GameBoard = memo(function GameBoard({
   }, []);
 
   useEffect(() => setSelected(null), [fen, interactive]);
+  useEffect(() => { if (!selected) setCaptureModeEnabled(false); }, [selected]);
 
   const chess = useMemo(() => {
     try {
@@ -210,7 +212,7 @@ const handleSquareSelection = useCallback((square: Square) => {
       const movingPiece = chess.get(selected as Square);
       if (movingPiece && canPremoveColor(movingPiece.color)) {
         if (selectedPremoveMoves.some((move) => move.to === square) || selectedPremoveCaptureMoves.some((move) => move.to === square)) {
-          selectOrQueuePremove(selected, square, captureModifierPressed);
+          selectOrQueuePremove(selected, square, captureModifierPressed || captureModeEnabled);
           setSelected(null);
           return;
         }
@@ -235,7 +237,7 @@ const handleSquareSelection = useCallback((square: Square) => {
     setSelected(null);
   }, [
     chess, premove, onClearPremove, selected, selectedPremoveMoves, selectedPremoveCaptureMoves,
-    canPremoveColor, captureModifierPressed, selectOrQueuePremove, canMoveColor, tryMove,
+    canPremoveColor, captureModifierPressed, captureModeEnabled, selectOrQueuePremove, canMoveColor, tryMove,
   ]);
 
 
@@ -326,7 +328,8 @@ const handleSquareSelection = useCallback((square: Square) => {
   }, [premove, promotionDraft, onClearPremove]);
 
   return (
-    <div
+    <div className="w-full min-w-0">
+      <div
       className={`cm-game-board relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40 ${interactive || premoveEnabled ? "cm-game-board-interactive" : ""}`}
       style={{ containerType: "inline-size" }}
       onContextMenu={(event) => {
@@ -360,7 +363,7 @@ const handleSquareSelection = useCallback((square: Square) => {
             setSelected(null);
             const piece = chess.get(sourceSquare as Square);
             if (piece && canPremoveColor(piece.color)) {
-              selectOrQueuePremove(sourceSquare, targetSquare, captureModifierPressed);
+              selectOrQueuePremove(sourceSquare, targetSquare, captureModifierPressed || captureModeEnabled);
               return false; // Keep the live board unchanged; only draw the queued premove.
             }
             return tryMove(sourceSquare, targetSquare);
@@ -395,11 +398,6 @@ const handleSquareSelection = useCallback((square: Square) => {
         </div>
       )}
       {badge && <BadgeOverlay badge={badge} orientation={orientation} animKey={animKey} />}
-      {selected && allowedColor && canPremoveColor(allowedColor) && (
-        <div className="pointer-events-none absolute left-2 top-2 z-30 rounded-md bg-black/70 px-2 py-1 text-[10px] font-semibold text-[#ffd4d1] shadow-lg">
-          Shift + клик/перетаскивание — премув на взятие
-        </div>
-      )}
       {promotionDraft && allowedColor && (
         <div className="absolute inset-0 z-40 flex items-center justify-center rounded-md bg-black/55">
           <div className="rounded-xl border border-white/15 bg-[#20231d] p-3 shadow-2xl">
@@ -446,6 +444,22 @@ const handleSquareSelection = useCallback((square: Square) => {
             </div>
             <button type="button" onClick={() => setPromotionDraft(null)} className="mt-2 w-full rounded-md border border-white/15 px-3 py-1.5 text-[10px] font-bold text-[#bbb]">Отмена</button>
           </div>
+        </div>
+      )}
+      </div>
+      {selected && allowedColor && canPremoveColor(allowedColor) && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-red-400/25 bg-[#282421] px-2.5 py-2 text-[11px]">
+          <button
+            type="button"
+            aria-pressed={captureModeEnabled}
+            onClick={() => setCaptureModeEnabled((enabled) => !enabled)}
+            className={`min-h-9 rounded-md border px-3 py-1.5 font-bold transition ${captureModeEnabled ? "border-red-400 bg-red-500/20 text-red-100" : "border-white/15 bg-white/5 text-white"}`}
+          >
+            Взятие: {captureModeEnabled ? "ВКЛ" : "ВЫКЛ"}
+          </button>
+          <span className="min-w-0 flex-1 text-[#bdb7b1]">
+            На телефоне включи взятие перед выбором клетки. На компьютере также работает Shift.
+          </span>
         </div>
       )}
     </div>
