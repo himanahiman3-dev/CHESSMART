@@ -153,6 +153,20 @@ const replayed = replaySanHistory(["e4", "d5", "exd5"]);
 assert.equal(replayed.history().length, 3);
 assert.equal(replayed.turn(), "b");
 assert.equal(replayUciHistory([{ uci: "e2e4" }, { uci: "e7e5" }]).history().length, 2);
+
+// A FEN-only reload loses prior repetitions. Replaying the stored game moves
+// restores the threefold counter used by both local and server-side game rules.
+const repetitionSans = ["Nf3", "Nf6", "Ng1", "Ng8", "Nf3", "Nf6", "Ng1", "Ng8"];
+const repetitionGame = replaySanHistory(repetitionSans);
+assert.equal(repetitionGame.isThreefoldRepetition(), true);
+assert.equal(new Chess(repetitionGame.fen()).isThreefoldRepetition(), false,
+  "Loading the final FEN alone must not be mistaken for preserving repetition history.");
+const repetitionUci = [
+  "g1f3", "g8f6", "f3g1", "f6g8",
+  "g1f3", "g8f6", "f3g1", "f6g8",
+];
+assert.equal(replayUciHistory(repetitionUci.map((uci) => ({ uci }))).isThreefoldRepetition(), true,
+  "The online UCI move log must restore the repetition count before the server validates a new move.");
 assert.equal(getLegalMoveCount(start), 20);
 assert.equal(getGamePhase(start), "opening");
 assert.equal(getGamePhase("not-a-valid-fen"), "opening", "Malformed FEN must keep the safe fallback phase.");
