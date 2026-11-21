@@ -154,7 +154,8 @@ assert.equal(qualifiesAsBrilliant({
   lostMate: false, allowedMate: false, winLoss: 1, winAfter: 55, elo: 378,
 }), true, "Beginner rating should retain Chess.com's more generous Brilliant treatment.");
 
-// A short mating sacrifice must survive the alternative-win cutoff.
+// A short mating line does not waive the requirement that the alternative
+// position must not already be completely winning.
 assert.equal(qualifiesAsBrilliant({
   sacrifice: true,
   legalMoves: knightSacrificeLegalMoves,
@@ -164,19 +165,6 @@ assert.equal(qualifiesAsBrilliant({
   winLoss: 0,
   winAfter: 100,
   elo: 378,
-  matingSacrifice: true,
-}), true, "25.Nb5+ must qualify when Stockfish confirms the short forced mate, even if a quiet alternative is also winning.");
-
-assert.equal(qualifiesAsBrilliant({
-  sacrifice: true,
-  legalMoves: knightSacrificeLegalMoves,
-  alternativeWin: 99.9,
-  lostMate: false,
-  allowedMate: false,
-  winLoss: 0,
-  winAfter: 35,
-  elo: 378,
-  matingSacrifice: true,
-}), false, "A mating-sacrifice override must not accept a position that is bad for the mover.");
+}), false, "A mating combination must not become Brilliant if the quiet alternative is already completely winning.");
 
 console.log("Brilliant regression fixtures passed: Morphy sacrifices and the 25.Nb5+ Chess.com knight sacrifice.");
