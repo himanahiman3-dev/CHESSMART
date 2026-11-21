@@ -43,7 +43,7 @@ assert.equal(resolvePremove(afterRookD5.fen(), "w", queenCapture)?.san, "Qxd5");
 const afterKingMove = new Chess(queenBefore); afterKingMove.move({ from: "e8", to: "f7" });
 assert.equal(resolvePremove(afterKingMove.fen(), "w", queenCapture), null);
 
-const knightBefore = "4k3/8/8/8/8/2N5/8/4K3 b - - 0 1";
+const knightBefore = "4k3/p7/8/8/8/2N5/8/4K3 b - - 0 1";
 assert.ok(getPremoveCaptureMoves(knightBefore, "w", "c3").some((move) => move.to === "d5"),
   "Knights must expose empty squares they can capture onto after the opponent moves.");
 
