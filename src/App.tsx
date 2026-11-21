@@ -24,6 +24,7 @@ import { applySuitePreferences, loadSuiteSettings } from "./lib/systemsSuite";
 import { MotivationBanner } from "./components/MotivationBanner";
 import { buildTrainingRecommendations } from "./lib/trainingAcademy";
 import { reviewGame, type AnalyzeProgress } from "./lib/analyze";
+import { buildPgnFromSan } from "./lib/gameNotation";
 import {
   loadPlayerProfile,
   savePlayerProfile,
@@ -238,15 +239,59 @@ function Main() {
     setProfile((current) => recordPersonalGameReview(current, result, color, ratingType));
   }, []);
 
-  const openPersonalReview = useCallback((result: GameReview) => {
+  const openPersonalReview = useCallback((
+    result: GameReview,
+    playerColor: Color,
+    ratingType?: "bullet" | "blitz" | "rapid",
+  ) => {
     abortRef.current?.abort();
-    abortRef.current = null;
+    const controller = new AbortController();
+    abortRef.current = controller;
     setReview(result);
     setMode("review");
     setStage("review");
-    setIsRefining(false);
+    setIsRefining(true);
     setError(null);
-  }, []);
+    setProgress(null);
+
+    if (!engine) {
+      setIsRefining(false);
+      abortRef.current = null;
+      return;
+    }
+
+    // The post-game card is a fast preview. Opening the report performs a
+    // second, more detailed local pass; it may legitimately change move labels.
+    const pgn = buildPgnFromSan(
+      result.moves.map((move) => move.san),
+      result.headers,
+      result.startFen,
+    );
+    const detailedTimeMs = computeProfile.device === "mobile"
+      ? 1000
+      : Math.max(1000, Math.min(3000, computeProfile.timePerMoveMs));
+
+    void reviewGame(
+      pgn,
+      detailedTimeMs,
+      engine,
+      setProgress,
+      controller.signal,
+      computeProfile,
+    ).then((refined) => {
+      if (controller.signal.aborted || abortRef.current !== controller) return;
+      setReview(refined);
+      setProfile((current) => recordPersonalGameReview(current, refined, playerColor, ratingType));
+      setIsRefining(false);
+      abortRef.current = null;
+    }).catch((reason: unknown) => {
+      if (controller.signal.aborted || abortRef.current !== controller) return;
+      // Keep the already available fast preview rather than losing the report.
+      setError(reason instanceof Error ? reason.message : String(reason));
+      setIsRefining(false);
+      abortRef.current = null;
+    });
+  }, [engine, computeProfile]);
 
   const start = useCallback(async (pgn: string, timePerPositionMs: number) => {
     if (!engine) return;

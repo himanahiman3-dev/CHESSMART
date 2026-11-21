@@ -75,7 +75,7 @@ export function parseGame(pgnText: string): ParsedGame {
 import { gameBudgetMs, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
 import { isSacrificeVerificationCandidate, rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { classifyMove } from "./moveClassification";
-import { forcedMoveClass } from "./forcedMove";
+import { hasOnlyLegalMove } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
@@ -443,7 +443,7 @@ export function buildReview(
   game: ParsedGame,
   positions: PositionEval[],
   depth: number,
-  deferredSacrifices: Map<number, string> = new Map()
+  _legacyDeferredSacrifices?: Map<number, string>
 ): GameReview {
   const N = game.moves.length;
   const book = analyzeBook(game.moves.map((m) => m.san));
@@ -461,8 +461,7 @@ export function buildReview(
     const playedIsBest = bestUci === m.uci;
     const isBook = book.isBook[i];
     const legal = legalMoveCount(m.fenBefore);
-    const forcedClass = forcedMoveClass(legal);
-    const isForced = forcedClass === "forced";
+    const isForced = hasOnlyLegalMove(legal);
 
     const scoreBefore = top.score;
     // При лимите времени позиции считаются до разной глубины. Если сыгран ход со 2-й линии,
@@ -487,7 +486,8 @@ export function buildReview(
     // Measure the opponent's previous error from this player's own rating curve.
     // Using reviews[i - 1].winLoss mixed two different players' Elo mappings and
     // could miss a blunder whenever the players had different ratings.
-    const previousPositionWin = i > 0 && reviews[i - 1].cls !== "forced"
+    const previousMoveWasForced = i > 0 && hasOnlyLegalMove(legalMoveCount(game.moves[i - 1].fenBefore));
+    const previousPositionWin = i > 0 && !previousMoveWasForced
       ? winForRated(positions[i - 1].lines[0].score, color, elo)
       : winBefore;
     const prevLoss = Math.max(0, winBefore - previousPositionWin);
@@ -498,9 +498,6 @@ export function buildReview(
     if (!isBook && !isForced && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS) && m.piece !== "k" && m.piece !== "p") {
       sac = detectSacrifice(m.fenBefore, m.uci, elo);
     }
-    const deferredPiece = deferredSacrifices.get(i);
-    const isDeferredBrilliant = !!deferredPiece;
-
     const mateForMoverBefore = scoreBefore.mate !== undefined && cpBefore > 0;
     const mateForMoverAfter = scoreAfter.mate !== undefined && cpAfter > 0;
     const lostMate = mateForMoverBefore && !mateForMoverAfter;
@@ -514,27 +511,18 @@ export function buildReview(
       gapWin = winBefore - winForRated(second.score, color, elo);
     }
 
-    // Brilliant: a verified short mating sacrifice may override the "already winning"
-    // cutoff, while all ordinary Brilliant safeguards remain in place.
+    // A mating line is tactical evidence, not an exemption from the Brilliant
+    // rule that the player must not already be completely winning without the sacrifice.
     const altWin = playedIsBest ? (second ? winForRated(second.score, color, elo) : null) : winBefore;
-    const matingSacrifice = sac.sacrifice
-      && !isForced
-      && winLoss <= BRILLIANT_MAX_LOSS
-      && cpAfter > 0
-      && scoreAfter.mate !== undefined
-      && Math.abs(scoreAfter.mate) <= 4;
-
     const isBrilliant = qualifiesAsBrilliant({
-      sacrifice: sac.sacrifice || isDeferredBrilliant,
+      sacrifice: sac.sacrifice,
       legalMoves: legal,
-      matingSacrifice,
       alternativeWin: altWin,
       lostMate,
       allowedMate,
       winLoss,
       winAfter,
       elo,
-      continuation: isDeferredBrilliant,
     });
 
     const isMateMove = after.lines[0].score.terminal === true
@@ -599,9 +587,7 @@ export function buildReview(
       bestSecondGapCp: gapCp,
       bestSecondSan: secondSan,
     });
-    const comment = cls !== "forced" && isDeferredBrilliant
-      ? `Блестящее продолжение жертвы: вы оставили фигуру под боем, но соперник всё ещё не может безопасно её забрать. ${generatedComment}`
-      : generatedComment;
+    const comment = generatedComment;
 
     reviews.push({
       index: i,
@@ -625,7 +611,7 @@ export function buildReview(
       bestSan,
       secondUci: second?.pv[0],
       playedIsBest,
-      sacrifice: cls !== "forced" && (sac.sacrifice || isDeferredBrilliant),
+      sacrifice: sac.sacrifice,
       opening,
       comment,
       lines: before.lines,

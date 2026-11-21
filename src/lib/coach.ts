@@ -130,10 +130,6 @@ export function buildComment(ctx: CoachContext): string {
   const parts: string[] = [];
 
   switch (ctx.cls) {
-    case "forced": {
-      parts.push(san + " — вынужденный ход: в этой позиции был ровно один легальный вариант. Других ходов по правилам шахмат не существовало, поэтому этот ход не штрафуется по точности.");
-      break;
-    }
     case "book": {
       const o = ctx.opening;
       parts.push(`${san} — теоретический ход из дебюта.`);

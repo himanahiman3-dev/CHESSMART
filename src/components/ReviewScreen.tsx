@@ -408,7 +408,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
         {isRefining && (
           <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-full border border-[#789c54]/40 bg-[#34432b]/60 px-3 py-1.5 text-[10px] font-semibold text-[#cfe5b8]">
             <span className="h-2 w-2 animate-pulse rounded-full bg-[#a3d160]" />
-            Глубокая проверка жертв и тактики…
+            Подробная повторная проверка ключевых позиций…
           </div>
         )}
         <div className="flex items-center gap-1.5 text-xs sm:gap-2">

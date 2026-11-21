@@ -3,7 +3,7 @@ import { Chess } from "chess.js";
 import { fenKey } from "../src/lib/format.ts";
 import { positionKey } from "../src/lib/db.ts";
 import { buildPositionCommand } from "../src/lib/engine.ts";
-import { forcedMoveClass } from "../src/lib/forcedMove.ts";
+import { hasOnlyLegalMove } from "../src/lib/forcedMove.ts";
 import { shouldRecheckCriticalPosition } from "../src/lib/criticalPositionRanking.ts";
 import { qBalance } from "../src/lib/see.ts";
 import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES } from "../src/lib/analysisBudget.ts";
@@ -84,12 +84,12 @@ const forcedFen = "k6R/8/2K5/8/8/8/8/8 b - - 0 1";
 const forcedChess = new Chess(forcedFen);
 const forcedLegal = forcedChess.moves({ verbose: true });
 assert.equal(forcedLegal.length, 1, "The forced-move fixture must have exactly one legal move.");
-assert.equal(forcedMoveClass(forcedLegal.length), "forced",
-  "Exactly one legal move must map to the Forced classification.");
-assert.equal(forcedMoveClass(0), null,
-  "A position with no legal moves is checkmate or stalemate, not a forced move.");
-assert.equal(forcedMoveClass(2), null,
-  "Two or more legal moves must not receive the Forced classification.");
+assert.equal(hasOnlyLegalMove(forcedLegal.length), true,
+  "Exactly one legal move is detected internally so it is not penalized as an avoidable mistake.");
+assert.equal(hasOnlyLegalMove(0), false,
+  "A position with no legal moves is checkmate or stalemate.");
+assert.equal(hasOnlyLegalMove(2), false,
+  "Two or more legal moves are not internally marked as forced.");
 
 assert.equal(shouldRecheckCriticalPosition(0, 0, 20, false, true), true,
   "A forced-mate opportunity must be rechecked even when the expected-points curve is flat.");
@@ -100,8 +100,8 @@ const ordinaryFen = "4k3/8/8/8/8/8/8/R3K3 w - - 0 1";
 const ordinaryChess = new Chess(ordinaryFen);
 const ordinaryLegalCount = ordinaryChess.moves().length;
 assert.ok(ordinaryLegalCount > 1, "The comparison position must have several legal moves.");
-assert.equal(forcedMoveClass(ordinaryLegalCount), null,
-  "A position with multiple legal moves must never receive the Forced classification.");
+assert.equal(hasOnlyLegalMove(ordinaryLegalCount), false,
+  "A position with multiple legal moves is not internally marked as forced.");
 
 
 const reviewFixture = (moves) => ({

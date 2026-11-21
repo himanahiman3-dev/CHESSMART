@@ -136,11 +136,9 @@ export function CoachCard({
                   <div className="grid grid-cols-3 gap-2">
                     <div><div className="text-[10px] text-[#77746f]">До хода</div><b>{move.winBefore.toFixed(1)}%</b></div>
                     <div><div className="text-[10px] text-[#77746f]">После</div><b>{move.winAfter.toFixed(1)}%</b></div>
-                    <div><div className="text-[10px] text-[#77746f]">Потеря</div><b>{move.cls === "forced" ? "не учитывается" : move.winLoss.toFixed(1) + " п.п."}</b></div>
+                    <div><div className="text-[10px] text-[#77746f]">Потеря</div><b>{move.winLoss.toFixed(1) + " п.п."}</b></div>
                   </div>
-                  {move.cls === "forced"
-                    ? <p className="mt-2 text-[#b5c5d3]">Это был единственный легальный ход. Chessmart отмечает его как вынужденный, а не как лучший или ошибочный.</p>
-                    : move.bestSan && <p className="mt-2">Вместо {sanRu(move.san)} движок предпочитал <b className="text-[#a3d160]">{sanRu(move.bestSan)}</b>.</p>}
+                  {move.bestSan && move.bestSan !== move.san && <p className="mt-2">Вместо {sanRu(move.san)} движок предпочитал <b className="text-[#a3d160]">{sanRu(move.bestSan)}</b>.</p>}
                   {move.lines[0]?.pv?.length ? <p className="mt-2"><span className="text-[#77746f]">Главное продолжение:</span> {pvToSans(move.fenBefore, move.lines[0].pv, 6).join(" ")}</p> : null}
                   {move.cls === "brilliant" && <p className="mt-2 text-[#59c9c0]">Движок подтвердил жертву: материальная уступка оправдана тактическим или позиционным результатом.</p>}
                 </div>

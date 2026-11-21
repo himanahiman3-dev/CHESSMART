@@ -15,10 +15,6 @@ export interface BrilliantCriteria {
   lostMate: boolean;
   allowedMate: boolean;
   elo?: number;
-  /** A continuation of a previously established sacrifice, not a fresh sacrifice. */
-  continuation?: boolean;
-  /** A sound piece sacrifice that forces a short, verified mate. */
-  matingSacrifice?: boolean;
 }
 
 /**
@@ -43,8 +39,8 @@ export function qualifiesAsBrilliant(criteria: BrilliantCriteria): boolean {
     criteria.winAfter < BRILLIANT_MIN_AFTER
   ) return false;
 
-  if (criteria.continuation || criteria.matingSacrifice) return true;
-
+  // A tactical mating line does not waive the "not already completely winning"
+  // condition. The best available alternative must still fail that cutoff.
   return criteria.alternativeWin !== null
     && criteria.alternativeWin <= brilliantAlternativeLimit(criteria.elo);
 }

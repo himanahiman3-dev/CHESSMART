@@ -162,7 +162,7 @@ function reasonText(reason: string | null): string {
 interface OnlinePlayScreenProps {
   onBack: () => void;
   onPersonalReviewReady: (review: GameReview, color: Color, ratingType?: "bullet" | "blitz" | "rapid") => void;
-  onOpenReview: (review: GameReview) => void;
+  onOpenReview: (review: GameReview, color: Color, ratingType?: "bullet" | "blitz" | "rapid") => void;
 }
 
 export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }: OnlinePlayScreenProps) {
@@ -1273,7 +1273,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
           pgn={completedPgn}
           playerColor={myColor}
           onAnalyzed={(review, color) => onPersonalReviewReady(review, color, game.rating_type)}
-          onOpenReview={onOpenReview}
+          onOpenReview={(review, color) => onOpenReview(review, color, game.rating_type)}
         />
       )}
     </main>

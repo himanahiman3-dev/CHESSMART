@@ -91,8 +91,9 @@ export function qualifiesAsMiss(input: Pick<
 
 /** Single source of truth for label priority and all non-engine tactical overrides. */
 export function classifyMove(input: MoveClassificationInput): Cls {
-  if (input.forced) return "forced";
   if (input.book) return "book";
+  // Forced is an internal no-alternative safeguard, not a visible Chess.com class.
+  if (input.forced) return "best";
   if (input.allowedMate) return "blunder";
   if (input.brilliant) return "brilliant";
   if (qualifiesAsMiss(input)) return "miss";

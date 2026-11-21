@@ -41,8 +41,10 @@ const base = {
 };
 
 assert.equal(classifyMove({ ...base, playedIsBest: true }), "best");
-assert.equal(classifyMove({ ...base, forced: true, book: true }), "forced",
-  "Forced has priority over Book.");
+assert.equal(classifyMove({ ...base, forced: true, book: true }), "book",
+  "Book takes priority over the internal no-alternative safeguard.");
+assert.equal(classifyMove({ ...base, forced: true }), "best",
+  "A sole legal move is internally unpenalized but is not a separate review class.");
 assert.equal(classifyMove({ ...base, book: true, brilliant: true }), "book",
   "Opening-book prefix remains a separate label.");
 assert.equal(classifyMove({ ...base, brilliant: true }), "brilliant");
@@ -119,4 +121,4 @@ assert.equal(classifyMove({
   winLoss: 0,
 }), "blunder");
 
-console.log("All move-classification tests passed: Best, Excellent, Good, Inaccuracy, Mistake, Blunder, Great, Miss, Book, Forced and Brilliant.");
+console.log("All move-classification tests passed: Best, Excellent, Good, Inaccuracy, Mistake, Blunder, Great, Miss, Book and Brilliant.");
