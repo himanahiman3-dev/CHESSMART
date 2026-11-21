@@ -513,9 +513,22 @@ export function buildReview(
     // после него позиция не плохая, и без него вы не были бы полностью выигрывающим.
     // «Лучшая альтернатива»: если сыгран лучший ход — вторая линия; если почти лучший — лучшая линия.
     const altWin = playedIsBest ? (second ? winForRated(second.score, color, elo) : null) : winBefore;
+    // A short forced mate is decisive tactical proof that the sacrifice works.
+    // This narrowly overrides the "already completely winning" cutoff: a quiet
+    // alternative may also win, but it does not reproduce the mating combination.
+    // scoreAfter is always from the mover's point of view via cpAfter, even when
+    // Stockfish reports a negative mate score because the opponent is to move.
+    const matingSacrifice = sac.sacrifice
+      && !isForced
+      && winLoss <= BRILLIANT_MAX_LOSS
+      && cpAfter > 0
+      && scoreAfter.mate !== undefined
+      && Math.abs(scoreAfter.mate) <= 4;
+
     const isBrilliant = qualifiesAsBrilliant({
       sacrifice: sac.sacrifice || isDeferredBrilliant,
       legalMoves: legal,
+      matingSacrifice,
       alternativeWin: altWin,
       lostMate,
       allowedMate,
