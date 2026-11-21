@@ -4,7 +4,7 @@ import { Chessboard, defaultArrowOptions } from "react-chessboard";
 import type { Cls } from "../types";
 import { ClsBadge } from "./ClsBadge";
 import { CLS_META } from "../types";
-import { createCapturePremove, createPremove, getPremoveCaptureMoves, getPremoveMoves, type Premove } from "../lib/premoves";
+import { createCapturePremove, createPremove, getPremoveCaptureMoves, getPremoveMoves, MAX_PREMOVE_QUEUE, projectPremoveQueue, type Premove } from "../lib/premoves";
 import { loadGameplayPreferences, type GameBoardTheme } from "../lib/gameplayPreferences";
 import { playSound, setSoundEnabled } from "../lib/sound";
 
@@ -37,8 +37,10 @@ interface Props {
   animKey?: number;
   /** Визуальная тема клеток доски. */
   theme?: BoardTheme;
-  /** Разрешает поставить один ход на следующую очередь, пока ходит соперник. */
+  /** Разрешает ставить несколько ходов в очередь, пока ходит соперник. */
   premoveEnabled?: boolean;
+  /** New multi-move queue. The legacy single premove prop remains supported. */
+  premoves?: Premove[];
   premove?: Premove | null;
   onPremove?: (move: Premove) => void;
   onClearPremove?: () => void;
@@ -94,7 +96,8 @@ export const GameBoard = memo(function GameBoard({
   animKey = 0,
   theme = "classic",
   premoveEnabled = false,
-  premove = null,
+  premove: legacyPremove = null,
+  premoves: queuedPremoves,
   onPremove,
   onClearPremove,
   showLegalMoves = true,
@@ -106,6 +109,7 @@ export const GameBoard = memo(function GameBoard({
   const [captureModifierPressed, setCaptureModifierPressed] = useState(false);
   const [captureModeEnabled, setCaptureModeEnabled] = useState(false);
   const [promotionDraft, setPromotionDraft] = useState<{ from: string; to: string; kind: "move" | "premove"; capture?: boolean } | null>(null);
+  const premoves = queuedPremoves ?? (legacyPremove ? [legacyPremove] : []);
 
   useEffect(() => {
     setSoundEnabled(loadGameplayPreferences().soundEnabled);
@@ -129,37 +133,47 @@ export const GameBoard = memo(function GameBoard({
   useEffect(() => setSelected(null), [fen, interactive]);
   useEffect(() => { if (!selected) setCaptureModeEnabled(false); }, [selected]);
 
-  const chess = useMemo(() => {
-    try {
-      return new Chess(fen);
-    } catch {
-      return null;
-    }
+  const liveChess = useMemo(() => {
+    try { return new Chess(fen); } catch { return null; }
   }, [fen]);
-
-  const turn = chess?.turn();
+  const turn = liveChess?.turn();
+  const waitingForOpponent = !!liveChess && !liveChess.isGameOver() && !!allowedColor && turn !== allowedColor;
+  const premoveProjection = useMemo(
+    () => premoveEnabled && waitingForOpponent && allowedColor
+      ? projectPremoveQueue(fen, allowedColor, premoves)
+      : null,
+    [fen, premoveEnabled, waitingForOpponent, allowedColor, premoves]
+  );
+  // During premove planning the displayed board is a projected position, so
+  // the player can queue the next move from a piece's future square (e4 → Nf3 → c3).
+  const boardFen = premoveProjection?.fen ?? fen;
+  const chess = useMemo(() => {
+    try { return new Chess(boardFen, { skipValidation: true }); } catch { return null; }
+  }, [boardFen]);
   const canMoveColor = useCallback((c: string) => interactive && !!turn && c === turn && (!allowedColor || allowedColor === c), [interactive, turn, allowedColor]);
   const canPremoveColor = useCallback(
-    (c: string) => premoveEnabled && !!turn && !!allowedColor && c === allowedColor && turn !== allowedColor,
-    [premoveEnabled, turn, allowedColor]
+    (c: string) => premoveEnabled && waitingForOpponent && !!allowedColor
+      && c === allowedColor && !!premoveProjection?.canAppend,
+    [premoveEnabled, waitingForOpponent, allowedColor, premoveProjection]
   );
   const selectedPremoveMoves = useMemo(
     () => selected && allowedColor && canPremoveColor(allowedColor)
-      ? getPremoveMoves(fen, allowedColor, selected)
+      ? getPremoveMoves(boardFen, allowedColor, selected)
       : [],
-    [fen, selected, allowedColor, canPremoveColor]
+    [boardFen, selected, allowedColor, canPremoveColor]
   );
   const selectedPremoveCaptureMoves = useMemo(
     () => selected && allowedColor && canPremoveColor(allowedColor)
-      ? getPremoveCaptureMoves(fen, allowedColor, selected)
+      ? getPremoveCaptureMoves(boardFen, allowedColor, selected)
       : [],
-    [fen, selected, allowedColor, canPremoveColor]
+    [boardFen, selected, allowedColor, canPremoveColor]
   );
 
   const selectOrQueuePremove = useCallback((from: string, to: string, forceCapture = false): boolean => {
     if (!allowedColor || !onPremove) return false;
-    const normalCandidate = createPremove(fen, allowedColor, from, to, "q");
-    const captureCandidate = createCapturePremove(fen, allowedColor, from, to, "q");
+    if (!premoveProjection?.canAppend || premoves.length >= MAX_PREMOVE_QUEUE) return false;
+    const normalCandidate = createPremove(boardFen, allowedColor, from, to, "q");
+    const captureCandidate = createCapturePremove(boardFen, allowedColor, from, to, "q");
     const target = chess?.get(to as Square);
     // Occupied enemy squares are always capture-intent. A currently empty square that
     // isn't a legal quiet move (e.g. a pawn's diagonal) is inferred as a capture.
@@ -175,7 +189,7 @@ export const GameBoard = memo(function GameBoard({
     }
     onPremove(candidate);
     return true;
-  }, [fen, allowedColor, onPremove, autoQueen, chess]);
+  }, [boardFen, allowedColor, onPremove, autoQueen, chess, premoveProjection, premoves.length]);
 
   const tryMove = useCallback(
     (from: string, to: string): boolean => {
@@ -197,13 +211,13 @@ export const GameBoard = memo(function GameBoard({
         return false;
       }
     },
-    [chess, onMove, canMoveColor]
+    [chess, onMove, canMoveColor, autoQueen]
   );
 
 const handleSquareSelection = useCallback((square: Square) => {
     if (!chess) return;
     const piece = chess.get(square);
-    if (premove && square === premove.from && onClearPremove) {
+    if (premoves.some((move) => move.from === square) && onClearPremove) {
       onClearPremove();
       setSelected(null);
       return;
@@ -236,7 +250,7 @@ const handleSquareSelection = useCallback((square: Square) => {
     }
     setSelected(null);
   }, [
-    chess, premove, onClearPremove, selected, selectedPremoveMoves, selectedPremoveCaptureMoves,
+    chess, premoves, onClearPremove, selected, selectedPremoveMoves, selectedPremoveCaptureMoves,
     canPremoveColor, captureModifierPressed, captureModeEnabled, selectOrQueuePremove, canMoveColor, tryMove,
   ]);
 
@@ -294,38 +308,47 @@ const handleSquareSelection = useCallback((square: Square) => {
         };
       }
     }
-    if (premove) {
-      s[premove.from] = { ...(s[premove.from] ?? {}), background: "rgba(220,62,62,.38)", boxShadow: "inset 0 0 0 3px rgba(220,62,62,.9)" };
+    premoves.forEach((premove, index) => {
+      const opacity = Math.max(0.18, 0.42 - index * 0.045);
+      s[premove.from] = {
+        ...(s[premove.from] ?? {}),
+        background: `rgba(220,62,62,${opacity})`,
+        boxShadow: "inset 0 0 0 3px rgba(220,62,62,.9)",
+      };
       s[premove.to] = {
         ...(s[premove.to] ?? {}),
-        background: "rgba(220,62,62,.22)",
+        background: `rgba(220,62,62,${Math.max(0.12, opacity - 0.12)})`,
         boxShadow: "inset 0 0 0 3px rgba(220,62,62,.75)",
         outline: premove.capture ? "3px dashed rgba(255,115,105,.95)" : undefined,
         outlineOffset: "-3px",
       };
-    }
+    });
     if (extraSquareStyles) for (const [k, v] of Object.entries(extraSquareStyles)) s[k] = { ...(s[k] ?? {}), ...v };
     return s;
-  }, [lastMove, highlightLastMove, selected, chess, extraSquareStyles, badge?.square, badge?.cls, animKey, premove, selectedPremoveMoves, selectedPremoveCaptureMoves, showLegalMoves, canMoveColor]);
+  }, [lastMove, highlightLastMove, selected, chess, extraSquareStyles, badge?.square, badge?.cls, animKey, premoves, selectedPremoveMoves, selectedPremoveCaptureMoves, showLegalMoves, canMoveColor]);
 
   const chessArrows = useMemo(() => [
     ...arrows.map((a) => ({ startSquare: a.from, endSquare: a.to, color: a.color })),
-    ...(premove ? [{ startSquare: premove.from, endSquare: premove.to, color: "rgba(230,65,65,.95)" }] : []),
-  ], [arrows, premove]);
+    ...premoves.map((premove, index) => ({
+      startSquare: premove.from,
+      endSquare: premove.to,
+      color: index === 0 ? "rgba(230,65,65,.95)" : "rgba(240,125,105,.82)",
+    })),
+  ], [arrows, premoves]);
 
   useEffect(() => {
-    if ((!premove && !promotionDraft) || (!onClearPremove && !promotionDraft)) return;
+    if ((!premoves.length && !promotionDraft) || (!onClearPremove && !promotionDraft)) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         if (promotionDraft) setPromotionDraft(null);
-        if (premove) onClearPremove?.();
+        if (premoves.length) onClearPremove?.();
         setSelected(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [premove, promotionDraft, onClearPremove]);
+  }, [premoves, promotionDraft, onClearPremove]);
 
   return (
     <div className="w-full min-w-0">
@@ -333,17 +356,17 @@ const handleSquareSelection = useCallback((square: Square) => {
       className={`cm-game-board relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40 ${interactive || premoveEnabled ? "cm-game-board-interactive" : ""}`}
       style={{ containerType: "inline-size" }}
       onContextMenu={(event) => {
-        if (!premove && !promotionDraft) return;
+        if (!premoves.length && !promotionDraft) return;
         event.preventDefault();
         setPromotionDraft(null);
-        if (premove) onClearPremove?.();
+        if (premoves.length) onClearPremove?.();
         setSelected(null);
       }}
     >
       <Chessboard
         options={{
           id: "review-board",
-          position: fen,
+          position: boardFen,
           boardOrientation: orientation,
           darkSquareStyle: { backgroundColor: BOARD_PALETTES[theme].dark },
           lightSquareStyle: { backgroundColor: BOARD_PALETTES[theme].light },
@@ -364,7 +387,7 @@ const handleSquareSelection = useCallback((square: Square) => {
             const piece = chess.get(sourceSquare as Square);
             if (piece && canPremoveColor(piece.color)) {
               selectOrQueuePremove(sourceSquare, targetSquare, captureModifierPressed || captureModeEnabled);
-              return false; // Keep the live board unchanged; only draw the queued premove.
+              return false; // The projected board updates after the parent appends the queued move.
             }
             return tryMove(sourceSquare, targetSquare);
           },
@@ -411,8 +434,8 @@ const handleSquareSelection = useCallback((square: Square) => {
                   onClick={() => {
                     if (promotionDraft.kind === "premove" && allowedColor) {
                       const chosen = promotionDraft.capture
-                        ? createCapturePremove(fen, allowedColor, promotionDraft.from, promotionDraft.to, piece)
-                        : createPremove(fen, allowedColor, promotionDraft.from, promotionDraft.to, piece);
+                        ? createCapturePremove(boardFen, allowedColor, promotionDraft.from, promotionDraft.to, piece)
+                        : createPremove(boardFen, allowedColor, promotionDraft.from, promotionDraft.to, piece);
                       if (chosen) onPremove?.(chosen);
                     } else if (promotionDraft.kind === "move" && chess && onMove) {
                       try {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Chess } from "chess.js";
-import { canSetPremove, createCapturePremove, createPremove, formatPremove, getPremoveCaptureMoves, getPremoveMoves, isChessSquare, isPremoveForTurn, isPremoveShape, premoveClockPenaltyMs, premoveToUci, resolvePremove, samePremove, sanitizePremove } from "../src/lib/premoves.ts";
+import { canSetPremove, createCapturePremove, createPremove, formatPremove, getPremoveCaptureMoves, getPremoveMoves, isChessSquare, isPremoveForTurn, isPremoveShape, MAX_PREMOVE_QUEUE, projectPremoveQueue, projectPremoveTurn, premoveClockPenaltyMs, premoveToUci, resolvePremove, samePremove, sanitizePremove } from "../src/lib/premoves.ts";
 import { clockUrgency, formatClock, formatMoveNumber, getBoardOrientation, isActiveGame, isBoardTheme, normalizeGameplayPreferences, shouldAskBeforeResign, updateGameplayPreferences } from "../src/lib/gameplayPreferences.ts";
 import { buildPgnFromSan, buildPgnFromUci, formatSanMoveList, pgnFilename, textFilename } from "../src/lib/gameNotation.ts";
 import { formatMaterialBalance, gamePhaseLabel, getCapturedMaterial, getGamePhase, getHalfmoveClock, getLegalMoveCount, getPositionInsights, isNearFiftyMoveRule, replaySanHistory, replayUciHistory, terminalStateLabel } from "../src/lib/gameInsights.ts";
@@ -25,6 +25,49 @@ assert.equal(isPremoveShape({from:"e2",to:"e4",capture:"yes"}),false);
 assert.deepEqual(sanitizePremove({from:"e2",to:"e4",capture:true}), {from:"e2",to:"e4",capture:true});
 assert.equal(isPremoveForTurn(start,"b"),true); assert.equal(isPremoveForTurn(start,"w"),false);
 const afterE4 = new Chess(); afterE4.move("e4");
+
+// Multi-premove planning: preview a sequence of our moves, then validate
+// each queued move again only after a real opponent reply.
+assert.equal(MAX_PREMOVE_QUEUE, 5);
+const projectedWhiteTurn = projectPremoveTurn(afterE4.fen(), "w");
+assert.ok(projectedWhiteTurn);
+assert.equal(new Chess(projectedWhiteTurn).turn(), "w");
+assert.equal(projectedWhiteTurn.split(/\s+/)[3], "-",
+  "The preview must not preserve an en-passant right across an opponent reply.");
+const plannedF3 = createPremove(afterE4.fen(), "w", "f2", "f3");
+assert.ok(plannedF3);
+const f3Projection = projectPremoveQueue(afterE4.fen(), "w", [plannedF3]);
+assert.equal(f3Projection.projectedCount, 1);
+assert.equal(f3Projection.canAppend, true);
+assert.equal(new Chess(f3Projection.fen).get("f3")?.type, "p");
+const plannedC3 = createPremove(f3Projection.fen, "w", "c2", "c3");
+assert.ok(plannedC3);
+const twoMoveProjection = projectPremoveQueue(afterE4.fen(), "w", [plannedF3, plannedC3]);
+assert.equal(twoMoveProjection.projectedCount, 2);
+assert.equal(twoMoveProjection.canAppend, true);
+const previewBoard = new Chess(twoMoveProjection.fen);
+assert.equal(previewBoard.get("f3")?.type, "p");
+assert.equal(previewBoard.get("c3")?.type, "p");
+assert.equal(previewBoard.turn(), "w");
+
+const realAfterE5 = new Chess(afterE4.fen());
+realAfterE5.move("e5");
+const executedF3 = resolvePremove(realAfterE5.fen(), "w", plannedF3);
+assert.ok(executedF3);
+assert.equal(executedF3.san, "f3");
+const blackReplyAfterF3 = new Chess(executedF3.fenAfter);
+blackReplyAfterF3.move("c5");
+assert.equal(resolvePremove(blackReplyAfterF3.fen(), "w", plannedC3)?.san, "c3",
+  "The second premove must wait for and revalidate after a second real opponent reply.");
+
+const invalidatedQueue = projectPremoveQueue(afterE4.fen(), "w", [
+  plannedF3,
+  { from: "a1", to: "a8" },
+]);
+assert.equal(invalidatedQueue.projectedCount, 1);
+assert.equal(invalidatedQueue.canAppend, false,
+  "A stale queued move must block dependent premoves from being appended.");
+
 const pawnCapture = createCapturePremove(afterE4.fen(), "w", "e4", "d5");
 assert.deepEqual(pawnCapture, { from: "e4", to: "d5", capture: true });
 assert.ok(getPremoveCaptureMoves(afterE4.fen(), "w", "e4").some((move) => move.to === "d5"));
@@ -111,6 +154,20 @@ const replayed = replaySanHistory(["e4", "d5", "exd5"]);
 assert.equal(replayed.history().length, 3);
 assert.equal(replayed.turn(), "b");
 assert.equal(replayUciHistory([{ uci: "e2e4" }, { uci: "e7e5" }]).history().length, 2);
+
+// A FEN-only reload loses prior repetitions. Replaying the stored game moves
+// restores the threefold counter used by both local and server-side game rules.
+const repetitionSans = ["Nf3", "Nf6", "Ng1", "Ng8", "Nf3", "Nf6", "Ng1", "Ng8"];
+const repetitionGame = replaySanHistory(repetitionSans);
+assert.equal(repetitionGame.isThreefoldRepetition(), true);
+assert.equal(new Chess(repetitionGame.fen()).isThreefoldRepetition(), false,
+  "Loading the final FEN alone must not be mistaken for preserving repetition history.");
+const repetitionUci = [
+  "g1f3", "g8f6", "f3g1", "f6g8",
+  "g1f3", "g8f6", "f3g1", "f6g8",
+];
+assert.equal(replayUciHistory(repetitionUci.map((uci) => ({ uci }))).isThreefoldRepetition(), true,
+  "The online UCI move log must restore the repetition count before the server validates a new move.");
 assert.equal(getLegalMoveCount(start), 20);
 assert.equal(getGamePhase(start), "opening");
 assert.equal(getGamePhase("not-a-valid-fen"), "opening", "Malformed FEN must keep the safe fallback phase.");
@@ -204,6 +261,18 @@ assert.equal(isOnlineGameSnapshotNewer(
 ), false, "An older completed row must not overwrite the final row with newer clocks or ratings.");
 assert.equal(isOnlineGameSnapshotNewer({ ...snapshot, status: "completed" }, snapshot), false,
   "A completed game must never be reopened by a late active snapshot.");
+assert.equal(isOnlineGameSnapshotNewer(
+  { ...snapshot, updated_at: null },
+  { ...snapshot, updated_at: null },
+), false, "Same-ply snapshots without timestamps have no provable ordering.");
+assert.equal(isOnlineGameSnapshotNewer(
+  snapshot,
+  { ...snapshot, updated_at: null },
+), false, "An unordered snapshot must not replace one with a valid timestamp.");
+assert.equal(isOnlineGameSnapshotNewer(
+  { ...snapshot, updated_at: null },
+  { ...snapshot, updated_at: "2026-11-21T12:00:06.000Z" },
+), true, "A timestamped snapshot can safely replace one without ordering metadata.");
 assert.equal(parseOnlineGameRealtimeFrame(JSON.stringify({ event: "postgres_changes" }), topic), null);
 
 console.log("Premove, gameplay, personal move-quality, and Realtime transport validation passed.");

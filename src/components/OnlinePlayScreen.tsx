@@ -5,7 +5,7 @@ import type { Color, GameReview } from "../types";
 import { GameFinishedReviewOverlay } from "./GameFinishedReviewOverlay";
 import { AccountAvatar } from "./AccountAvatar";
 import { clearAccountProfile, publishAccountProfile } from "../lib/accountProfile";
-import { resolvePremove, type Premove, formatPremove } from "../lib/premoves";
+import { resolvePremove, type Premove, formatPremove, samePremove, MAX_PREMOVE_QUEUE } from "../lib/premoves";
 import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation, clockUrgency, formatClock, type GameplayPreferences } from "../lib/gameplayPreferences";
 import { playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/sound";
 import { buildPgnFromUci, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
@@ -197,13 +197,14 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   const [now, setNow] = useState(Date.now());
   const [copied, setCopied] = useState(false);
   const [lastSync, setLastSync] = useState(Date.now());
-  const [premove, setPremove] = useState<Premove | null>(null);
+  const [premoves, setPremoves] = useState<Premove[]>([]);
   const premoveGameIdRef = useRef<string | null>(null);
   const [boardFlipped, setBoardFlipped] = useState(false);
   const [preferences, setPreferences] = useState<GameplayPreferences>(() => loadGameplayPreferences());
   const [connectionOnline, setConnectionOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   const [exportNotice, setExportNotice] = useState("");
   const movePendingRef = useRef(false);
+  const sendMoveRef = useRef<((move: BoardMove, isPremove?: boolean, queuedPremove?: Premove) => boolean) | null>(null);
   const moveRequestRef = useRef<AbortController | null>(null);
   const refreshInFlightRef = useRef(false);
   const gamePollFailuresRef = useRef(0);
@@ -308,6 +309,61 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     void connect();
     return () => { cancelled = true; };
   }, [configured, url, key, applyGameSnapshot]);
+
+  // Refresh Supabase auth before the access token expires. Without this,
+  // a long online session silently becomes unable to move after roughly an hour.
+  useEffect(() => {
+    if (!session?.refresh_token || !Number.isFinite(session.expires_at)) return;
+    let cancelled = false;
+    let refreshing = false;
+    let timer: number | undefined;
+    const scheduleRefresh = (delayMs: number) => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(() => { void refreshNow(); }, delayMs);
+    };
+    const refreshNow = async () => {
+      if (cancelled || refreshing) return;
+      refreshing = true;
+      try {
+        const refreshed = await refreshSession(url, key, session.refresh_token);
+        if (cancelled) return;
+        saveSession(refreshed);
+        setSession((current) => {
+          if (!current || current.user.id !== session.user.id || current.refresh_token !== session.refresh_token) {
+            return current;
+          }
+          return refreshed;
+        });
+        setError(null);
+      } catch (reason) {
+        if (cancelled) return;
+        const remainingMs = session.expires_at - Date.now();
+        setError(remainingMs > 0
+          ? "Обновляем сессию аккаунта… Проверь соединение, если сообщение не исчезнет."
+          : "Сессия аккаунта истекла. Пытаемся восстановить подключение…");
+        // Refresh tokens can rotate, so never log out on one transient network
+        // failure. Retry at a bounded rate until the session is renewed.
+        scheduleRefresh(remainingMs > 0
+          ? Math.min(30_000, Math.max(3_000, remainingMs - 1_000))
+          : 30_000);
+      } finally {
+        refreshing = false;
+      }
+    };
+    const refreshLeadMs = 5 * 60_000;
+    scheduleRefresh(Math.max(1_000, session.expires_at - Date.now() - refreshLeadMs));
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || session.expires_at > Date.now() + refreshLeadMs) return;
+      if (timer !== undefined) window.clearTimeout(timer);
+      void refreshNow();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [session?.user.id, session?.refresh_token, session?.expires_at, url, key]);
 
   const authenticate = async () => {
     setBusy(true); setError(null); setNotice(null);
@@ -450,7 +506,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     setSoundEnabled(next.soundEnabled);
     if (key === "premovesEnabled" && value === false) {
       premoveGameIdRef.current = null;
-      setPremove(null);
+      setPremoves([]);
       setNotice("Очередь premove очищена.");
     }
   };
@@ -504,7 +560,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
             online: navigator.onLine,
             visible: document.visibilityState !== "hidden",
             consecutiveFailures: gamePollFailuresRef.current,
-            urgent: !!premove,
+            urgent: premoves.length > 0,
           });
       timer = window.setTimeout(() => { void poll(); }, delay);
     };
@@ -513,7 +569,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [game?.id, game?.status, session, refreshGame, premove, realtimeConnected]);
+  }, [game?.id, game?.status, session, refreshGame, premoves.length, realtimeConnected]);
 
   useEffect(() => {
     if (!session || game) return;
@@ -593,37 +649,48 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   useEffect(() => {
     moveRequestRef.current?.abort();
     moveRequestRef.current = null;
-    setPremove(null);
+    setPremoves([]);
     movePendingRef.current = false;
     setMovePending(false);
     setBoardFlipped(false);
     premoveGameIdRef.current = null;
   }, [game?.id]);
 
-  // Apply a premove only after the authoritative server FEN says it is our turn.
+  // Execute only the queue head after the authoritative server FEN says it is our turn.
+  // The head stays queued until sendMove confirms the commit (including its recovery read).
   useEffect(() => {
+    const premove = premoves[0];
     if (!premove || !game || premoveGameIdRef.current !== game.id || game.status !== "active" || !myColor || turn !== myColor || movePending) return;
     const resolved = resolvePremove(game.fen, myColor, premove);
-    setPremove(null);
     if (!resolved) {
       const captureTarget = premove.capture ? new Chess(game.fen).get(premove.to as Square) : null;
       const captureTargetMissing = premove.capture && (!captureTarget || captureTarget.color === myColor);
+      premoveGameIdRef.current = null;
+      setPremoves([]);
       setNotice(captureTargetMissing
-        ? `Premove-взятие отменено: на клетке ${premove.to} нет фигуры соперника.`
-        : "Premove отменён: ход соперника сделал его нелегальным.");
+        ? `Очередь premove отменена: на клетке ${premove.to} нет фигуры соперника.`
+        : "Очередь premove отменена: первый ход стал нелегальным после ответа соперника.");
       playSound("wrong");
       return;
     }
-    setNotice("Premove отправлен автоматически: " + resolved.san);
-    sendMove(resolved, true);
-  }, [premove, game?.id, game?.fen, game?.status, myColor, turn, movePending]);
-  useEffect(() => {
-    if (premove && game?.status === "completed") {
+    setNotice("Отправляем premove: " + resolved.san);
+    if (!sendMoveRef.current?.(resolved, true, premove)) {
       premoveGameIdRef.current = null;
-      setPremove(null);
-      setNotice("Premove отменён: партия уже завершена.");
+      setPremoves([]);
+      setNotice("Очередь premove отменена: не удалось начать отправку хода.");
     }
-  }, [premove, game?.id, game?.status]);
+  }, [premoves, game?.id, game?.fen, game?.status, myColor, turn, movePending]);
+  useEffect(() => {
+    if (premoves.length > 0 && game?.status === "completed") {
+      premoveGameIdRef.current = null;
+      setPremoves([]);
+      setNotice("Очередь premove отменена: партия уже завершена.");
+    }
+  }, [premoves.length, game?.id, game?.status]);
+
+  useEffect(() => {
+    if (premoves.length === 0) premoveGameIdRef.current = null;
+  }, [premoves.length]);
 
   useEffect(() => {
     if (!session || !game || game.status !== "active" || timeoutRequestedRef.current) return;
@@ -634,8 +701,17 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     void callAction(url, key, session, "timeout", { gameId: game.id })
       .then((data) => {
         if (data.game) {
-          if (game.status === "active" && data.game.status === "completed") playGameEndOnce(data.game.id);
+          if (game.status === "active" && data.game.status === "completed") {
+            playGameEndOnce(data.game.id);
+          } else {
+            // The browser can reach zero slightly before the server because of
+            // clock skew. If the server still considers time left, allow a retry
+            // after the existing 2.5-second throttle instead of getting stuck.
+            timeoutRequestedRef.current = false;
+          }
           applyGameSnapshot(data.game, game.id);
+        } else {
+          timeoutRequestedRef.current = false;
         }
       })
       .catch((reason: unknown) => {
@@ -747,7 +823,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       setInvitations((items) => items.filter((item) => item.id !== inviteId));
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
   };
-  const sendMove = useCallback((move: BoardMove, isPremove = false): boolean => {
+  const sendMove = useCallback((move: BoardMove, isPremove = false, queuedPremove?: Premove): boolean => {
     if (!session || !game || !isMyTurn || movePendingRef.current) return false;
     const gameId = game.id;
     const previousMoveCount = game.moves.length;
@@ -765,8 +841,17 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
           gameId, uci: move.uci, premove: isPremove,
         }, controller.signal);
         if (!data.game) throw new Error("Сервер не вернул обновлённую партию.");
+        const committedMove = data.game.moves[previousMoveCount];
+        const moveWasCommitted = data.game.moves.length > previousMoveCount
+          && committedMove?.uci === move.uci
+          && committedMove?.color === playerColor;
+        if (!moveWasCommitted) throw new Error("Сервер не подтвердил отправленный ход.");
         if (data.game.status === "completed") endedSoundGameIdRef.current = data.game.id;
         applyGameSnapshot(data.game, gameId);
+        if (isPremove && queuedPremove) {
+          setPremoves((queue) => queue[0] && samePremove(queue[0], queuedPremove) ? queue.slice(1) : queue);
+          setNotice("Premove сыгран: " + move.san);
+        }
         playSound(soundForSan(
           move.san,
           data.game.status === "completed",
@@ -788,12 +873,28 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
             && committedMove?.color === playerColor;
           if (moveWasCommitted) {
             setError(null);
+            if (isPremove && queuedPremove) {
+              setPremoves((queue) => queue[0] && samePremove(queue[0], queuedPremove) ? queue.slice(1) : queue);
+              setNotice("Premove подтверждён после синхронизации: " + move.san);
+            }
           } else {
+            if (isPremove) {
+              // Never automatically retry an ambiguous head: the recovery read did
+              // not prove that the server committed it, so clear dependent moves.
+              premoveGameIdRef.current = null;
+              setPremoves([]);
+              setNotice("Очередь premove очищена: сервер не подтвердил первый ход.");
+            }
             setError(controller.signal.aborted
-              ? "Не удалось отправить ход из-за задержки сети. Доска синхронизирована — попробуй ещё раз."
+              ? "Не удалось подтвердить ход из-за задержки сети. Доска синхронизирована — попробуй ещё раз."
               : reason instanceof Error ? reason.message : String(reason));
           }
         } catch (syncError) {
+          if (isPremove) {
+            premoveGameIdRef.current = null;
+            setPremoves([]);
+            setNotice("Очередь premove очищена: не удалось подтвердить результат первого хода.");
+          }
           setError(syncError instanceof Error
             ? "Связь с сервером потеряна: " + syncError.message
             : "Не удалось подтвердить ход. Проверь соединение и обнови партию.");
@@ -812,24 +913,25 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     })();
     return true;
   }, [session, game?.id, game?.moves.length, isMyTurn, myColor, url, key, applyGameSnapshot]);
+  sendMoveRef.current = sendMove;
 
   const handleBoardMove = useCallback((move: BoardMove) => sendMove(move, false), [sendMove]);
   const queueBoardPremove = useCallback((next: Premove) => {
-    if (!game?.id) return;
+    if (!game?.id || premoves.length >= MAX_PREMOVE_QUEUE) return;
     premoveGameIdRef.current = game.id;
-    setPremove(next);
+    setPremoves((queue) => queue.length < MAX_PREMOVE_QUEUE ? [...queue, next] : queue);
     setNotice("");
-  }, [game?.id]);
+  }, [game?.id, premoves.length]);
   const clearBoardPremove = useCallback(() => {
     premoveGameIdRef.current = null;
-    setPremove(null);
+    setPremoves([]);
     setNotice("Premove отменён.");
   }, []);
   const resign = async () => {
     if (!session || !game) return;
     if (preferences.confirmResign && !window.confirm("Сдаться в этой партии?")) return;
     premoveGameIdRef.current = null;
-    setPremove(null);
+    setPremoves([]);
     setBusy(true);
     try {
       const data = await callAction(url, key, session, "resign", { gameId: game.id });
@@ -897,7 +999,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
 
   const clearGame = () => {
     premoveGameIdRef.current = null;
-    setPremove(null);
+    setPremoves([]);
     localStorage.removeItem(GAME_KEY);
     gameRef.current = null;
     setGame(null);
@@ -1095,11 +1197,11 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
               <GameBoard
                 fen={game.fen}
                 orientation={getBoardOrientation(myColor ?? "w", boardFlipped)}
-                interactive={isMyTurn}
+                interactive={isMyTurn && premoves.length === 0}
                 allowedColor={myColor}
                 onMove={handleBoardMove}
                 premoveEnabled={canQueuePremove}
-                premove={premove}
+                premoves={premoves}
                 onPremove={queueBoardPremove}
                 onClearPremove={clearBoardPremove}
                 theme={preferences.boardTheme}
@@ -1142,10 +1244,19 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
                 <div className="max-h-72 overflow-y-auto text-xs leading-7 text-[#c9c8c1]">
                   {game.moves.length ? game.moves.map((move, index) => <span key={move.at + move.uci} className="mr-2 inline-block"><span className="text-[#77766f]">{Math.floor(index / 2) + 1}{move.color === "w" ? "." : "…"}</span> {move.premove && <span title="Автоматический premove" className="text-[#ff7770]">▶ </span>}{move.san}</span>) : <span className="text-[#85847d]">Пока нет ходов.</span>}
                 </div>
-                {premove && (
-                  <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-[#8b4444] bg-[#3c2928] px-3 py-2 text-xs text-[#ffd4d1]">
-                    <span>Ожидающий premove: <b>{formatPremove(premove)}</b></span>
-                    <button type="button" onClick={() => { premoveGameIdRef.current = null; setPremove(null); setNotice("Premove отменён."); }} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Отменить</button>
+                {premoves.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-[#8b4444] bg-[#3c2928] px-3 py-2 text-xs text-[#ffd4d1]">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <b>Очередь premove · {premoves.length}/{MAX_PREMOVE_QUEUE}</b>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setPremoves((queue) => queue.slice(0, -1))} disabled={isMyTurn || movePending} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold disabled:opacity-40">Убрать последний</button>
+                        <button type="button" onClick={clearBoardPremove} disabled={isMyTurn || movePending} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold disabled:opacity-40">Очистить</button>
+                      </div>
+                    </div>
+                    <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      {premoves.map((move, index) => <li key={index}><span className="text-[#ff9d95]">{index + 1}.</span> {formatPremove(move)}</li>)}
+                    </ol>
+                    <p className="mt-2 text-[10px] text-[#d5a6a0]">Каждый ход подтверждается сервером отдельно.</p>
                   </div>
                 )}
                 {exportNotice && <p role="status" className="mt-2 text-xs text-[#a3d160]">{exportNotice}</p>}
