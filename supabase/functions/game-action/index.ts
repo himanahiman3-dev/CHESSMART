@@ -9,7 +9,7 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSess
 const authVerifier = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
-const EXPECTED_ISSUER = SUPABASE_URL.replace(/\\/$/, "") + "/auth/v1";
+const EXPECTED_ISSUER = SUPABASE_URL.replace(/\/$/, "") + "/auth/v1";
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -54,7 +54,7 @@ async function publicAuthClient() {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 }
 async function authUser(req: Request): Promise<{ id: string }> {
-  const token = req.headers.get("Authorization")?.replace(/^Bearer\\s+/i, "");
+  const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) throw new Error("Нужна авторизация.");
 
   // getClaims verifies asymmetric Supabase JWTs locally against the cached JWKS.
