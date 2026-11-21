@@ -801,9 +801,12 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
         }
       } finally {
         window.clearTimeout(requestTimeout);
-        if (moveRequestRef.current === controller) moveRequestRef.current = null;
-        movePendingRef.current = false;
-        setMovePending(false);
+        // An aborted request from the previous game must not unlock a newer move.
+        if (moveRequestRef.current === controller) {
+          moveRequestRef.current = null;
+          movePendingRef.current = false;
+          setMovePending(false);
+        }
       }
     })();
     return true;
