@@ -163,7 +163,7 @@ export function projectPremoveTurn(fen: string, color: "w" | "b"): string | null
   try {
     const live = new Chess(fen);
     if (live.isGameOver() || live.turn() === color) return null;
-    const fields = fen.trim().split(/\\s+/);
+    const fields = fen.trim().split(/\s+/);
     if (fields.length !== 6) return null;
     fields[1] = color;
     fields[3] = "-";
@@ -217,7 +217,7 @@ export function projectPremoveQueue(
         gameFinished = true;
         break;
       }
-      const fields = chess.fen().split(/\\s+/);
+      const fields = chess.fen().split(/\s+/);
       fields[1] = color;
       fields[3] = "-";
       projectedFen = new Chess(fields.join(" "), { skipValidation: true }).fen();
