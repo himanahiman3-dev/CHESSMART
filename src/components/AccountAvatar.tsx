@@ -31,6 +31,10 @@ export function AccountAvatar({
     return (
       <img
         className={className}
+        // Cross-origin isolation (required for threaded Stockfish) blocks
+        // no-CORS images from Supabase Storage under COEP: require-corp.
+        // Request the public avatar in CORS mode so the browser can display it.
+        crossOrigin={/^https?:\\/\\//i.test(normalizedSrc) ? "anonymous" : undefined}
         src={normalizedSrc}
         alt={label}
         loading="eager"
