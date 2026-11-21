@@ -73,7 +73,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /* ------------------------------------------------------------------ */
 
 import { gameBudgetMs, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
-import { rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
+import { isSacrificeVerificationCandidate, rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { forcedMoveClass } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
@@ -125,6 +125,12 @@ function playerElo(headers: Record<string, string>, c: Color): number | undefine
 
 export interface ReviewComputeProfile {
   mainMultiPv: number;
+  /** Maximum number of promising piece sacrifices to verify after the main pass. */
+  verifierMaxMoves?: number;
+  /** Extra search time for each selected sacrifice candidate. */
+  verifierMoveTimeMs?: number;
+  /** Total extra verification budget supplied by the device profile. */
+  tacticalExtraBudgetMs?: number;
 }
 
 export interface AnalyzeProgress {
@@ -216,6 +222,7 @@ export interface CriticalPositionCandidate {
   priority: number;
   estimatedLoss: number;
   secondLineGap: number;
+  sacrifice: boolean;
 }
 
 /**
@@ -226,7 +233,8 @@ export interface CriticalPositionCandidate {
 export function selectCriticalPositions(
   game: ParsedGame,
   positions: PositionEval[],
-  maxCandidates = 3
+  maxCandidates = 3,
+  sacrificesOnly = false,
 ): CriticalPositionCandidate[] {
   const book = analyzeBook(game.moves.map((move) => move.san));
   const candidates: CriticalPositionCandidate[] = [];
@@ -256,14 +264,27 @@ export function selectCriticalPositions(
       : false;
     const tactical = !!move.captured || move.san.includes("+") || move.san.includes("#")
       || move.uci.length > 4 || sacrifice;
+    // A sound piece sacrifice may be the engine's first choice and therefore lose
+    // zero expected points. It still needs a deeper verification pass: filtering
+    // only by evaluation loss was silently excluding exactly these Brilliant candidates.
+    const sacrificeCandidate = isSacrificeVerificationCandidate(
+      sacrifice,
+      legal,
+      best.pv[0] === move.uci,
+      estimatedLoss,
+      BRILLIANT_MAX_LOSS,
+    );
+    if (sacrificesOnly && !sacrificeCandidate) continue;
 
-    if (!shouldRecheckCriticalPosition(estimatedLoss, secondLineGap, legal, tactical)) continue;
+    if (!shouldRecheckCriticalPosition(estimatedLoss, secondLineGap, legal, tactical)
+      && !sacrificeCandidate) continue;
 
     const priority = estimatedLoss * 2
       + Math.min(secondLineGap, 30) * 0.55
       + (tactical ? 4 : 0)
+      + (sacrificeCandidate ? 24 : 0)
       + Math.min(legal, 40) * 0.04;
-    candidates.push({ index: i, priority, estimatedLoss, secondLineGap });
+    candidates.push({ index: i, priority, estimatedLoss, secondLineGap, sacrifice: sacrificeCandidate });
   }
 
   return rankCriticalPositions(candidates, maxCandidates);
@@ -271,8 +292,8 @@ export function selectCriticalPositions(
 
 
 /**
- * Runs one timed UCI search for every position in the PGN.
- * No extra verification pass follows, so the main-pass time table remains meaningful.
+ * Runs the timed main pass, then spends a small device-aware reserve on promising
+ * piece sacrifices so a shallow first-pass MultiPV result cannot hide a Brilliant move.
  */
 export async function reviewGame(
   pgn: string,
@@ -288,6 +309,9 @@ export async function reviewGame(
   const movetimeMs = normalizeAnalysisTimeMs(timePerPositionMs);
   const targetDepth = REVIEW_TARGET_DEPTH;
   const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
+  const maxSacrificeChecks = Math.max(0, Math.min(3,
+    Math.floor(computeProfile?.verifierMaxMoves ?? 1)));
+  const progressTotal = total + maxSacrificeChecks;
   const budgetMs = gameBudgetMs(N, movetimeMs);
   const startedAt = now();
 
@@ -305,7 +329,7 @@ export async function reviewGame(
 
     onProgress({
       done: i,
-      total,
+      total: progressTotal,
       depth: 0,
       targetDepth,
       cached: cachedHits,
@@ -323,7 +347,7 @@ export async function reviewGame(
       (lines) => {
         onProgress({
           done: i,
-          total,
+          total: progressTotal,
           depth: lines.length ? Math.min(...lines.map((line) => line.depth)) : 0,
           targetDepth,
           cached: cachedHits,
@@ -340,7 +364,7 @@ export async function reviewGame(
     positions.push(evalResult);
     onProgress({
       done: i + 1,
-      total,
+      total: progressTotal,
       depth: evalResult.depth,
       targetDepth,
       cached: cachedHits,
@@ -350,16 +374,64 @@ export async function reviewGame(
     });
   }
 
-  const reachedDepths = positions.filter((position) => position.depth > 0).map((position) => position.depth);
-  const minimumReachedDepth = reachedDepths.length ? Math.min(...reachedDepths) : 0;
+  // A first-pass MultiPV search is deliberately time-bounded. Recheck the most
+  // promising sound piece sacrifices with a longer search before assigning labels.
+  // This catches first-line sacrifices (estimated loss = 0) which the old critical
+  // position gate discarded, and stabilizes the alternative-line evaluation.
+  const sacrificeCandidates = maxSacrificeChecks > 0
+    ? selectCriticalPositions(game, positions, Math.max(1, maxSacrificeChecks), true)
+    : [];
+  const perSacrificeBudget = Math.max(300, Math.min(
+    computeProfile?.verifierMoveTimeMs ?? 900,
+    Math.floor((computeProfile?.tacticalExtraBudgetMs ?? 1800) / Math.max(1, maxSacrificeChecks || 1)),
+  ));
+
+  for (let check = 0; check < sacrificeCandidates.length; check++) {
+    if (signal?.aborted) throw new Error("cancelled");
+    const candidate = sacrificeCandidates[check];
+    const move = game.moves[candidate.index];
+    const history = {
+      startFen: game.startFen,
+      moves: game.moves.slice(0, candidate.index).map((entry) => entry.uci),
+    };
+    const { evalResult, fromCache } = await evaluatePosition(
+      engine,
+      move.fenBefore,
+      targetDepth + 6,
+      mainMultiPv,
+      signal,
+      undefined,
+      perSacrificeBudget,
+      history,
+    );
+    const previous = positions[candidate.index];
+    if (evalResult.depth > previous.depth
+      || (evalResult.depth === previous.depth && evalResult.lines.length > previous.lines.length)) {
+      positions[candidate.index] = evalResult;
+    }
+    if (fromCache) cachedHits++;
+    onProgress({
+      done: total + check + 1,
+      total: progressTotal,
+      depth: evalResult.depth,
+      targetDepth: targetDepth + 6,
+      cached: cachedHits,
+      fen: move.fenBefore,
+      budgetMs: budgetMs + sacrificeCandidates.length * perSacrificeBudget,
+      elapsedMs: now() - startedAt,
+    });
+  }
+
+  // If fewer candidates existed than the device's maximum, finish the progress
+  // bar cleanly without creating dummy searches.
   onProgress({
-    done: total,
-    total,
-    depth: minimumReachedDepth,
-    targetDepth,
+    done: progressTotal,
+    total: progressTotal,
+    depth: positions.reduce((min, position) => position.depth > 0 ? Math.min(min, position.depth) : min, targetDepth),
+    targetDepth: targetDepth + 6,
     cached: cachedHits,
     fen: game.fens[N],
-    budgetMs,
+    budgetMs: budgetMs + sacrificeCandidates.length * perSacrificeBudget,
     elapsedMs: now() - startedAt,
   });
 
