@@ -7,6 +7,7 @@ import { formatMaterialBalance, gamePhaseLabel, getCapturedMaterial, getGamePhas
 import { classifyGamePhase } from "../src/lib/learningStats.ts";
 import { recordPersonalGameReview } from "../src/lib/playerProfile.ts";
 import { isOnlineGameSnapshotNewer, parseOnlineGameRealtimeFrame } from "../src/lib/onlineGameRealtime.ts";
+import { determinePuzzleBattleWinner } from "../supabase/functions/puzzle-battle/puzzleBattleCore.ts";
 import { soundForSan } from "../src/lib/sound.ts";
 const start = new Chess().fen();
 assert.equal(isChessSquare("e4"), true); assert.equal(isChessSquare("i9"), false);
@@ -176,6 +177,19 @@ assert.equal(parseOnlineGameRealtimeFrame(JSON.stringify([
   null, null, "realtime:another-game", "postgres_changes", {},
 ]), topic), null, "Events from other games must be ignored.");
 assert.equal(parseOnlineGameRealtimeFrame("not-json", topic), null);
+
+assert.equal(determinePuzzleBattleWinner([
+  { user_id: "white", score: 5, mistakes: 3 },
+  { user_id: "black", score: 4, mistakes: 0 },
+]), "white", "Higher puzzle score wins before any tiebreaker.");
+assert.equal(determinePuzzleBattleWinner([
+  { user_id: "white", score: 5, mistakes: 2 },
+  { user_id: "black", score: 5, mistakes: 1 },
+]), "black", "Fewer mistakes break a tied puzzle score.");
+assert.equal(determinePuzzleBattleWinner([
+  { user_id: "white", score: 5, mistakes: 1 },
+  { user_id: "black", score: 5, mistakes: 1 },
+]), null, "Identical score and mistake counts produce a draw.");
 
 const snapshot = { id: "game-1", status: "active", moves: [{ uci: "e2e4" }], updated_at: "2026-11-21T12:00:05.000Z" };
 assert.equal(isOnlineGameSnapshotNewer(snapshot, { ...snapshot, moves: [] }), false,
