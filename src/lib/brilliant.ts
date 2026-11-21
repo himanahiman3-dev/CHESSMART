@@ -17,6 +17,8 @@ export interface BrilliantCriteria {
   elo?: number;
   /** A continuation of a previously established sacrifice, not a fresh sacrifice. */
   continuation?: boolean;
+  /** A sound piece sacrifice that forces a short, verified mate. */
+  matingSacrifice?: boolean;
 }
 
 /**
@@ -41,7 +43,7 @@ export function qualifiesAsBrilliant(criteria: BrilliantCriteria): boolean {
     criteria.winAfter < BRILLIANT_MIN_AFTER
   ) return false;
 
-  if (criteria.continuation) return true;
+  if (criteria.continuation || criteria.matingSacrifice) return true;
 
   return criteria.alternativeWin !== null
     && criteria.alternativeWin <= brilliantAlternativeLimit(criteria.elo);
