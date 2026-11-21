@@ -1,0 +1,419 @@
+/* CHESSMART visual reference layer — original implementation, no remote brand assets. */
+:root {
+  --cm-page: #302e2b;
+  --cm-sidebar: #262421;
+  --cm-panel: #262421;
+  --cm-panel-deep: #211f1d;
+  --cm-panel-raised: #3d3a37;
+  --cm-control: #3c3a36;
+  --cm-control-hover: #4a4843;
+  --cm-hover: #3a3834;
+  --cm-row: #383531;
+  --cm-border: #41403b;
+  --cm-text: #ffffff;
+  --cm-text-soft: #c3c2c1;
+  --cm-muted: #989795;
+  --cm-green: #81b64c;
+  --cm-green-hover: #95cc5c;
+  --cm-green-shadow: #457524;
+  --cm-radius: 6px;
+  --cm-radius-control: 5px;
+}
+
+/* Global canvas and typography */
+html, body, #root { min-height: 100%; background: var(--cm-page) !important; }
+body {
+  color: var(--cm-text) !important;
+  background: var(--cm-page) !important;
+  font-family: Inter, Roboto, "Segoe UI", Arial, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+}
+.cm-app-shell, .cm-main-column, .cm-main-content {
+  min-height: 100vh;
+  background: var(--cm-page) !important;
+  color: var(--cm-text) !important;
+}
+.cm-main-column { min-width: 0; margin-left: 216px !important; }
+.cm-main-content { width: 100%; }
+
+/* Full-height desktop sidebar; the geometry follows Chess.com's familiar navigation proportions. */
+.cm-sidebar {
+  position: fixed !important;
+  inset: 0 auto 0 0 !important;
+  z-index: 80 !important;
+  display: flex !important;
+  width: 216px !important;
+  min-width: 216px !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  overflow: visible !important;
+  padding: 13px 10px 10px !important;
+  border: 0 !important;
+  border-right: 1px solid rgba(255,255,255,.055) !important;
+  background: var(--cm-sidebar) !important;
+  box-shadow: 3px 0 16px rgba(0,0,0,.09) !important;
+}
+.cm-brand {
+  display: flex !important;
+  min-height: 54px !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  margin: 0 4px 15px !important;
+  padding: 5px 7px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: #fff !important;
+  font-size: 19px !important;
+  font-weight: 900 !important;
+  letter-spacing: -.045em !important;
+}
+.cm-brand:hover { background: rgba(255,255,255,.055) !important; }
+.cm-brand svg { width: 37px !important; height: 37px !important; flex: 0 0 37px !important; }
+.cm-brand > span { text-transform: uppercase !important; }
+.cm-sidebar-nav {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  flex-direction: column !important;
+  align-content: flex-start !important;
+  gap: 4px !important;
+  overflow-x: visible !important;
+  overflow-y: auto !important;
+  padding: 2px 0 10px !important;
+  scrollbar-width: thin;
+  scrollbar-color: #4a4742 transparent;
+}
+.cm-nav-group { position: relative !important; display: block !important; min-width: 0 !important; margin: 0 !important; }
+.cm-nav-parent {
+  display: flex !important;
+  width: 100% !important;
+  min-height: 46px !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 12px !important;
+  padding: 7px 10px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: #c3c2c1 !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  text-align: left !important;
+  box-shadow: none !important;
+}
+.cm-nav-parent:hover, .cm-nav-parent:focus-visible {
+  background: #36332f !important;
+  color: #fff !important;
+}
+.cm-nav-parent.active {
+  background: #393733 !important;
+  color: #fff !important;
+  box-shadow: inset 3px 0 0 var(--cm-green) !important;
+}
+.cm-side-icon {
+  display: grid !important;
+  width: 30px !important;
+  height: 30px !important;
+  flex: 0 0 30px !important;
+  place-items: center !important;
+  color: #d4d2cc !important;
+  font-size: 22px !important;
+}
+.cm-side-svg { display: block !important; width: 29px !important; height: 29px !important; overflow: visible; }
+.cm-side-chevron { display: none !important; }
+.cm-nav-submenu {
+  position: absolute !important;
+  z-index: 130 !important;
+  top: -4px !important;
+  left: calc(100% + 7px) !important;
+  display: none !important;
+  width: 226px !important;
+  max-width: min(226px, calc(100vw - 235px)) !important;
+  gap: 2px !important;
+  margin: 0 !important;
+  padding: 7px !important;
+  border: 1px solid rgba(255,255,255,.09) !important;
+  border-radius: 6px !important;
+  background: #262421 !important;
+  box-shadow: 0 12px 34px rgba(0,0,0,.38) !important;
+}
+.cm-nav-group:hover .cm-nav-submenu,
+.cm-nav-group:focus-within .cm-nav-submenu,
+.cm-nav-group.expanded .cm-nav-submenu { display: grid !important; }
+.cm-nav-submenu button {
+  display: block !important;
+  width: 100% !important;
+  min-height: 35px !important;
+  padding: 8px 10px !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  color: #c3c2c1 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1.25 !important;
+  text-align: left !important;
+}
+.cm-nav-submenu button:hover, .cm-nav-submenu button.active {
+  background: #3a3834 !important;
+  color: #fff !important;
+}
+.cm-sidebar-bottom {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  margin-top: auto !important;
+  padding: 11px 2px 2px !important;
+  border-top: 1px solid rgba(255,255,255,.075) !important;
+}
+.cm-sidebar-search {
+  display: flex !important;
+  min-height: 38px !important;
+  align-items: center !important;
+  gap: 11px !important;
+  padding: 6px 9px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  color: #b8b6b1 !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+.cm-sidebar-search:hover, .cm-profile-shortcut:hover, .cm-bottom-actions button:hover {
+  background: #373430 !important;
+  color: #fff !important;
+}
+.cm-sidebar-search .cm-side-icon { width: 23px !important; height: 23px !important; flex-basis: 23px !important; }
+.cm-profile-shortcut {
+  display: flex !important;
+  min-height: 44px !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 5px 8px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  color: #f0efeb !important;
+}
+.cm-profile-shortcut strong { max-width: 146px !important; color: #f1f0eb !important; font-size: 12px !important; font-weight: 750 !important; }
+.cm-sidebar-avatar { width: 34px !important; height: 34px !important; flex: 0 0 34px !important; border-radius: 50% !important; }
+.cm-bottom-actions { display: flex !important; justify-content: space-between !important; gap: 5px !important; padding: 5px 4px 0 !important; }
+.cm-bottom-actions button {
+  display: grid !important;
+  width: 38px !important;
+  height: 34px !important;
+  place-items: center !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  color: #aaa8a2 !important;
+}
+.cm-bottom-actions .cm-side-svg { width: 21px !important; height: 21px !important; }
+.cm-sidebar-search-panel {
+  position: absolute !important;
+  z-index: 160 !important;
+  bottom: 90px !important;
+  left: 10px !important;
+  width: 260px !important;
+  padding: 10px !important;
+  border: 1px solid var(--cm-border) !important;
+  border-radius: 7px !important;
+  background: #262421 !important;
+  box-shadow: 0 12px 34px rgba(0,0,0,.38) !important;
+}
+
+/* Keep the collapsed state usable without a phantom main-column gap. */
+.cm-app-shell.cm-sidebar-is-collapsed .cm-sidebar { width: 68px !important; min-width: 68px !important; padding-inline: 7px !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-main-column { margin-left: 68px !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-brand { justify-content: center !important; margin-inline: 0 !important; padding-inline: 0 !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-brand > span,
+.cm-app-shell.cm-sidebar-is-collapsed .cm-side-item > span:not(.cm-side-icon),
+.cm-app-shell.cm-sidebar-is-collapsed .cm-profile-shortcut > span:last-child { display: none !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-nav-parent { justify-content: center !important; padding-inline: 0 !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-nav-submenu { display: none !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-profile-shortcut { justify-content: center !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-bottom-actions { display: flex !important; flex-direction: column !important; align-items: center !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-bottom-actions button { width: 38px !important; }
+
+/* Chess.com-like compact cards, borders and controls across all real CHESSMART pages. */
+.cm-content-page { width: min(100% - 56px, 1280px) !important; padding: 26px 0 48px !important; }
+.cm-replica-page { width: min(100% - 56px, 1380px) !important; padding: 24px 0 46px !important; }
+.cm-replica-page, .cm-content-page, .cm-profile-page, .cm-online-screen { color: #f0efeb !important; }
+.cm-replica-card, .cm-replica-play-panel, .cm-profile-panel, .cm-profile-header,
+.cm-settings-panel, .cm-settings-nav, .cm-data-card, .cm-news-item,
+.cm-online-board-panel, .cm-online-game-sidebar > section {
+  border: 1px solid #41403b !important;
+  border-radius: 7px !important;
+  background: #262421 !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,.12) !important;
+}
+.cm-replica-play-layout { grid-template-columns: minmax(0, 1fr) 385px !important; gap: 22px !important; }
+.cm-replica-play-panel { overflow: hidden; }
+.cm-replica-play-panel-heading { padding: 19px 18px 15px !important; border-bottom: 1px solid #41403b !important; }
+.cm-replica-play-panel-heading h1 { color: #fff !important; font-size: 21px !important; font-weight: 800 !important; }
+.cm-replica-play-action {
+  min-height: 66px !important;
+  gap: 12px !important;
+  padding: 9px 12px !important;
+  border-radius: 5px !important;
+  background: #302e2b !important;
+  border: 1px solid transparent !important;
+}
+.cm-replica-play-action:hover { background: #3a3834 !important; border-color: #4a4843 !important; }
+.cm-replica-action-icon { width: 36px !important; height: 36px !important; flex-basis: 36px !important; display: grid !important; place-items: center !important; }
+.cm-replica-action-svg { width: 33px !important; height: 33px !important; display: block; }
+.cm-replica-action-copy strong { color: #fff !important; font-size: 13px !important; font-weight: 750 !important; }
+.cm-replica-action-copy small { color: #aaa8a2 !important; font-size: 11px !important; }
+.cm-replica-panel-footer { border-top: 1px solid #41403b !important; }
+
+/* Profile, statistics and history pages share the same compact information hierarchy. */
+.cm-profile-page { width: min(100% - 56px, 1260px) !important; padding: 25px 0 48px !important; }
+.cm-profile-header { gap: 20px !important; padding: 18px !important; border-radius: 7px !important; }
+.cm-profile-avatar { border-radius: 5px !important; }
+.cm-profile-identity h1, .cm-profile-name-row h1 { color: #fff !important; font-size: 25px !important; font-weight: 800 !important; }
+.cm-profile-tabs { border-bottom: 1px solid #41403b !important; }
+.cm-profile-tabs button { color: #b7b5b1 !important; font-size: 13px !important; font-weight: 650 !important; }
+.cm-profile-tabs button.active { color: #fff !important; box-shadow: inset 0 -3px 0 #81b64c !important; }
+.cm-profile-ratings { gap: 8px !important; }
+.cm-profile-rating-card { border: 1px solid #41403b !important; border-radius: 6px !important; background: #262421 !important; }
+.cm-profile-archive-wrap table { border-color: #41403b !important; }
+.cm-profile-archive-wrap thead { background: #3a3834 !important; }
+.cm-profile-archive-wrap th { color: #c7c5c0 !important; }
+.cm-profile-archive-wrap td { border-top: 1px solid #41403b !important; color: #eceae5 !important; }
+.cm-profile-stats-filters select, .cm-main-content select,
+.cm-main-content input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.cm-main-content textarea {
+  border: 1px solid #4a4843 !important;
+  border-radius: 5px !important;
+  background: #3c3a36 !important;
+  color: #f4f3ef !important;
+}
+.cm-main-content input::placeholder, .cm-main-content textarea::placeholder { color: #a29f99 !important; }
+.cm-main-content input:focus, .cm-main-content select:focus, .cm-main-content textarea:focus {
+  border-color: #81b64c !important;
+  box-shadow: 0 0 0 2px rgba(129,182,76,.18) !important;
+  outline: 0 !important;
+}
+.cm-replica-primary-button, .cm-replica-play-action-accent,
+.cm-content-page button.primary, .cm-settings-panel button.primary {
+  border-color: #81b64c !important;
+  border-radius: 5px !important;
+  background: #81b64c !important;
+  color: #1d2418 !important;
+}
+.cm-replica-primary-button:hover { background: #95cc5c !important; }
+
+/* Settings: left category rail and dense options rows, with hand-made pictograms. */
+.cm-settings-layout { grid-template-columns: 238px minmax(0,1fr) !important; gap: 13px !important; }
+.cm-settings-nav { align-content: start !important; padding: 7px !important; }
+.cm-settings-nav button {
+  min-height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 8px 10px !important;
+  border-radius: 5px !important;
+  color: #c3c2c1 !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+.cm-settings-nav button:hover, .cm-settings-nav button.active { background: #3a3834 !important; color: #fff !important; }
+.cm-settings-nav button.active { box-shadow: inset 3px 0 0 #81b64c !important; }
+.cm-setting-nav-icon { display: grid; width: 23px; height: 23px; flex: 0 0 23px; place-items: center; color: #c6c4be; }
+.cm-setting-nav-svg { width: 22px; height: 22px; }
+.cm-settings-panel { padding: 18px !important; }
+.cm-settings-heading h2 { color: #fff !important; font-size: 17px !important; font-weight: 800 !important; }
+.cm-settings-heading p { color: #aaa8a2 !important; font-size: 12px !important; }
+.cm-setting-toggle, .cm-setting-select, .cm-setting-input { border-bottom-color: #41403b !important; }
+.cm-setting-toggle strong, .cm-setting-select strong, .cm-setting-input strong { color: #eceae5 !important; }
+.cm-setting-toggle small, .cm-setting-select small, .cm-setting-input small { color: #aaa8a2 !important; }
+
+/* Mobile: Chess.com-like five-icon bottom rail, with original SVGs and safe-area spacing. */
+.cm-mobile-nav { display: none !important; }
+@media (min-width: 701px) and (max-width: 1100px) {
+  .cm-sidebar { width: 190px !important; min-width: 190px !important; }
+  .cm-main-column { margin-left: 190px !important; }
+  .cm-replica-play-layout { grid-template-columns: minmax(0,1fr) 340px !important; gap: 16px !important; }
+  .cm-settings-layout { grid-template-columns: 205px minmax(0,1fr) !important; }
+}
+@media (max-width: 700px) {
+  .cm-sidebar { display: none !important; }
+  .cm-main-column, .cm-app-shell.cm-sidebar-is-collapsed .cm-main-column {
+    margin-left: 0 !important;
+    padding-bottom: calc(66px + env(safe-area-inset-bottom)) !important;
+  }
+  .cm-main-content { min-height: 100dvh !important; }
+  .cm-mobile-nav {
+    position: fixed !important;
+    z-index: 150 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0,1fr)) !important;
+    gap: 2px !important;
+    padding: 5px 6px calc(5px + env(safe-area-inset-bottom)) !important;
+    border-top: 1px solid #41403b !important;
+    background: rgba(38,36,33,.98) !important;
+    box-shadow: 0 -5px 18px rgba(0,0,0,.22) !important;
+    backdrop-filter: blur(14px);
+  }
+  .cm-mobile-nav button {
+    display: flex !important;
+    min-width: 0 !important;
+    min-height: 52px !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    padding: 3px 1px !important;
+    border: 0 !important;
+    border-radius: 5px !important;
+    background: transparent !important;
+    color: #b7b5b1 !important;
+    font-size: 10px !important;
+    font-weight: 650 !important;
+  }
+  .cm-mobile-nav button.active { background: #393733 !important; color: #fff !important; }
+  .cm-mobile-nav-icon { display: grid !important; width: 25px !important; height: 25px !important; place-items: center !important; }
+  .cm-mobile-nav-icon .cm-side-svg { width: 24px !important; height: 24px !important; }
+  .cm-content-page, .cm-replica-page, .cm-profile-page { width: min(100% - 20px, 680px) !important; padding: 14px 0 calc(28px + env(safe-area-inset-bottom)) !important; }
+  .cm-replica-play-layout { display: flex !important; flex-direction: column !important; gap: 12px !important; }
+  .cm-replica-board-column, .cm-replica-play-panel { width: 100% !important; max-width: none !important; }
+  .cm-settings-layout { grid-template-columns: minmax(0,1fr) !important; gap: 8px !important; }
+  .cm-settings-nav { display: flex !important; gap: 4px !important; overflow-x: auto !important; }
+  .cm-settings-nav button { flex: 0 0 auto !important; min-height: 39px !important; white-space: nowrap !important; }
+  .cm-settings-nav button.active { box-shadow: inset 0 -3px 0 #81b64c !important; }
+  .cm-settings-panel { padding: 13px !important; }
+  .cm-profile-header { grid-template-columns: 76px minmax(0,1fr) !important; gap: 10px !important; padding: 11px !important; }
+  .cm-profile-avatar { width: 76px !important; height: 76px !important; }
+  .cm-profile-edit { grid-column: 1 / -1 !important; }
+  .cm-profile-meta { grid-column: 1 / -1 !important; }
+  .cm-profile-overview { grid-template-columns: minmax(0,1fr) !important; }
+  .cm-profile-overview-aside { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-nav-parent, .cm-nav-submenu button, .cm-mobile-nav button { transition: none !important; }
+}
+
+/* The sidebar is itself the vertical scroll area; keep flyouts inside it so
+   no browser overflow-axis interaction can clip the submenu on narrow screens. */
+.cm-nav-submenu {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 2px 0 5px 39px !important;
+  padding: 3px 4px 3px 7px !important;
+  border: 0 !important;
+  border-left: 1px solid rgba(255,255,255,.12) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.cm-nav-submenu button { min-height: 32px !important; padding: 7px 8px !important; }
