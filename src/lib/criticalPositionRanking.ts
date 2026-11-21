@@ -28,3 +28,20 @@ export function shouldRecheckCriticalPosition(
     || (legalMoveCount >= 18 && secondLineGap >= 6)
     || (tactical && estimatedLoss >= 1.5);
 }
+
+
+/**
+ * A best-line piece sacrifice can be Brilliant even though its first-pass
+ * expected-points loss is zero. Such candidates deserve a deeper search.
+ */
+export function isSacrificeVerificationCandidate(
+  sacrifice: boolean,
+  legalMoveCount: number,
+  playedIsBest: boolean,
+  estimatedLoss: number,
+  maxNearBestLoss = 3,
+): boolean {
+  return sacrifice
+    && legalMoveCount > 1
+    && (playedIsBest || estimatedLoss <= maxNearBestLoss);
+}
