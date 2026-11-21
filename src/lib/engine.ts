@@ -57,7 +57,9 @@ export function buildSearchCommand(options: Pick<SearchOptions, "depth" | "nodes
   return parts.join(" ");
 }
 
-const WATCHDOG_GRACE_MS = 250;
+const WATCHDOG_GRACE_MS = 1_000;
+const STOP_RESPONSE_GRACE_MS = 2_500;
+const SEARCH_FAILSAFE_MS = 120_000;
 // UI consumers only need fresh lines several times per second; every UCI result is still parsed.
 const INFO_CALLBACK_INTERVAL_MS = 100;
 const ENGINE_ERROR_PREFIX = "\u0000stockfish-error:";
@@ -218,6 +220,8 @@ export class StockfishEngine {
     let cancelled = false;
     let active = false;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
+    let stopFailsafe: ReturnType<typeof setTimeout> | undefined;
+    let hardFailsafe: ReturnType<typeof setTimeout> | undefined;
     const turn = options.fen.split(" ")[1] === "b" ? "b" : "w";
     const promise = this.tail.then(
       () =>
@@ -235,6 +239,8 @@ export class StockfishEngine {
             this.listeners.delete(handler);
             active = false;
             if (watchdog) clearTimeout(watchdog);
+            if (stopFailsafe) clearTimeout(stopFailsafe);
+            if (hardFailsafe) clearTimeout(hardFailsafe);
             if (infoTimer) clearTimeout(infoTimer);
             infoTimer = undefined;
             pendingInfo = null;
@@ -311,11 +317,19 @@ export class StockfishEngine {
             : 0;
           this.send(buildSearchCommand(options));
           if (this.dead) return;
+          // A broken/stalled Worker must never leave the review Promise pending forever.
+          // Timed searches first get a stop request, then a short window to return bestmove.
+          // Depth/nodes-only searches get a generous absolute deadline.
+          hardFailsafe = setTimeout(() => {
+            if (active) this.failAll(new Error("Stockfish не ответил вовремя. Перезапусти анализ."));
+          }, SEARCH_FAILSAFE_MS);
           if (limit) {
-            // UCI movetime normally sends bestmove itself. This is a safety watchdog
-            // in case a worker stalls; all info lines already received remain cached.
             watchdog = setTimeout(() => {
-              if (active) this.send("stop");
+              if (!active) return;
+              this.send("stop");
+              stopFailsafe = setTimeout(() => {
+                if (active) this.failAll(new Error("Stockfish не завершил поиск после команды stop."));
+              }, STOP_RESPONSE_GRACE_MS);
             }, limit + WATCHDOG_GRACE_MS);
           }
         })
