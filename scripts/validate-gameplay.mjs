@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Chess } from "chess.js";
-import { canSetPremove, createPremove, formatPremove, getPremoveMoves, isChessSquare, isPremoveForTurn, isPremoveShape, premoveClockPenaltyMs, premoveToUci, resolvePremove, samePremove, sanitizePremove } from "../src/lib/premoves.ts";
+import { canSetPremove, createCapturePremove, createPremove, formatPremove, getPremoveCaptureMoves, getPremoveMoves, isChessSquare, isPremoveForTurn, isPremoveShape, premoveClockPenaltyMs, premoveToUci, resolvePremove, samePremove, sanitizePremove } from "../src/lib/premoves.ts";
 import { clockUrgency, formatClock, formatMoveNumber, getBoardOrientation, isActiveGame, isBoardTheme, normalizeGameplayPreferences, shouldAskBeforeResign, updateGameplayPreferences } from "../src/lib/gameplayPreferences.ts";
 import { buildPgnFromSan, buildPgnFromUci, formatSanMoveList, pgnFilename, textFilename } from "../src/lib/gameNotation.ts";
 import { formatMaterialBalance, gamePhaseLabel, getCapturedMaterial, getGamePhase, getHalfmoveClock, getLegalMoveCount, getPositionInsights, isNearFiftyMoveRule, replaySanHistory, replayUciHistory, terminalStateLabel } from "../src/lib/gameInsights.ts";
@@ -19,7 +19,34 @@ assert.equal(canSetPremove(start,"b","e7","e5"),true);
 assert.equal(canSetPremove(start,"b","e7","e4"),false);
 assert.deepEqual(createPremove(start,"b","e7","e5"),{from:"e7",to:"e5"});
 assert.equal(createPremove(start,"b","e7","e4"),null);
+assert.equal(isPremoveShape({from:"e2",to:"e4",capture:true}),true);
+assert.equal(isPremoveShape({from:"e2",to:"e4",capture:"yes"}),false);
+assert.deepEqual(sanitizePremove({from:"e2",to:"e4",capture:true}), {from:"e2",to:"e4",capture:true});
 assert.equal(isPremoveForTurn(start,"b"),true); assert.equal(isPremoveForTurn(start,"w"),false);
+const afterE4 = new Chess(); afterE4.move("e4");
+const pawnCapture = createCapturePremove(afterE4.fen(), "w", "e4", "d5");
+assert.deepEqual(pawnCapture, { from: "e4", to: "d5", capture: true });
+assert.ok(getPremoveCaptureMoves(afterE4.fen(), "w", "e4").some((move) => move.to === "d5"));
+const afterBlackD5 = new Chess(afterE4.fen()); afterBlackD5.move("d5");
+assert.equal(resolvePremove(afterBlackD5.fen(), "w", pawnCapture)?.san, "exd5");
+const afterBlackNf6 = new Chess(afterE4.fen()); afterBlackNf6.move("Nf6");
+assert.equal(resolvePremove(afterBlackNf6.fen(), "w", pawnCapture), null,
+  "A capture-intent premove must be cancelled when the target square stays empty.");
+assert.equal(formatPremove(pawnCapture), "e4 → d5 ×");
+
+const queenBefore = "4k3/8/3r4/8/3Q4/8/8/4K3 b - - 0 1";
+const queenCapture = createCapturePremove(queenBefore, "w", "d4", "d5");
+assert.ok(queenCapture, "Queens must be able to queue a capture onto an empty square.");
+assert.ok(getPremoveCaptureMoves(queenBefore, "w", "d4").some((move) => move.to === "d5"));
+const afterRookD5 = new Chess(queenBefore); afterRookD5.move({ from: "d6", to: "d5" });
+assert.equal(resolvePremove(afterRookD5.fen(), "w", queenCapture)?.san, "Qxd5");
+const afterKingMove = new Chess(queenBefore); afterKingMove.move({ from: "e8", to: "f7" });
+assert.equal(resolvePremove(afterKingMove.fen(), "w", queenCapture), null);
+
+const knightBefore = "4k3/8/8/8/8/2N5/8/4K3 b - - 0 1";
+assert.ok(getPremoveCaptureMoves(knightBefore, "w", "c3").some((move) => move.to === "d5"),
+  "Knights must expose empty squares they can capture onto after the opponent moves.");
+
 const afterE4C5=new Chess(); afterE4C5.move("e4"); afterE4C5.move("c5");
 const premove=createPremove(afterE4C5.fen(),"b","d7","d6"); assert.ok(premove);
 const afterNf3=new Chess(afterE4C5.fen()); afterNf3.move("Nf3");
