@@ -1133,7 +1133,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
               <GameBoard
                 fen={game.fen}
                 orientation={getBoardOrientation(myColor ?? "w", boardFlipped)}
-                interactive={isMyTurn}
+                interactive={isMyTurn && premoves.length === 0}
                 allowedColor={myColor}
                 onMove={handleBoardMove}
                 premoveEnabled={canQueuePremove}
