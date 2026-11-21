@@ -271,7 +271,7 @@ export function ProfileHubScreen({ profile, accountProfile, onNavigate, initialT
   const username = accountProfile?.username ?? profile.name;
   const preferences = loadGameplayPreferences();
   const themeColors: Record<string, { light: string; dark: string }> = {
-    classic: { light: "#EBECD0", dark: "#739552" },
+    classic: { light: "#EEEED2", dark: "#769656" },
     blue: { light: "#E8EDF5", dark: "#6B83A5" },
     walnut: { light: "#EAD7BA", dark: "#9A6748" },
     violet: { light: "#ECE4F4", dark: "#856A9B" },
