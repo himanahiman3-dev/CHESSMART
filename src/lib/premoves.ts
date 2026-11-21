@@ -194,6 +194,7 @@ export function projectPremoveQueue(
 
   let projectedFen = startingFen;
   let projectedCount = 0;
+  let gameFinished = false;
   for (const raw of premoves.slice(0, MAX_PREMOVE_QUEUE)) {
     const premove = sanitizePremove(raw);
     if (!premove) break;
@@ -213,6 +214,7 @@ export function projectPremoveQueue(
       projectedCount += 1;
       if (chess.isGameOver()) {
         projectedFen = chess.fen();
+        gameFinished = true;
         break;
       }
       const fields = chess.fen().split(/\\s+/);
@@ -227,7 +229,7 @@ export function projectPremoveQueue(
   return {
     fen: projectedFen,
     projectedCount,
-    canAppend: projectedCount === premoves.length && premoves.length < MAX_PREMOVE_QUEUE,
+    canAppend: !gameFinished && projectedCount === premoves.length && premoves.length < MAX_PREMOVE_QUEUE,
   };
 }
 
