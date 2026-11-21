@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Chess } from "chess.js";
-import { canSetPremove, createCapturePremove, createPremove, formatPremove, getPremoveCaptureMoves, getPremoveMoves, isChessSquare, isPremoveForTurn, isPremoveShape, premoveClockPenaltyMs, premoveToUci, resolvePremove, samePremove, sanitizePremove } from "../src/lib/premoves.ts";
+import { canSetPremove, createCapturePremove, createPremove, formatPremove, getPremoveCaptureMoves, getPremoveMoves, isChessSquare, isPremoveForTurn, isPremoveShape, MAX_PREMOVE_QUEUE, projectPremoveQueue, projectPremoveTurn, premoveClockPenaltyMs, premoveToUci, resolvePremove, samePremove, sanitizePremove } from "../src/lib/premoves.ts";
 import { clockUrgency, formatClock, formatMoveNumber, getBoardOrientation, isActiveGame, isBoardTheme, normalizeGameplayPreferences, shouldAskBeforeResign, updateGameplayPreferences } from "../src/lib/gameplayPreferences.ts";
 import { buildPgnFromSan, buildPgnFromUci, formatSanMoveList, pgnFilename, textFilename } from "../src/lib/gameNotation.ts";
 import { formatMaterialBalance, gamePhaseLabel, getCapturedMaterial, getGamePhase, getHalfmoveClock, getLegalMoveCount, getPositionInsights, isNearFiftyMoveRule, replaySanHistory, replayUciHistory, terminalStateLabel } from "../src/lib/gameInsights.ts";
@@ -25,6 +25,48 @@ assert.equal(isPremoveShape({from:"e2",to:"e4",capture:"yes"}),false);
 assert.deepEqual(sanitizePremove({from:"e2",to:"e4",capture:true}), {from:"e2",to:"e4",capture:true});
 assert.equal(isPremoveForTurn(start,"b"),true); assert.equal(isPremoveForTurn(start,"w"),false);
 const afterE4 = new Chess(); afterE4.move("e4");
+
+// Multi-premove planning: preview a sequence of our moves, then validate
+// each queued move again only after a real opponent reply.
+assert.equal(MAX_PREMOVE_QUEUE, 5);
+const projectedWhiteTurn = projectPremoveTurn(afterE4.fen(), "w");
+assert.ok(projectedWhiteTurn);
+assert.equal(new Chess(projectedWhiteTurn).turn(), "w");
+assert.equal(projectedWhiteTurn.split(/\\s+/)[3], "-",
+  "The preview must not preserve an en-passant right across an opponent reply.");
+const plannedF3 = createPremove(afterE4.fen(), "w", "f2", "f3");
+assert.ok(plannedF3);
+const f3Projection = projectPremoveQueue(afterE4.fen(), "w", [plannedF3]);
+assert.equal(f3Projection.projectedCount, 1);
+assert.equal(f3Projection.canAppend, true);
+assert.equal(new Chess(f3Projection.fen).get("f3")?.type, "p");
+const plannedC3 = createPremove(f3Projection.fen, "w", "c2", "c3");
+assert.ok(plannedC3);
+const twoMoveProjection = projectPremoveQueue(afterE4.fen(), "w", [plannedF3, plannedC3]);
+assert.equal(twoMoveProjection.projectedCount, 2);
+assert.equal(twoMoveProjection.canAppend, true);
+const previewBoard = new Chess(twoMoveProjection.fen);
+assert.equal(previewBoard.get("f3")?.type, "p");
+assert.equal(previewBoard.get("c3")?.type, "p");
+assert.equal(previewBoard.turn(), "w");
+
+const realAfterE5 = new Chess(afterE4.fen());
+realAfterE5.move("e5");
+const executedF3 = resolvePremove(realAfterE5.fen(), "w", plannedF3);
+assert.equal(executedF3?.san, "f3");
+const blackReplyAfterF3 = new Chess(executedF3!.fenAfter);
+blackReplyAfterF3.move("c5");
+assert.equal(resolvePremove(blackReplyAfterF3.fen(), "w", plannedC3)?.san, "c3",
+  "The second premove must wait for and revalidate after a second real opponent reply.");
+
+const invalidatedQueue = projectPremoveQueue(afterE4.fen(), "w", [
+  plannedF3,
+  { from: "a1", to: "a8" },
+]);
+assert.equal(invalidatedQueue.projectedCount, 1);
+assert.equal(invalidatedQueue.canAppend, false,
+  "A stale queued move must block dependent premoves from being appended.");
+
 const pawnCapture = createCapturePremove(afterE4.fen(), "w", "e4", "d5");
 assert.deepEqual(pawnCapture, { from: "e4", to: "d5", capture: true });
 assert.ok(getPremoveCaptureMoves(afterE4.fen(), "w", "e4").some((move) => move.to === "d5"));
