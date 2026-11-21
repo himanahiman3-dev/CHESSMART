@@ -163,7 +163,14 @@ export function resolvePremove(fen: string, color: "w" | "b", premove: Premove):
     if (!piece || piece.color !== color) return null;
     if (premove.capture) {
       const target = chess.get(premove.to as Square);
-      if (!target || target.color === color || target.type === "k") return null;
+      if (target) {
+        if (target.color === color || target.type === "k") return null;
+      } else {
+        // En passant is the only legal capture whose destination square is empty.
+        const enPassant = chess.moves({ square: premove.from as Square, verbose: true })
+          .some((move) => move.to === premove.to && move.flags.includes("e"));
+        if (!enPassant) return null;
+      }
     }
     const result = chess.move({
       from: premove.from as Square, to: premove.to as Square,
