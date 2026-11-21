@@ -204,6 +204,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
   const [connectionOnline, setConnectionOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   const [exportNotice, setExportNotice] = useState("");
   const movePendingRef = useRef(false);
+  const sendMoveRef = useRef<((move: BoardMove, isPremove?: boolean, queuedPremove?: Premove) => boolean) | null>(null);
   const moveRequestRef = useRef<AbortController | null>(null);
   const refreshInFlightRef = useRef(false);
   const gamePollFailuresRef = useRef(0);
@@ -618,12 +619,12 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       return;
     }
     setNotice("Отправляем premove: " + resolved.san);
-    if (!sendMove(resolved, true, premove)) {
+    if (!sendMoveRef.current?.(resolved, true, premove)) {
       premoveGameIdRef.current = null;
       setPremoves([]);
       setNotice("Очередь premove отменена: не удалось начать отправку хода.");
     }
-  }, [premoves, game?.id, game?.fen, game?.status, myColor, turn, movePending, sendMove]);
+  }, [premoves, game?.id, game?.fen, game?.status, myColor, turn, movePending]);
   useEffect(() => {
     if (premoves.length > 0 && game?.status === "completed") {
       premoveGameIdRef.current = null;
@@ -848,17 +849,15 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     })();
     return true;
   }, [session, game?.id, game?.moves.length, isMyTurn, myColor, url, key, applyGameSnapshot]);
+  sendMoveRef.current = sendMove;
 
   const handleBoardMove = useCallback((move: BoardMove) => sendMove(move, false), [sendMove]);
   const queueBoardPremove = useCallback((next: Premove) => {
-    if (!game?.id) return;
-    setPremoves((queue) => {
-      if (queue.length >= MAX_PREMOVE_QUEUE) return queue;
-      premoveGameIdRef.current = game.id;
-      return [...queue, next];
-    });
+    if (!game?.id || premoves.length >= MAX_PREMOVE_QUEUE) return;
+    premoveGameIdRef.current = game.id;
+    setPremoves((queue) => queue.length < MAX_PREMOVE_QUEUE ? [...queue, next] : queue);
     setNotice("");
-  }, [game?.id]);
+  }, [game?.id, premoves.length]);
   const clearBoardPremove = useCallback(() => {
     premoveGameIdRef.current = null;
     setPremoves([]);
