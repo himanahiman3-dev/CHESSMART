@@ -39,6 +39,9 @@ begin
   values ($3, 'broadcast', $1, $2, $4);
 end;
 $broadcast_stub$;
+grant usage on schema realtime to anon, authenticated;
+grant execute on function realtime.topic() to authenticated;
+grant select on realtime.messages to authenticated;
 create extension if not exists pgcrypto with schema extensions;
 create table storage.buckets (
   id text primary key,
