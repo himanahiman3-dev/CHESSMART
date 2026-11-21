@@ -25,7 +25,7 @@ export function AccountAvatar({
 
   const normalizedSrc = typeof src === "string" ? src.trim() : "";
   const label = name.trim() ? "Аватар " + name.trim() : "Аватар игрока";
-  const initial = fallbackText ?? name.trim().slice(0, 1).toUpperCase() || "?";
+  const initial = fallbackText ?? (name.trim().slice(0, 1).toUpperCase() || "?");
 
   if (normalizedSrc && !imageFailed) {
     return (
