@@ -3,6 +3,7 @@ import { Chess, type Square } from "chess.js";
 import { GameBoard, type BoardMove } from "./GameBoard";
 import type { Color, GameReview } from "../types";
 import { GameFinishedReviewOverlay } from "./GameFinishedReviewOverlay";
+import { AccountAvatar } from "./AccountAvatar";
 import { clearAccountProfile, publishAccountProfile } from "../lib/accountProfile";
 import { resolvePremove, type Premove, formatPremove } from "../lib/premoves";
 import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation, clockUrgency, formatClock, type GameplayPreferences } from "../lib/gameplayPreferences";
@@ -944,9 +945,12 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
             {authMode === "register" && (
               <div className="mt-4 rounded-xl border border-[#4a5940] bg-[#262b23] p-3">
                 <div className="flex items-center gap-3">
-                  {avatarPreview
-                    ? <img src={avatarPreview} alt="Предпросмотр аватара" className="h-14 w-14 rounded-xl object-cover" />
-                    : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#3d5033] text-xl font-black text-[#d9edc4]">?</div>}
+                  <AccountAvatar
+                    src={avatarPreview}
+                    name={username || "Новый игрок"}
+                    className="h-14 w-14 rounded-xl object-cover"
+                    fallbackClassName="flex h-14 w-14 items-center justify-center rounded-xl bg-[#3d5033] text-xl font-black text-[#d9edc4]"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-bold text-[#e3ecd9]">Аватар профиля</div>
                     <div className="mt-1 text-[10px] text-[#929b89]">Необязательно · изображение будет обрезано по центру</div>
@@ -985,11 +989,12 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
         </header>
 
         {!game && <section className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-[#414d39] bg-[#30382c] p-3">
-          {avatarPreview
-            ? <img src={avatarPreview} alt="Предпросмотр аватара" className="h-14 w-14 rounded-xl object-cover" />
-            : onlineProfile.avatar_url
-              ? <img src={onlineProfile.avatar_url} alt={"Аватар " + onlineProfile.username} className="h-14 w-14 rounded-xl object-cover" />
-              : <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#526d3e] text-xl font-black text-white">{onlineProfile.username.slice(0, 1).toUpperCase()}</div>}
+          <AccountAvatar
+            src={avatarPreview ?? onlineProfile.avatar_url}
+            name={onlineProfile.username}
+            className="h-14 w-14 rounded-xl object-cover"
+            fallbackClassName="flex h-14 w-14 items-center justify-center rounded-xl bg-[#526d3e] text-xl font-black text-white"
+          />
           <div className="min-w-0 flex-1">
             <div className="text-sm font-extrabold">Аватар профиля</div>
             <div className="mt-1 text-[10px] text-[#a6b19b]">Фото видно в профиле и навигации CHESSMART</div>
