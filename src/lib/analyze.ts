@@ -75,6 +75,7 @@ export function parseGame(pgnText: string): ParsedGame {
 import { gameBudgetMs, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
 import { isSacrificeVerificationCandidate, rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { classifyMove } from "./moveClassification";
+import { forcedMoveClass } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
 /** @deprecated Время теперь считается от длины партии (см. gameBudgetMs), оставлено для совместимости. */
