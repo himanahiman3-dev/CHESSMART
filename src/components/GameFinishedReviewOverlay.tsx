@@ -8,7 +8,7 @@ interface Props {
   pgn: string;
   playerColor: Color;
   onAnalyzed: (review: GameReview, color: Color) => void;
-  onOpenReview: (review: GameReview) => void;
+  onOpenReview: (review: GameReview, color: Color) => void;
 }
 
 export function GameFinishedReviewOverlay({
@@ -108,7 +108,7 @@ export function GameFinishedReviewOverlay({
           <span className="cm-game-review-spark">✦</span>
           <div>
             <strong>{review ? "Предварительный анализ готов" : "Разбираем твои ходы"}</strong>
-            <p>{review ? "Вот качество твоей игры в этой партии." : status === "idle" || status === "checking" || status === "loading" ? "Подготавливаем Stockfish и проверяем только твои ходы." : "Stockfish проверяет только твои ходы. Кнопка станет доступна сразу после проверки."}</p>
+            <p>{review ? "Это быстрый предварительный разбор. Подробный обзор повторно проверит ключевые позиции и может изменить оценки." : status === "idle" || status === "checking" || status === "loading" ? "Подготавливаем Stockfish и проверяем только твои ходы." : "Stockfish проверяет только твои ходы. Кнопка станет доступна сразу после проверки."}</p>
           </div>
         </div>
 
@@ -127,16 +127,16 @@ export function GameFinishedReviewOverlay({
           <div className="cm-game-review-progress-track"><span style={{ width: `${percent}%` }} /></div>
           {error
             ? <p className="cm-game-review-error">{error}</p>
-            : <small>{review ? `${ownMoves.length} твоих ходов проверено · быстрый анализ` : `${done} / ${total} позиций · ${elapsedSeconds} сек.`}</small>}
+            : <small>{review ? `${ownMoves.length} твоих ходов проверено · предварительный анализ` : `${done} / ${total} позиций · ${elapsedSeconds} сек.`}</small>}
         </div>
 
         <button
           type="button"
           className="cm-game-review-cta"
           disabled={!review}
-          onClick={() => { if (review) onOpenReview(review); }}
+          onClick={() => { if (review) onOpenReview(review, playerColor); }}
         >
-          <span>{review ? "Анализировать партию" : "Готовим анализ…"}</span>
+          <span>{review ? "Подробный обзор" : "Готовим анализ…"}</span>
           <b>→</b>
         </button>
         <button type="button" className="cm-game-review-later" onClick={() => setDismissed(true)}>Вернуться к результатам</button>
