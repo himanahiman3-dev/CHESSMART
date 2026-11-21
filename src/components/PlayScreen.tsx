@@ -53,7 +53,9 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
   const game = useMemo(() => new Chess(fen), [fen]);
   const botColor = playerColor === "w" ? "b" : "w";
   const strength = useMemo(() => botStrengthForElo(botElo), [botElo]);
-  const disabled = !started || thinking || !!finished || game.isGameOver() || game.turn() !== playerColor;
+  // While a premove is waiting to execute, lock manual input so it cannot race
+  // the automatic move when Stockfish hands the turn back.
+  const disabled = !started || thinking || !!finished || game.isGameOver() || game.turn() !== playerColor || premoves.length > 0;
   const updatePreference = <K extends keyof GameplayPreferences>(key: K, value: GameplayPreferences[K]) => {
     const next = updateGameplayPreferences(preferences, { [key]: value });
     setPreferences(next);
