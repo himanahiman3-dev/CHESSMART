@@ -2199,3 +2199,69 @@ body{margin:0;color:var(--cm-white)!important;background:var(--cm-page)!importan
   .cm-profile-quality-grid,.cm-profile-stats-extra{grid-template-columns:repeat(2,minmax(0,1fr))}
   .cm-achievement-grid{grid-template-columns:1fr}
 }
+
+
+/* Mobile navigation: the sidebar is hidden on phones, so "More" gets its own sheet. */
+.cm-mobile-more-backdrop{display:none}
+.cm-mobile-more-sheet{width:min(100%,680px);max-height:min(82dvh,760px);overflow:hidden;border:1px solid rgba(255,255,255,.1);border-radius:16px 16px 0 0;background:#262522;box-shadow:0 -18px 55px rgba(0,0,0,.38)}
+.cm-mobile-more-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 16px 13px;border-bottom:1px solid var(--cm-border)}
+.cm-mobile-more-header h2{margin:0;color:#fff;font-size:16px;font-weight:850}
+.cm-mobile-more-header p{margin:4px 0 0;color:var(--cm-muted);font-size:11px}
+.cm-mobile-more-header>button{display:grid;width:36px;height:36px;place-items:center;border:0;border-radius:8px;background:#383531;color:#fff;font-size:24px}
+.cm-mobile-more-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;overflow-y:auto;max-height:calc(82dvh - 78px);padding:12px 12px calc(18px + env(safe-area-inset-bottom))}
+.cm-mobile-more-grid button{display:grid;min-width:0;min-height:65px;align-content:center;gap:5px;padding:10px;border:1px solid rgba(255,255,255,.06);border-radius:9px;background:#302e2b;color:#fff;text-align:left}
+.cm-mobile-more-grid button:active,.cm-mobile-more-grid button.active{border-color:#739b50;background:#35412e}
+.cm-mobile-more-grid strong{font-size:12px;font-weight:800}
+.cm-mobile-more-grid small{color:#a7a49d;font-size:10px;line-height:1.35}
+
+/* A stable tap grid sits above the pieces on touch-only devices. It avoids browser
+   drag/drop quirks and lets players tap source, then destination, on phones. */
+.cm-touch-board-layer{position:absolute;inset:0;z-index:25;display:none;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));overflow:hidden;border-radius:inherit}
+.cm-touch-board-layer button{display:block;width:100%;height:100%;min-width:0;min-height:0;padding:0;border:0;border-radius:0;background:transparent;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none}
+.cm-touch-board-layer button:focus{outline:none}
+@media(hover:none) and (pointer:coarse){
+  .cm-game-board-interactive .cm-touch-board-layer{display:grid}
+}
+
+/* Online play is designed mobile-first: keep the board readable, actions reachable,
+   and leave room for the fixed bottom navigation and device safe areas. */
+.cm-online-screen{min-width:0;overflow-x:hidden}
+.cm-online-screen>div{min-width:0;width:100%}
+.cm-online-game-layout{min-width:0}
+.cm-online-board-panel{min-width:0}
+.cm-online-game-sidebar{min-width:0}
+.cm-online-game-controls button{min-width:0;white-space:normal;overflow-wrap:anywhere}
+.cm-online-screen input,.cm-online-screen select,.cm-online-screen button{touch-action:manipulation}
+@media(max-width:700px){
+  .cm-mobile-more-backdrop{position:fixed;z-index:160;inset:0;display:flex;align-items:flex-end;justify-content:center;padding:0 0 env(safe-area-inset-bottom);background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
+  .cm-mobile-more-sheet{max-height:82dvh}
+  .cm-online-screen{min-height:100dvh!important;padding:10px 10px calc(82px + env(safe-area-inset-bottom))!important}
+  .cm-online-screen>div{max-width:100%!important}
+  .cm-online-screen>div>header{align-items:flex-start!important;gap:10px!important;margin-bottom:12px!important}
+  .cm-online-screen>div>header>div:first-child h1{font-size:21px!important}
+  .cm-online-screen>div>header>div:last-child{flex-wrap:wrap}
+  .cm-online-screen>div>header>div:last-child button{min-height:36px;padding:8px 10px}
+  .cm-online-screen section{min-width:0}
+  .cm-online-screen .cm-online-game-layout{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important}
+  .cm-online-board-panel{padding:8px!important}
+  .cm-online-board-panel>div:first-child{align-items:flex-start!important;flex-wrap:wrap;gap:8px!important}
+  .cm-online-board-panel>div:first-child>div:first-child{min-width:0;flex:1}
+  .cm-online-board-panel>div:first-child>div:last-child{max-width:48%;font-size:10px!important;text-align:center;white-space:normal}
+  .cm-online-board-panel>.cm-game-board{width:100%;max-width:min(100%,560px);margin-inline:auto}
+  .cm-online-board-panel .cm-game-board{width:100%;max-width:100%;margin-inline:auto}
+  .cm-online-board-panel>div.rounded-lg{min-height:38px;gap:8px;padding:7px 9px!important;font-size:12px!important}
+  .cm-online-board-panel>div.rounded-lg b{font-size:18px!important}
+  .cm-online-game-controls{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px!important}
+  .cm-online-game-controls button{min-height:39px;margin:0!important;padding:8px 7px!important;font-size:10px!important;line-height:1.25}
+  .cm-online-game-sidebar{display:grid;grid-template-columns:minmax(0,1fr);gap:9px!important}
+  .cm-online-game-sidebar>section{padding:12px!important}
+  .cm-online-screen .grid.grid-cols-3{gap:6px!important}
+  .cm-online-screen .grid.grid-cols-3>div{min-width:0;padding:9px!important}
+  .cm-online-screen .grid.grid-cols-3>div>div:nth-child(2){font-size:20px!important}
+  .cm-online-screen .grid.lg\:grid-cols-2{grid-template-columns:minmax(0,1fr)!important}
+  .cm-online-screen .cm-online-board-panel .cm-touch-board-layer{border-radius:3px}
+  .cm-game-review-overlay{align-items:flex-end!important;padding:8px!important}
+  .cm-game-review-card{width:100%!important;max-height:calc(100dvh - 16px);overflow-y:auto;padding:21px 16px!important;border-radius:18px!important}
+  .cm-game-review-header h2{font-size:20px!important}
+  .cm-game-review-stats{gap:6px!important}
+}
