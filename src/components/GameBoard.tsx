@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Chess, type Square } from "chess.js";
 import { Chessboard, defaultArrowOptions } from "react-chessboard";
 import type { Cls } from "../types";
@@ -81,7 +81,7 @@ function squareOrigin(square: string, orientation: "white" | "black") {
   return { left: col * 12.5, top: row * 12.5 };
 }
 
-export function GameBoard({
+export const GameBoard = memo(function GameBoard({
   fen,
   orientation,
   lastMove,
@@ -198,6 +198,47 @@ export function GameBoard({
     [chess, onMove, canMoveColor]
   );
 
+const handleSquareSelection = useCallback((square: Square) => {
+    if (!chess) return;
+    const piece = chess.get(square);
+    if (premove && square === premove.from && onClearPremove) {
+      onClearPremove();
+      setSelected(null);
+      return;
+    }
+    if (selected && selected !== square) {
+      const movingPiece = chess.get(selected as Square);
+      if (movingPiece && canPremoveColor(movingPiece.color)) {
+        if (selectedPremoveMoves.some((move) => move.to === square) || selectedPremoveCaptureMoves.some((move) => move.to === square)) {
+          selectOrQueuePremove(selected, square, captureModifierPressed);
+          setSelected(null);
+          return;
+        }
+      } else {
+        const legal = chess.moves({ square: selected as Square, verbose: true }).some((move) => move.to === square);
+        if (legal) {
+          setSelected(null);
+          tryMove(selected, square);
+          return;
+        }
+        if (!piece || piece.color !== movingPiece?.color) {
+          playSound("illegal");
+          setSelected(null);
+          return;
+        }
+      }
+    }
+    if (piece && (canMoveColor(piece.color) || canPremoveColor(piece.color))) {
+      setSelected(selected === square ? null : square);
+      return;
+    }
+    setSelected(null);
+  }, [
+    chess, premove, onClearPremove, selected, selectedPremoveMoves, selectedPremoveCaptureMoves,
+    canPremoveColor, captureModifierPressed, selectOrQueuePremove, canMoveColor, tryMove,
+  ]);
+
+
   const squareStyles = useMemo(() => {
     const s: Record<string, CSSProperties> = {};
     const animated = badge && ANIMATED.includes(badge.cls) ? badge : null;
@@ -286,7 +327,7 @@ export function GameBoard({
 
   return (
     <div
-      className="relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40"
+      className={`cm-game-board relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40 ${interactive || premoveEnabled ? "cm-game-board-interactive" : ""}`}
       style={{ containerType: "inline-size" }}
       onContextMenu={(event) => {
         if (!premove && !promotionDraft) return;
@@ -324,44 +365,7 @@ export function GameBoard({
             }
             return tryMove(sourceSquare, targetSquare);
           },
-          onSquareClick: ({ square, piece }) => {
-            if (!chess) return;
-            if (premove && square === premove.from && onClearPremove) {
-              onClearPremove();
-              setSelected(null);
-              return;
-            }
-            if (selected && selected !== square) {
-              const movingPiece = chess.get(selected as Square);
-              if (movingPiece && canPremoveColor(movingPiece.color)) {
-                if (selectedPremoveMoves.some((move) => move.to === square) || selectedPremoveCaptureMoves.some((move) => move.to === square)) {
-                  selectOrQueuePremove(selected, square, captureModifierPressed);
-                  setSelected(null);
-                  return;
-                }
-              } else {
-                const legal = chess.moves({ square: selected as Square, verbose: true }).some((move) => move.to === square);
-                if (legal) {
-                  setSelected(null);
-                  tryMove(selected, square);
-                  return;
-                }
-                if (!piece || piece.pieceType[0] !== (movingPiece?.color === "w" ? "w" : "b")) {
-                  playSound("illegal");
-                  setSelected(null);
-                  return;
-                }
-              }
-            }
-            if (piece) {
-              const color = piece.pieceType[0] === "w" ? "w" : "b";
-              if (canMoveColor(color) || canPremoveColor(color)) {
-                setSelected(selected === square ? null : square);
-                return;
-              }
-            }
-            setSelected(null);
-          },
+          onSquareClick: ({ square }) => handleSquareSelection(square as Square),
           squareStyles,
           squareRenderer: ({ square, children }) => (
             <div style={{ position: "relative", width: "100%", height: "100%", ...squareStyles[square] }}>
@@ -370,6 +374,26 @@ export function GameBoard({
           ),
         }}
       />
+      {(interactive || premoveEnabled) && (
+        <div className="cm-touch-board-layer" aria-label="Выбор клеток шахматной доски">
+          {Array.from({ length: 64 }, (_, index) => {
+            const row = Math.floor(index / 8);
+            const column = index % 8;
+            const file = orientation === "white" ? column : 7 - column;
+            const rank = orientation === "white" ? 7 - row : row;
+            const square = `${"abcdefgh"[file]}${rank + 1}` as Square;
+            return (
+              <button
+                key={square}
+                type="button"
+                tabIndex={-1}
+                aria-label={`Клетка ${square}`}
+                onClick={() => handleSquareSelection(square)}
+              />
+            );
+          })}
+        </div>
+      )}
       {badge && <BadgeOverlay badge={badge} orientation={orientation} animKey={animKey} />}
       {selected && allowedColor && canPremoveColor(allowedColor) && (
         <div className="pointer-events-none absolute left-2 top-2 z-30 rounded-md bg-black/70 px-2 py-1 text-[10px] font-semibold text-[#ffd4d1] shadow-lg">
@@ -426,7 +450,7 @@ export function GameBoard({
       )}
     </div>
   );
-}
+});
 
 /** Значок класса хода поверх доски. Для brilliant/great — анимация: вспышка клетки → «выпрыгивание» значка → кольца и искры. */
 function BadgeOverlay({ badge, orientation, animKey }: { badge: { square: string; cls: Cls }; orientation: "white" | "black"; animKey: number }) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Color, GameReview } from "../types";
 import { useEngine } from "../hooks/useEngine";
 import { reviewGame, type AnalyzeProgress } from "../lib/analyze";
@@ -23,6 +23,10 @@ export function GameFinishedReviewOverlay({
   const [review, setReview] = useState<GameReview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  // The online clock refreshes its parent frequently. Keep the latest callback without
+  // treating its changing identity as a reason to cancel and restart the engine analysis.
+  const onAnalyzedRef = useRef(onAnalyzed);
+  onAnalyzedRef.current = onAnalyzed;
 
   useEffect(() => {
     // Онлайн-игра не обязана заранее загружать Stockfish. Поднимем движок,
@@ -49,7 +53,7 @@ export function GameFinishedReviewOverlay({
       .then((result) => {
         if (!current || controller.signal.aborted) return;
         setReview(result);
-        onAnalyzed(result, playerColor);
+        onAnalyzedRef.current(result, playerColor);
       })
       .catch((reason: unknown) => {
         if (!current || controller.signal.aborted) return;
@@ -60,7 +64,7 @@ export function GameFinishedReviewOverlay({
       current = false;
       controller.abort();
     };
-  }, [engine, pgn, playerColor, gameKey, computeProfile, onAnalyzed]);
+  }, [engine, pgn, playerColor, gameKey, computeProfile]);
 
   const ownMoves = useMemo(
     () => review?.moves.filter((move) => move.color === playerColor) ?? [],
