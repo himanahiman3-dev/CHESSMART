@@ -40,6 +40,7 @@ psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261117150407_fix_matchmaking_pg
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611200001_puzzle_battles.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611200002_puzzle_battle_ratings_seasons.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261120210843_enable_online_game_realtime.sql
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611210001_audit_query_indexes_and_rls.sql
 
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
@@ -519,3 +520,56 @@ $battle_ratings_test$;
 
 select 'Online SQL migrations, matchmaking, cloud progress, Puzzle Battle ratings and season tests passed.' as result;
 SQL
+
+
+-- Audit migration: preserve private tables while making participant policies and FK lookups efficient.
+do $audit_indexes_rls_test$
+declare
+  policy_row record;
+begin
+  if not exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'online_invites_game_id_idx') then
+    raise exception 'Missing online_invites.game_id foreign key index';
+  end if;
+  if not exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'puzzle_battle_queue_battle_id_idx') then
+    raise exception 'Missing puzzle_battle_queue.battle_id foreign key index';
+  end if;
+  if not exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'puzzle_battles_winner_id_idx') then
+    raise exception 'Missing puzzle_battles.winner_id foreign key index';
+  end if;
+
+  for policy_row in
+    select tablename, policyname, qual
+    from pg_policies
+    where schemaname = 'public'
+      and policyname in (
+        'participants read games',
+        'puzzle battle participants read battle',
+        'puzzle battle participants read players',
+        'puzzle battle participants read rounds',
+        'players read own puzzle queue state'
+      )
+  loop
+    if policy_row.qual not ilike '%select auth.uid()%' then
+      raise exception 'Policy %.% does not cache auth.uid(): %', policy_row.tablename, policy_row.policyname, policy_row.qual;
+    end if;
+  end loop;
+
+  if (select count(*) from pg_policies
+      where schemaname = 'public'
+        and policyname in (
+          'participants read games',
+          'puzzle battle participants read battle',
+          'puzzle battle participants read players',
+          'puzzle battle participants read rounds',
+          'players read own puzzle queue state'
+        )) <> 5 then
+    raise exception 'Expected all five participant policies to remain installed';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.puzzle_battle_solutions', 'SELECT')
+    or has_table_privilege('authenticated', 'public.puzzle_battle_queue_packs', 'SELECT')
+    or has_table_privilege('anon', 'public.online_auth_rate_limits', 'SELECT') then
+    raise exception 'Audit migration must not expose private server-only tables';
+  end if;
+end;
+$audit_indexes_rls_test$;
