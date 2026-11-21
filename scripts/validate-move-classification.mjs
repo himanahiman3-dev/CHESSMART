@@ -46,6 +46,9 @@ assert.equal(classifyMove({ ...base, forced: true, book: true }), "forced",
 assert.equal(classifyMove({ ...base, book: true, brilliant: true }), "book",
   "Opening-book prefix remains a separate label.");
 assert.equal(classifyMove({ ...base, brilliant: true }), "brilliant");
+assert.equal(classifyMove({ ...base, brilliant: true, allowedMate: true }), "blunder",
+  "Allowing a forced mate always overrides a candidate Brilliant label.");
+
 
 assert.equal(qualifiesAsGreat({
   playedIsBest: true, winBefore: 70, secondLinePresent: true,
