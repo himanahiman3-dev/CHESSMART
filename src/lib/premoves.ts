@@ -1,5 +1,7 @@
 import { Chess, type Square } from "chess.js";
 
+export const MAX_PREMOVE_QUEUE = 5;
+
 export interface Premove {
   from: string;
   to: string;
@@ -42,7 +44,7 @@ export function getPremoveMoves(fen: string, color: "w" | "b", from: string): Pr
     const fields = fen.trim().split(/\s+/);
     if (fields.length !== 6) return [];
     const live = new Chess(fen);
-    if (live.turn() === color || live.isGameOver()) return [];
+    if (live.isGameOver()) return [];
     const piece = live.get(from);
     if (!piece || piece.color !== color) return [];
     fields[1] = color;
@@ -153,6 +155,82 @@ export function createCapturePremove(
   if (!candidate) return null;
   return { from, to, capture: true, ...(candidate.promotion ? { promotion } : {}) };
 }
+/**
+ * Projects the live opponent-to-move position to the player's next turn.
+ * En-passant is cleared because the opponent will have moved before execution.
+ */
+export function projectPremoveTurn(fen: string, color: "w" | "b"): string | null {
+  try {
+    const live = new Chess(fen);
+    if (live.isGameOver() || live.turn() === color) return null;
+    const fields = fen.trim().split(/\\s+/);
+    if (fields.length !== 6) return null;
+    fields[1] = color;
+    fields[3] = "-";
+    return new Chess(fields.join(" "), { skipValidation: true }).fen();
+  } catch {
+    return null;
+  }
+}
+
+export interface PremoveQueueProjection {
+  fen: string;
+  projectedCount: number;
+  canAppend: boolean;
+}
+
+/**
+ * Builds a planning position for multiple premoves. Opponent replies are
+ * skipped between planned moves, but each move is revalidated on the actual
+ * position before it is ever played. Empty-square capture premoves end preview.
+ */
+export function projectPremoveQueue(
+  fen: string,
+  color: "w" | "b",
+  premoves: readonly Premove[],
+): PremoveQueueProjection {
+  const startingFen = projectPremoveTurn(fen, color);
+  if (!startingFen) return { fen, projectedCount: 0, canAppend: false };
+
+  let projectedFen = startingFen;
+  let projectedCount = 0;
+  for (const raw of premoves.slice(0, MAX_PREMOVE_QUEUE)) {
+    const premove = sanitizePremove(raw);
+    if (!premove) break;
+    try {
+      const chess = new Chess(projectedFen, { skipValidation: true });
+      if (chess.turn() !== color || chess.isGameOver()) break;
+      if (premove.capture) {
+        const target = chess.get(premove.to as Square);
+        if (!target || target.color === color || target.type === "k") break;
+      }
+      const moved = chess.move({
+        from: premove.from as Square,
+        to: premove.to as Square,
+        ...(premove.promotion ? { promotion: premove.promotion } : {}),
+      });
+      if (!moved) break;
+      projectedCount += 1;
+      if (chess.isGameOver()) {
+        projectedFen = chess.fen();
+        break;
+      }
+      const fields = chess.fen().split(/\\s+/);
+      fields[1] = color;
+      fields[3] = "-";
+      projectedFen = new Chess(fields.join(" "), { skipValidation: true }).fen();
+    } catch {
+      break;
+    }
+  }
+
+  return {
+    fen: projectedFen,
+    projectedCount,
+    canAppend: projectedCount === premoves.length && premoves.length < MAX_PREMOVE_QUEUE,
+  };
+}
+
 /** Re-checks legality only after the opponent's real move has arrived. */
 export function resolvePremove(fen: string, color: "w" | "b", premove: Premove): ResolvedPremove | null {
   if (!isPremoveShape(premove)) return null;
