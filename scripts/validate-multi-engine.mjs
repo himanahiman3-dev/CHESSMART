@@ -10,7 +10,7 @@ const powerfulDesktop = getDeviceAnalysisProfile({
 });
 assert.equal(powerfulDesktop.device, "desktop");
 assert.equal(powerfulDesktop.defaultVariant, "full");
-assert.equal(powerfulDesktop.maxThreads, 15);
+assert.equal(powerfulDesktop.maxThreads, 10, "A high-core desktop must reserve CPU headroom for browser rendering.");
 assert.equal(powerfulDesktop.hashMb, 512);
 assert.equal(powerfulDesktop.timePerMoveMs, 1400);
 assert.equal(powerfulDesktop.maxTimePerMoveMs, 4750);
@@ -27,6 +27,7 @@ const ordinaryDesktop = getDeviceAnalysisProfile({
 });
 assert.equal(ordinaryDesktop.device, "desktop");
 assert.equal(ordinaryDesktop.defaultVariant, "full");
+assert.equal(ordinaryDesktop.maxThreads, 6, "A typical desktop keeps two logical cores free for UI work.");
 assert.equal(ordinaryDesktop.timePerMoveMs, 1000);
 assert.equal(ordinaryDesktop.maxTimePerMoveMs, 4750);
 assert.equal(ordinaryDesktop.depthBonus, 3);
