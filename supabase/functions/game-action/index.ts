@@ -75,6 +75,36 @@ async function finishGame(game: GameRow, result: string, reason: string, whiteMs
   if (error || !data) throw new Error("Партия уже обновлена другим действием. Обнови доску.");
   return await updateRating(data, result);
 }
+/**
+ * Rebuild the full chess.js history from the authoritative stored UCI list.
+ * Constructing Chess directly from the latest FEN loses repetition history and
+ * would silently disable threefold-repetition draws in online games.
+ */
+function replayOnlineGame(game: GameRow): Chess {
+  const chess = new Chess(START_FEN);
+  const moves = Array.isArray(game.moves) ? game.moves as Array<Record<string, unknown>> : [];
+  for (let index = 0; index < moves.length; index++) {
+    const uci = typeof moves[index]?.uci === "string" ? String(moves[index].uci) : "";
+    if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(uci)) {
+      throw new Error(`История партии повреждена: некорректный ход №${index + 1}.`);
+    }
+    try {
+      const played = chess.move({
+        from: uci.slice(0, 2) as never,
+        to: uci.slice(2, 4) as never,
+        ...(uci.length > 4 ? { promotion: uci[4] as never } : {}),
+      });
+      if (!played) throw new Error("illegal move");
+    } catch {
+      throw new Error(`История партии повреждена: ход №${index + 1} нелегален.`);
+    }
+  }
+  if (chess.fen() !== game.fen) {
+    throw new Error("История партии не совпадает с текущей позицией. Обнови партию.");
+  }
+  return chess;
+}
+
 function gameResult(chess: Chess): { result: string; reason: string } | null {
   if (chess.isCheckmate()) return { result: chess.turn() === "w" ? "black_win" : "white_win", reason: "checkmate" };
   if (chess.isStalemate()) return { result: "draw", reason: "stalemate" };
@@ -469,7 +499,7 @@ Deno.serve(async (req: Request) => {
     if (action === "move") {
       const game = await participantGame(String(body.gameId ?? ""), user.id);
       if (game.status !== "active" || !game.black_id) return fail("Партия сейчас не принимает ходы.");
-      const chess = new Chess(game.fen);
+      const chess = replayOnlineGame(game);
       const color = chess.turn() as PlayerColor;
       const playerId = color === "w" ? game.white_id : game.black_id;
       if (playerId !== user.id) return fail("Сейчас ход соперника.", 409);
