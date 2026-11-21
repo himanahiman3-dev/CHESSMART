@@ -20,7 +20,8 @@
     "validate:puzzle-journey": "node --experimental-strip-types scripts/validate-puzzle-journey.mjs",
     "validate:puzzle-rush": "node --experimental-strip-types scripts/validate-puzzle-rush.mjs",
     "validate:training-academy": "node --experimental-strip-types scripts/validate-training-academy.mjs",
-    "validate:systems-hub": "node --experimental-strip-types scripts/validate-systems-hub.mjs"
+    "validate:systems-hub": "node --experimental-strip-types scripts/validate-systems-hub.mjs",
+    "validate:move-classification": "node --experimental-strip-types scripts/validate-move-classification.mjs"
   },
   "dependencies": {
     "chess.js": "^1.4.0",
