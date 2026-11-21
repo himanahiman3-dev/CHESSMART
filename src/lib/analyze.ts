@@ -116,7 +116,7 @@ export interface ReviewComputeProfile {
   mainMultiPv: number;
   /** Maximum number of critical positions (including sacrifices and missed-mate candidates) to verify after the main pass. */
   verifierMaxMoves?: number;
-  /** Extra search time for each selected sacrifice candidate. */
+  /** Extra search time for each selected critical position. */
   verifierMoveTimeMs?: number;
   /** Total extra verification budget supplied by the device profile. */
   tacticalExtraBudgetMs?: number;
@@ -372,15 +372,15 @@ export async function reviewGame(
   // on critical positions of every type: large evaluation swings, tactical errors,
   // forced-mate opportunities and sound sacrifices. Reserve one slot for the best
   // sacrifice candidate so an ordinary blunder cannot starve Brilliant verification.
-  const criticalCandidates = maxVerificationChecks > 0
-    ? selectCriticalPositions(game, positions, Math.max(1, maxVerificationChecks), false)
+  const rankedCriticalCandidates = maxVerificationChecks > 0
+    ? selectCriticalPositions(game, positions, game.moves.length, false)
     : [];
-  const bestSacrificeCandidate = maxVerificationChecks > 0
-    ? selectCriticalPositions(game, positions, 1, true)[0]
-    : undefined;
+  // The combined ranking already includes every sacrifice candidate, so no
+  // second pass through detectSacrifice() is needed just to reserve one slot.
+  const bestSacrificeCandidate = rankedCriticalCandidates.find((candidate) => candidate.sacrifice);
   const verificationCandidates = [
     ...(bestSacrificeCandidate ? [bestSacrificeCandidate] : []),
-    ...criticalCandidates.filter((candidate) => candidate.index !== bestSacrificeCandidate?.index),
+    ...rankedCriticalCandidates.filter((candidate) => candidate.index !== bestSacrificeCandidate?.index),
   ].slice(0, maxVerificationChecks);
   const perVerificationBudget = Math.max(300, Math.min(
     computeProfile?.verifierMoveTimeMs ?? 900,
