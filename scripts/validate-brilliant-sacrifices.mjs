@@ -108,13 +108,13 @@ const userGamePgn = `[Event "Live Chess"]
 const userGame = new Chess();
 userGame.loadPgn(userGamePgn);
 const userMoves = userGame.history({ verbose: true });
-const replay = new Chess();
+const userReplay = new Chess();
 let knightSacrificeBefore = "";
 let knightSacrificeUci = "";
 let knightSacrificeLegalMoves = 0;
 for (const move of userMoves) {
-  const before = replay.fen();
-  replay.move(move.san);
+  const before = userReplay.fen();
+  userReplay.move(move.san);
   if (move.san === "Nb5+") {
     knightSacrificeBefore = before;
     knightSacrificeUci = move.from + move.to + (move.promotion ?? "");
