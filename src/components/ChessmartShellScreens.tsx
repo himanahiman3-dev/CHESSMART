@@ -163,6 +163,19 @@ function loadUiPreferences(): UiPreferences {
   try { const raw = localStorage.getItem(UI_PREFERENCES_KEY); return raw ? { ...DEFAULT_UI_PREFERENCES, ...JSON.parse(raw) } : { ...DEFAULT_UI_PREFERENCES }; }
   catch { return { ...DEFAULT_UI_PREFERENCES }; }
 }
+
+function SettingsIcon({ name }: { name: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className="cm-setting-nav-svg" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {name === "board" && <><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/><path d="M9 3h6v6H9z" fill="currentColor" opacity=".22"/></>}
+      {name === "gameplay" && <><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.5" fill="#81b64c"/><circle cx="15" cy="17" r="2.5" fill="#81b64c"/></>}
+      {name === "interface" && <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M15 9v11"/></>}
+      {name === "profile" && <><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4.2 3.4-6.3 8-6.3s7.2 2.1 8 6.3"/></>}
+      {name === "account" && <><path d="M12 3 20 6v5.5c0 4.6-2.7 7.7-8 9.5-5.3-1.8-8-4.9-8-9.5V6l8-3Z"/><path d="m9 12 2 2 4-4"/></>}
+    </svg>
+  );
+}
+
 function ToggleRow({ title, description, checked, onChange }: { title: string; description: string; checked: boolean; onChange: (value: boolean) => void }) {
   return <label className="cm-setting-toggle"><span><strong>{title}</strong><small>{description}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><i aria-hidden="true" /></label>;
 }
@@ -174,7 +187,7 @@ export function SettingsScreen({ profile, accountProfile, onChangeProfile, onNav
   const [playerName, setPlayerName] = useState(profile.name);
   const [saved, setSaved] = useState("");
   const patchGameplay = (patch: Partial<GameplayPreferences>) => { setGameplay(updateGameplayPreferences(gameplay, patch)); setSaved("Настройки сохранены"); };
-  const sections = [{ id: "board", label: "Доска и фигуры", icon: "♟" }, { id: "gameplay", label: "Игровой процесс", icon: "⚙" }, { id: "interface", label: "Интерфейс", icon: "▦" }, { id: "profile", label: "Профиль", icon: "♙" }, { id: "account", label: "Учётная запись", icon: "🔒" }];
+  const sections = [{ id: "board", label: "Доска и фигуры", icon: "board" }, { id: "gameplay", label: "Игровой процесс", icon: "gameplay" }, { id: "interface", label: "Интерфейс", icon: "interface" }, { id: "profile", label: "Профиль", icon: "profile" }, { id: "account", label: "Учётная запись", icon: "account" }];
   useEffect(() => {
     try { localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify(ui)); } catch { /* storage may be unavailable */ }
     document.body.classList.toggle("chessmart-compact", ui.compact);
@@ -184,7 +197,7 @@ export function SettingsScreen({ profile, accountProfile, onChangeProfile, onNav
   return <div className="cm-content-page">
     <div className="cm-page-heading"><div><span className="cm-eyebrow">Персонализация</span><h1>Настройки</h1><p>Настрой доску, игровой процесс и внешний вид CHESSMART</p></div><button className="cm-secondary-button" onClick={() => onNavigate("profile")}>← Профиль</button></div>
     <div className="cm-settings-layout">
-      <nav className="cm-settings-nav" aria-label="Разделы настроек">{sections.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { setSection(item.id); setSaved(""); }}><span>{item.icon}</span>{item.label}</button>)}</nav>
+      <nav className="cm-settings-nav" aria-label="Разделы настроек">{sections.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { setSection(item.id); setSaved(""); }}><span className="cm-setting-nav-icon"><SettingsIcon name={item.icon} /></span>{item.label}</button>)}</nav>
       <section className="cm-settings-panel">
         {section === "board" && <><div className="cm-settings-heading"><h2>Доска и фигуры</h2><p>Цвета доски, звук и поведение фигур во время партии</p></div>
           <label className="cm-setting-select"><span><strong>Тема доски</strong><small>Меняет цвета доски в игре и на главной</small></span><select value={gameplay.boardTheme} onChange={(event) => patchGameplay({ boardTheme: event.target.value as GameBoardTheme })}><option value="classic">Классическая · зелёная</option><option value="blue">Синяя</option><option value="walnut">Ореховая</option><option value="violet">Фиолетовая</option></select></label>
