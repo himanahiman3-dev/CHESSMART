@@ -299,7 +299,7 @@ export function ProfileHubScreen({ profile, accountProfile, onNavigate, initialT
   const qualityTotals = (profile.personalReviews ?? []).reduce((total, record) => {
     for (const key of Object.keys(total) as Array<keyof typeof total>) total[key] += record.counts[key] ?? 0;
     return total;
-  }, { best: 0, brilliant: 0, great: 0, good: 0, excellent: 0, book: 0, forced: 0, inaccuracy: 0, miss: 0, mistake: 0, blunder: 0 });
+  }, { best: 0, brilliant: 0, great: 0, good: 0, excellent: 0, book: 0, inaccuracy: 0, miss: 0, mistake: 0, blunder: 0 });
   const localGames = [...(profile.history ?? [])].sort((a, b) => b.at - a.at);
   const archiveCount = localGames.length + onlineGames.length;
 
