@@ -53,8 +53,9 @@ assert.equal(previewBoard.turn(), "w");
 const realAfterE5 = new Chess(afterE4.fen());
 realAfterE5.move("e5");
 const executedF3 = resolvePremove(realAfterE5.fen(), "w", plannedF3);
-assert.equal(executedF3?.san, "f3");
-const blackReplyAfterF3 = new Chess(executedF3!.fenAfter);
+assert.ok(executedF3);
+assert.equal(executedF3.san, "f3");
+const blackReplyAfterF3 = new Chess(executedF3.fenAfter);
 blackReplyAfterF3.move("c5");
 assert.equal(resolvePremove(blackReplyAfterF3.fen(), "w", plannedC3)?.san, "c3",
   "The second premove must wait for and revalidate after a second real opponent reply.");
