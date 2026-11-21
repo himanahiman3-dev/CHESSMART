@@ -35,6 +35,7 @@ import type { Color, GameReview } from "./types";
 import { ACCOUNT_PROFILE_EVENT, readAccountProfile, type AccountProfile } from "./lib/accountProfile";
 import { SettingsScreen, NewsScreen, type ShellRoute } from "./components/ChessmartShellScreens";
 import { PlayHubScreen, ProfileHubScreen } from "./components/ChessmartReplicaScreens";
+import { AccountAvatar } from "./components/AccountAvatar";
 
 type Stage = "import" | "analyzing" | "review";
 type MainMode = ShellRoute | "daily" | "mistakes" | "endgame" | "lab" | "diagnostics" | "systems";
@@ -129,9 +130,8 @@ function SidebarIcon({ name }: { name: string }) {
   );
 }
 function AvatarPlaceholder({ accountProfile, name }: { accountProfile: AccountProfile | null; name: string }) {
-  return accountProfile?.avatar_url
-    ? <img className="cm-sidebar-avatar" src={accountProfile.avatar_url} alt="" />
-    : <span className="cm-sidebar-avatar">{(accountProfile?.username ?? name).slice(0, 1).toUpperCase()}</span>;
+  const username = accountProfile?.username ?? name;
+  return <AccountAvatar src={accountProfile?.avatar_url} name={username} className="cm-sidebar-avatar" />;
 }
 
 function Main() {

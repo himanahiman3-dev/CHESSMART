@@ -4,6 +4,7 @@ import type { AccountProfile } from "../lib/accountProfile";
 import type { ShellRoute } from "./ChessmartShellScreens";
 import { GameBoard } from "./GameBoard";
 import { loadGameplayPreferences } from "../lib/gameplayPreferences";
+import { AccountAvatar } from "./AccountAvatar";
 
 type Navigate = (route: ShellRoute) => void;
 
@@ -37,9 +38,12 @@ export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
             />
           </div>
           <div className="cm-replica-player-strip cm-replica-own-player-strip">
-            {accountProfile?.avatar_url
-              ? <img className="cm-play-square-avatar" src={accountProfile.avatar_url} alt="" />
-              : <span className="cm-play-square-avatar cm-play-square-avatar-own" aria-hidden="true">{username.slice(0, 1).toUpperCase()}</span>}
+            <AccountAvatar
+              src={accountProfile?.avatar_url}
+              name={username}
+              className="cm-play-square-avatar"
+              fallbackClassName="cm-play-square-avatar cm-play-square-avatar-own"
+            />
             <div className="cm-replica-player-copy"><strong>{username}</strong></div>
             <span className="cm-replica-rating">{accountProfile?.rapid_rating ?? profile.rating}</span>
           </div>
@@ -446,9 +450,13 @@ export function ProfileHubScreen({ profile, accountProfile, onNavigate, initialT
     <div className="cm-profile-page">
       <section className="cm-profile-header">
         <div className="cm-profile-avatar">
-          {accountProfile?.avatar_url
-            ? <img src={accountProfile.avatar_url} alt={"Аватар " + username} />
-            : <span aria-hidden="true">♟</span>}
+          <AccountAvatar
+            src={accountProfile?.avatar_url}
+            name={username}
+            className="cm-profile-avatar-image"
+            fallbackClassName="cm-profile-avatar-fallback"
+            fallbackText="♟"
+          />
         </div>
         <div className="cm-profile-identity">
           <div className="cm-profile-name-row">
