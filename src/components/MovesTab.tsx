@@ -3,6 +3,7 @@ import type { GameReview, Cls } from "../types";
 import { ClsBadge } from "./ClsBadge";
 import { sanRu } from "../lib/format";
 
+type MoveFilter = "all" | "mistakes" | "brilliant" | "book";
 
 const isMistake = (cls: Cls) => cls === "inaccuracy" || cls === "mistake" || cls === "miss" || cls === "blunder";
 
