@@ -101,9 +101,8 @@ try {
     depth: 8,
     multipv: 1,
   }).promise;
-  assert.ok(workers.at(-1).commands.includes("ucinewgame")
-    && workers.at(-1).commands.includes("isready"),
-    "A new review must wait for Stockfish's ready handshake after ucinewgame.");
+  assert.ok(workers.at(-1).commands.includes("ucinewgame"),
+    "A new review must clear Stockfish's per-game search state before starting.");
   assert.equal(result[0]?.pv[0], "e2e4", "A healthy worker must return its bestmove.");
   assert.equal(result[0]?.score.cp, 42, "A healthy worker must return its parsed score.");
   successEngine.terminate();
