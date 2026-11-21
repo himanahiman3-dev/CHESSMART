@@ -1185,8 +1185,8 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <b>Очередь premove · {premoves.length}/{MAX_PREMOVE_QUEUE}</b>
                       <div className="flex gap-2">
-                        <button type="button" onClick={() => setPremoves((queue) => queue.slice(0, -1))} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Убрать последний</button>
-                        <button type="button" onClick={clearBoardPremove} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Очистить</button>
+                        <button type="button" onClick={() => setPremoves((queue) => queue.slice(0, -1))} disabled={isMyTurn || movePending} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold disabled:opacity-40">Убрать последний</button>
+                        <button type="button" onClick={clearBoardPremove} disabled={isMyTurn || movePending} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold disabled:opacity-40">Очистить</button>
                       </div>
                     </div>
                     <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
