@@ -198,6 +198,10 @@ assert.equal(isOnlineGameSnapshotNewer(snapshot, { ...snapshot, updated_at: "202
   "A stale poll response must not overwrite a newer snapshot.");
 assert.equal(isOnlineGameSnapshotNewer(snapshot, { ...snapshot, moves: [...snapshot.moves, { uci: "e7e5" }] }), true);
 assert.equal(isOnlineGameSnapshotNewer(snapshot, { ...snapshot, status: "completed" }), true);
+assert.equal(isOnlineGameSnapshotNewer(
+  { ...snapshot, status: "completed", updated_at: "2026-11-21T12:00:07.000Z" },
+  { ...snapshot, status: "completed", updated_at: "2026-11-21T12:00:06.000Z" },
+), false, "An older completed row must not overwrite the final row with newer clocks or ratings.");
 assert.equal(isOnlineGameSnapshotNewer({ ...snapshot, status: "completed" }, snapshot), false,
   "A completed game must never be reopened by a late active snapshot.");
 assert.equal(parseOnlineGameRealtimeFrame(JSON.stringify({ event: "postgres_changes" }), topic), null);
