@@ -4,7 +4,7 @@ import { Chessboard, defaultArrowOptions } from "react-chessboard";
 import type { Cls } from "../types";
 import { ClsBadge } from "./ClsBadge";
 import { CLS_META } from "../types";
-import { createPremove, getPremoveMoves, type Premove } from "../lib/premoves";
+import { createCapturePremove, createPremove, getPremoveCaptureMoves, getPremoveMoves, type Premove } from "../lib/premoves";
 import { loadGameplayPreferences, type GameBoardTheme } from "../lib/gameplayPreferences";
 import { playSound, setSoundEnabled } from "../lib/sound";
 
@@ -103,10 +103,26 @@ export function GameBoard({
   autoQueen = true,
 }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
-  const [promotionDraft, setPromotionDraft] = useState<{ from: string; to: string; kind: "move" | "premove" } | null>(null);
+  const [captureModifierPressed, setCaptureModifierPressed] = useState(false);
+  const [promotionDraft, setPromotionDraft] = useState<{ from: string; to: string; kind: "move" | "premove"; capture?: boolean } | null>(null);
 
   useEffect(() => {
     setSoundEnabled(loadGameplayPreferences().soundEnabled);
+  }, []);
+
+  // Hold Shift while choosing a destination to explicitly queue a capture-intent premove.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Shift") setCaptureModifierPressed(true); };
+    const onKeyUp = (event: KeyboardEvent) => { if (event.key === "Shift") setCaptureModifierPressed(false); };
+    const onBlur = () => setCaptureModifierPressed(false);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
   }, []);
 
   useEffect(() => setSelected(null), [fen, interactive]);
@@ -131,19 +147,33 @@ export function GameBoard({
       : [],
     [fen, selected, allowedColor, canPremoveColor]
   );
-  const selectOrQueuePremove = useCallback((from: string, to: string): boolean => {
+  const selectedPremoveCaptureMoves = useMemo(
+    () => selected && allowedColor && canPremoveColor(allowedColor)
+      ? getPremoveCaptureMoves(fen, allowedColor, selected)
+      : [],
+    [fen, selected, allowedColor, canPremoveColor]
+  );
+
+  const selectOrQueuePremove = useCallback((from: string, to: string, forceCapture = false): boolean => {
     if (!allowedColor || !onPremove) return false;
-    const candidates = getPremoveMoves(fen, allowedColor, from).filter((move) => move.to === to);
-    if (!candidates.length) return false;
-    if (candidates.some((move) => move.promotion) && !autoQueen) {
-      setPromotionDraft({ from, to, kind: "premove" });
+    const normalCandidate = createPremove(fen, allowedColor, from, to, "q");
+    const captureCandidate = createCapturePremove(fen, allowedColor, from, to, "q");
+    const target = chess?.get(to as Square);
+    // Occupied enemy squares are always capture-intent. A currently empty square that
+    // isn't a legal quiet move (e.g. a pawn's diagonal) is inferred as a capture.
+    // Shift disambiguates squares that could be either a quiet move or a future capture.
+    const captureIntent = forceCapture
+      || (!!target && target.color !== allowedColor)
+      || (!normalCandidate && !!captureCandidate);
+    const candidate = captureIntent ? captureCandidate : normalCandidate;
+    if (!candidate) return false;
+    if (candidate.promotion && !autoQueen) {
+      setPromotionDraft({ from, to, kind: "premove", capture: !!candidate.capture });
       return true;
     }
-    const candidate = createPremove(fen, allowedColor, from, to, "q");
-    if (!candidate) return false;
     onPremove(candidate);
     return true;
-  }, [fen, allowedColor, onPremove, autoQueen]);
+  }, [fen, allowedColor, onPremove, autoQueen, chess]);
 
   const tryMove = useCallback(
     (from: string, to: string): boolean => {
@@ -192,22 +222,29 @@ export function GameBoard({
       s[animated.square] = { ...(s[animated.square] ?? {}), ...vars };
     }
     if (selected && chess) {
-      const selectedIsPremove = selectedPremoveMoves.length > 0;
+      const selectedIsPremove = selectedPremoveMoves.length > 0 || selectedPremoveCaptureMoves.length > 0;
       s[selected] = {
         ...(s[selected] ?? {}),
         background: selectedIsPremove ? "rgba(220, 62, 62, 0.42)" : "rgba(20, 130, 200, 0.5)",
         boxShadow: selectedIsPremove ? "inset 0 0 0 3px rgba(220,62,62,.9)" : undefined,
       };
-      const destinations = selectedIsPremove
-        ? selectedPremoveMoves.map((move) => ({ to: move.to, captured: !!chess.get(move.to as Square) }))
+      const normalDestinations = selectedIsPremove
+        ? selectedPremoveMoves.map((move) => ({ to: move.to, captured: !!chess.get(move.to as Square), captureOnly: false }))
         : showLegalMoves && canMoveColor(chess.get(selected as Square)?.color ?? "")
-          ? chess.moves({ square: selected as Square, verbose: true })
+          ? chess.moves({ square: selected as Square, verbose: true }).map((move) => ({ to: move.to, captured: !!move.captured, captureOnly: false }))
           : [];
-      for (const move of destinations) {
+      const captureOnlyDestinations = selectedIsPremove
+        ? selectedPremoveCaptureMoves
+            .filter((move) => !selectedPremoveMoves.some((normal) => normal.to === move.to))
+            .map((move) => ({ to: move.to, captured: !!chess.get(move.to as Square), captureOnly: true }))
+        : [];
+      for (const move of [...normalDestinations, ...captureOnlyDestinations]) {
         s[move.to] = {
           ...(s[move.to] ?? {}),
           background: selectedIsPremove
-            ? "radial-gradient(rgba(220,62,62,.72) 17%, transparent 19%)"
+            ? move.captureOnly
+              ? "radial-gradient(transparent 34%, rgba(220,62,62,.92) 37%, transparent 49%)"
+              : "radial-gradient(rgba(220,62,62,.72) 17%, transparent 19%)"
             : move.captured
               ? "radial-gradient(transparent 0%, transparent 79%, rgba(20,85,30,0.5) 80%)"
               : "radial-gradient(rgba(20,85,30,0.5) 19%, transparent 20%)",
@@ -216,11 +253,17 @@ export function GameBoard({
     }
     if (premove) {
       s[premove.from] = { ...(s[premove.from] ?? {}), background: "rgba(220,62,62,.38)", boxShadow: "inset 0 0 0 3px rgba(220,62,62,.9)" };
-      s[premove.to] = { ...(s[premove.to] ?? {}), background: "rgba(220,62,62,.22)", boxShadow: "inset 0 0 0 3px rgba(220,62,62,.75)" };
+      s[premove.to] = {
+        ...(s[premove.to] ?? {}),
+        background: "rgba(220,62,62,.22)",
+        boxShadow: "inset 0 0 0 3px rgba(220,62,62,.75)",
+        outline: premove.capture ? "3px dashed rgba(255,115,105,.95)" : undefined,
+        outlineOffset: "-3px",
+      };
     }
     if (extraSquareStyles) for (const [k, v] of Object.entries(extraSquareStyles)) s[k] = { ...(s[k] ?? {}), ...v };
     return s;
-  }, [lastMove, highlightLastMove, selected, chess, extraSquareStyles, badge?.square, badge?.cls, animKey, premove, selectedPremoveMoves, showLegalMoves, canMoveColor]);
+  }, [lastMove, highlightLastMove, selected, chess, extraSquareStyles, badge?.square, badge?.cls, animKey, premove, selectedPremoveMoves, selectedPremoveCaptureMoves, showLegalMoves, canMoveColor]);
 
   const chessArrows = useMemo(() => [
     ...arrows.map((a) => ({ startSquare: a.from, endSquare: a.to, color: a.color })),
@@ -276,7 +319,7 @@ export function GameBoard({
             setSelected(null);
             const piece = chess.get(sourceSquare as Square);
             if (piece && canPremoveColor(piece.color)) {
-              selectOrQueuePremove(sourceSquare, targetSquare);
+              selectOrQueuePremove(sourceSquare, targetSquare, captureModifierPressed);
               return false; // Keep the live board unchanged; only draw the queued premove.
             }
             return tryMove(sourceSquare, targetSquare);
@@ -291,8 +334,8 @@ export function GameBoard({
             if (selected && selected !== square) {
               const movingPiece = chess.get(selected as Square);
               if (movingPiece && canPremoveColor(movingPiece.color)) {
-                if (selectedPremoveMoves.some((move) => move.to === square)) {
-                  selectOrQueuePremove(selected, square);
+                if (selectedPremoveMoves.some((move) => move.to === square) || selectedPremoveCaptureMoves.some((move) => move.to === square)) {
+                  selectOrQueuePremove(selected, square, captureModifierPressed);
                   setSelected(null);
                   return;
                 }
@@ -328,6 +371,11 @@ export function GameBoard({
         }}
       />
       {badge && <BadgeOverlay badge={badge} orientation={orientation} animKey={animKey} />}
+      {selected && allowedColor && canPremoveColor(allowedColor) && (
+        <div className="pointer-events-none absolute left-2 top-2 z-30 rounded-md bg-black/70 px-2 py-1 text-[10px] font-semibold text-[#ffd4d1] shadow-lg">
+          Shift + клик/перетаскивание — премув на взятие
+        </div>
+      )}
       {promotionDraft && allowedColor && (
         <div className="absolute inset-0 z-40 flex items-center justify-center rounded-md bg-black/55">
           <div className="rounded-xl border border-white/15 bg-[#20231d] p-3 shadow-2xl">
@@ -340,7 +388,9 @@ export function GameBoard({
                   aria-label={piece === "q" ? "Ферзь" : piece === "r" ? "Ладья" : piece === "b" ? "Слон" : "Конь"}
                   onClick={() => {
                     if (promotionDraft.kind === "premove" && allowedColor) {
-                      const chosen = createPremove(fen, allowedColor, promotionDraft.from, promotionDraft.to, piece);
+                      const chosen = promotionDraft.capture
+                        ? createCapturePremove(fen, allowedColor, promotionDraft.from, promotionDraft.to, piece)
+                        : createPremove(fen, allowedColor, promotionDraft.from, promotionDraft.to, piece);
                       if (chosen) onPremove?.(chosen);
                     } else if (promotionDraft.kind === "move" && chess && onMove) {
                       try {
