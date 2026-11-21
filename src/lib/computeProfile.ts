@@ -57,7 +57,10 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
   const lowResourcePc = cores <= 4 || (memory !== undefined && memory <= 4);
   // Chromium reports deviceMemory in coarse buckets capped at 8 GB, so 8 is the top observable value.
   const highEndPc = cores >= 12 && (memory === undefined || memory >= 8);
-  const maxThreads = Math.min(16, Math.max(1, cores - 1));
+  // Leave CPU headroom for the browser compositor, React and the operating system.
+  // Stockfish remains multi-threaded, but must not occupy every logical core on large PCs.
+  const renderReserve = cores <= 2 ? 1 : Math.max(2, Math.ceil(cores * 0.25));
+  const maxThreads = Math.min(10, Math.max(1, cores - renderReserve));
   const verifierEnabled = cores >= 6 && (memory === undefined || memory >= 8);
 
   return {
