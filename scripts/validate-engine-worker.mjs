@@ -95,11 +95,15 @@ function makeBundle() {
 try {
   const successBundle = makeBundle();
   const successEngine = await StockfishEngine.create(successBundle, 64);
+  successEngine.newGame();
   const result = await successEngine.search({
     fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     depth: 8,
     multipv: 1,
   }).promise;
+  assert.ok(workers.at(-1).commands.includes("ucinewgame")
+    && workers.at(-1).commands.includes("isready"),
+    "A new review must wait for Stockfish's ready handshake after ucinewgame.");
   assert.equal(result[0]?.pv[0], "e2e4", "A healthy worker must return its bestmove.");
   assert.equal(result[0]?.score.cp, 42, "A healthy worker must return its parsed score.");
   successEngine.terminate();
