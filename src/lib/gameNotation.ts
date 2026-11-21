@@ -1,9 +1,25 @@
 import { Chess, type Square } from "chess.js";
 export interface UciGameMove { uci: string; san?: string; color?: "w" | "b"; }
-export function buildPgnFromSan(sans: string[], headers: Record<string, string> = {}): string {
-  const chess = new Chess();
-  for (const san of sans) chess.move(san);
-  for (const [key, value] of Object.entries(headers)) if (value.trim()) chess.setHeader(key, value.trim());
+const STANDARD_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+export function buildPgnFromSan(
+  sans: string[],
+  headers: Record<string, string> = {},
+  startFen?: string,
+): string {
+  const effectiveFen = startFen || headers.FEN;
+  const chess = effectiveFen ? new Chess(effectiveFen) : new Chess();
+  if (effectiveFen && effectiveFen !== STANDARD_START_FEN) {
+    chess.setHeader("SetUp", "1");
+    chess.setHeader("FEN", effectiveFen);
+  }
+  for (const san of sans) {
+    const move = chess.move(san);
+    if (!move) throw new Error(`Невозможно восстановить SAN ход партии: ${san}`);
+  }
+  for (const [key, value] of Object.entries(headers)) {
+    if (value.trim() && key !== "SetUp" && key !== "FEN") chess.setHeader(key, value.trim());
+  }
   return chess.pgn({ maxWidth: 80, newline: "\n" });
 }
 export function buildPgnFromUci(moves: UciGameMove[], headers: Record<string, string> = {}): string {
