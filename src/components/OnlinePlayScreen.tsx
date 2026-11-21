@@ -646,8 +646,17 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     void callAction(url, key, session, "timeout", { gameId: game.id })
       .then((data) => {
         if (data.game) {
-          if (game.status === "active" && data.game.status === "completed") playGameEndOnce(data.game.id);
+          if (game.status === "active" && data.game.status === "completed") {
+            playGameEndOnce(data.game.id);
+          } else {
+            // The browser can reach zero slightly before the server because of
+            // clock skew. If the server still considers time left, allow a retry
+            // after the existing 2.5-second throttle instead of getting stuck.
+            timeoutRequestedRef.current = false;
+          }
           applyGameSnapshot(data.game, game.id);
+        } else {
+          timeoutRequestedRef.current = false;
         }
       })
       .catch((reason: unknown) => {
