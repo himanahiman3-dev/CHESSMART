@@ -233,7 +233,8 @@ export interface CriticalPositionCandidate {
 export function selectCriticalPositions(
   game: ParsedGame,
   positions: PositionEval[],
-  maxCandidates = 3
+  maxCandidates = 3,
+  sacrificesOnly = false,
 ): CriticalPositionCandidate[] {
   const book = analyzeBook(game.moves.map((move) => move.san));
   const candidates: CriticalPositionCandidate[] = [];
@@ -268,6 +269,7 @@ export function selectCriticalPositions(
     // only by evaluation loss was silently excluding exactly these Brilliant candidates.
     const sacrificeCandidate = sacrifice && legal > 1
       && (best.pv[0] === move.uci || estimatedLoss <= BRILLIANT_MAX_LOSS);
+    if (sacrificesOnly && !sacrificeCandidate) continue;
 
     if (!shouldRecheckCriticalPosition(estimatedLoss, secondLineGap, legal, tactical)
       && !sacrificeCandidate) continue;
@@ -285,8 +287,8 @@ export function selectCriticalPositions(
 
 
 /**
- * Runs one timed UCI search for every position in the PGN.
- * No extra verification pass follows, so the main-pass time table remains meaningful.
+ * Runs the timed main pass, then spends a small device-aware reserve on promising
+ * piece sacrifices so a shallow first-pass MultiPV result cannot hide a Brilliant move.
  */
 export async function reviewGame(
   pgn: string,
@@ -372,8 +374,7 @@ export async function reviewGame(
   // This catches first-line sacrifices (estimated loss = 0) which the old critical
   // position gate discarded, and stabilizes the alternative-line evaluation.
   const sacrificeCandidates = maxSacrificeChecks > 0
-    ? selectCriticalPositions(game, positions, Math.max(1, maxSacrificeChecks))
-      .filter((candidate) => candidate.sacrifice)
+    ? selectCriticalPositions(game, positions, Math.max(1, maxSacrificeChecks), true)
     : [];
   const perSacrificeBudget = Math.max(300, Math.min(
     computeProfile?.verifierMoveTimeMs ?? 900,
@@ -429,8 +430,6 @@ export async function reviewGame(
     elapsedMs: now() - startedAt,
   });
 
-  const reachedDepths = positions.filter((position) => position.depth > 0).map((position) => position.depth);
-  const minimumReachedDepth = reachedDepths.length ? Math.min(...reachedDepths) : 0;
   return buildReview(game, positions, targetDepth);
 }
 
