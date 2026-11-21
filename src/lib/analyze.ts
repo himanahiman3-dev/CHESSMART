@@ -113,7 +113,7 @@ function playerElo(headers: Record<string, string>, c: Color): number | undefine
 
 export interface ReviewComputeProfile {
   mainMultiPv: number;
-  /** Maximum number of promising piece sacrifices to verify after the main pass. */
+  /** Maximum number of critical positions (including sacrifices and missed-mate candidates) to verify after the main pass. */
   verifierMaxMoves?: number;
   /** Extra search time for each selected sacrifice candidate. */
   verifierMoveTimeMs?: number;
@@ -285,8 +285,8 @@ export function selectCriticalPositions(
 
 
 /**
- * Runs the timed main pass, then spends a small device-aware reserve on promising
- * piece sacrifices so a shallow first-pass MultiPV result cannot hide a Brilliant move.
+ * Runs the timed main pass, then spends a small device-aware reserve on critical
+ * positions so shallow MultiPV results cannot hide tactical errors, mate threats or sacrifices.
  */
 export async function reviewGame(
   pgn: string,
@@ -302,9 +302,9 @@ export async function reviewGame(
   const movetimeMs = normalizeAnalysisTimeMs(timePerPositionMs);
   const targetDepth = REVIEW_TARGET_DEPTH;
   const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
-  const maxSacrificeChecks = Math.max(0, Math.min(3,
+  const maxVerificationChecks = Math.max(0, Math.min(3,
     Math.floor(computeProfile?.verifierMaxMoves ?? 1)));
-  const progressTotal = total + maxSacrificeChecks;
+  const progressTotal = total + maxVerificationChecks;
   const budgetMs = gameBudgetMs(N, movetimeMs);
   const startedAt = now();
 
@@ -371,19 +371,19 @@ export async function reviewGame(
   // on critical positions of every type: large evaluation swings, tactical errors,
   // forced-mate opportunities and sound sacrifices. Reserve one slot for the best
   // sacrifice candidate so an ordinary blunder cannot starve Brilliant verification.
-  const criticalCandidates = maxSacrificeChecks > 0
-    ? selectCriticalPositions(game, positions, Math.max(1, maxSacrificeChecks), false)
+  const criticalCandidates = maxVerificationChecks > 0
+    ? selectCriticalPositions(game, positions, Math.max(1, maxVerificationChecks), false)
     : [];
-  const bestSacrificeCandidate = maxSacrificeChecks > 0
+  const bestSacrificeCandidate = maxVerificationChecks > 0
     ? selectCriticalPositions(game, positions, 1, true)[0]
     : undefined;
   const verificationCandidates = [
     ...(bestSacrificeCandidate ? [bestSacrificeCandidate] : []),
     ...criticalCandidates.filter((candidate) => candidate.index !== bestSacrificeCandidate?.index),
-  ].slice(0, maxSacrificeChecks);
+  ].slice(0, maxVerificationChecks);
   const perVerificationBudget = Math.max(300, Math.min(
     computeProfile?.verifierMoveTimeMs ?? 900,
-    Math.floor((computeProfile?.tacticalExtraBudgetMs ?? 1800) / Math.max(1, maxSacrificeChecks || 1)),
+    Math.floor((computeProfile?.tacticalExtraBudgetMs ?? 1800) / Math.max(1, maxVerificationChecks || 1)),
   ));
 
   for (let check = 0; check < verificationCandidates.length; check++) {
@@ -483,7 +483,13 @@ export function buildReview(
 
     const cpBefore = cpFor(scoreBefore, color);
     const cpAfter = cpFor(scoreAfter, color);
-    const prevLoss = i > 0 && reviews[i - 1].cls !== "forced" ? reviews[i - 1].winLoss : 0;
+    // Measure the opponent's previous error from this player's own rating curve.
+    // Using reviews[i - 1].winLoss mixed two different players' Elo mappings and
+    // could miss a blunder whenever the players had different ratings.
+    const previousPositionWin = i > 0 && reviews[i - 1].cls !== "forced"
+      ? winForRated(positions[i - 1].lines[0].score, color, elo)
+      : winBefore;
+    const prevLoss = Math.max(0, winBefore - previousPositionWin);
     const prevSan = i > 0 ? reviews[i - 1].san : undefined;
 
     // --- жертва для Brilliant ---
