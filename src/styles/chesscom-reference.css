@@ -417,3 +417,29 @@ body {
   box-shadow: none !important;
 }
 .cm-nav-submenu button { min-height: 32px !important; padding: 7px 8px !important; }
+
+
+/* Account photos are replaced elements: keep their image box as a normal block,
+   not a grid container, and give the profile-page fallback the same frame. */
+img.cm-sidebar-avatar,
+img.cm-avatar,
+img.cm-play-square-avatar,
+img.cm-profile-avatar-image {
+  display: block !important;
+  object-fit: cover !important;
+  place-items: initial !important;
+}
+.cm-profile-avatar-image {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: inherit;
+}
+.cm-profile-avatar-fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: inherit;
+  font-size: inherit;
+  line-height: 1;
+}
