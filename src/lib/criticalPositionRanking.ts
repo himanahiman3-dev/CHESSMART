@@ -22,9 +22,11 @@ export function shouldRecheckCriticalPosition(
   estimatedLoss: number,
   secondLineGap: number,
   legalMoveCount: number,
-  tactical: boolean
+  tactical: boolean,
+  mateOpportunity = false,
 ): boolean {
-  return estimatedLoss >= 2.5
+  return mateOpportunity
+    || estimatedLoss >= 2.5
     || (legalMoveCount >= 18 && secondLineGap >= 6)
     || (tactical && estimatedLoss >= 1.5);
 }
