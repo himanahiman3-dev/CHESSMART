@@ -363,7 +363,7 @@ const handleSquareSelection = useCallback((square: Square) => {
             setSelected(null);
             const piece = chess.get(sourceSquare as Square);
             if (piece && canPremoveColor(piece.color)) {
-              selectOrQueuePremove(sourceSquare, targetSquare, captureModifierPressed);
+              selectOrQueuePremove(sourceSquare, targetSquare, captureModifierPressed || captureModeEnabled);
               return false; // Keep the live board unchanged; only draw the queued premove.
             }
             return tryMove(sourceSquare, targetSquare);
