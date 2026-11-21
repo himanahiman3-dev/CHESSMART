@@ -306,7 +306,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     };
     void connect();
     return () => { cancelled = true; };
-  }, [configured, url, key]);
+  }, [configured, url, key, applyGameSnapshot]);
 
   const authenticate = async () => {
     setBusy(true); setError(null); setNotice(null);
@@ -546,7 +546,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       setSearching(false);
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally { searchBusyRef.current = false; }
-  }, [session, timeControl, rated, url, key]);
+  }, [session, timeControl, rated, url, key, applyGameSnapshot]);
 
   useEffect(() => {
     if (!searching || !session || game) return;
@@ -641,7 +641,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
         timeoutRequestedRef.current = false;
         setError(reason instanceof Error ? reason.message : String(reason));
       });
-  }, [session, game?.id, game?.fen, game?.status, turn, whiteClock, blackClock, now, url, key]);
+  }, [session, game?.id, game?.fen, game?.status, turn, whiteClock, blackClock, now, url, key, applyGameSnapshot]);
 
   const isMyTurn = !!game && game.status === "active" && !!myColor && turn === myColor && !movePending;
   const canQueuePremove = !!game && game.status === "active" && !!myColor && turn !== myColor && preferences.premovesEnabled && !movePending;
