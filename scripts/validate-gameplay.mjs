@@ -32,7 +32,7 @@ assert.equal(MAX_PREMOVE_QUEUE, 5);
 const projectedWhiteTurn = projectPremoveTurn(afterE4.fen(), "w");
 assert.ok(projectedWhiteTurn);
 assert.equal(new Chess(projectedWhiteTurn).turn(), "w");
-assert.equal(projectedWhiteTurn.split(/\\s+/)[3], "-",
+assert.equal(projectedWhiteTurn.split(/\s+/)[3], "-",
   "The preview must not preserve an en-passant right across an opponent reply.");
 const plannedF3 = createPremove(afterE4.fen(), "w", "f2", "f3");
 assert.ok(plannedF3);
