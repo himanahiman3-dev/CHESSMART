@@ -373,7 +373,7 @@ export function GameBoard({
       {badge && <BadgeOverlay badge={badge} orientation={orientation} animKey={animKey} />}
       {selected && allowedColor && canPremoveColor(allowedColor) && (
         <div className="pointer-events-none absolute left-2 top-2 z-30 rounded-md bg-black/70 px-2 py-1 text-[10px] font-semibold text-[#ffd4d1] shadow-lg">
-          Shift + клетка — премув на взятие
+          Shift + клик/перетаскивание — премув на взятие
         </div>
       )}
       {promotionDraft && allowedColor && (
