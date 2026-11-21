@@ -16,6 +16,29 @@ create schema auth;
 create table auth.users (id uuid primary key);
 create schema storage;
 create schema if not exists extensions;
+create schema realtime;
+create table realtime.messages (
+  id uuid primary key default gen_random_uuid(),
+  topic text not null,
+  extension text not null,
+  payload jsonb,
+  event text,
+  private boolean not null default false
+);
+alter table realtime.messages enable row level security;
+create function realtime.topic() returns text
+language sql stable
+as $ select nullif(current_setting('realtime.topic', true), '') $;
+create function realtime.send(payload jsonb, event text, topic text, private boolean)
+returns void
+language plpgsql security definer
+set search_path = pg_catalog, realtime
+as $broadcast_stub$
+begin
+  insert into realtime.messages(topic, extension, payload, event, private)
+  values ($3, 'broadcast', $1, $2, $4);
+end;
+$broadcast_stub$;
 create extension if not exists pgcrypto with schema extensions;
 create table storage.buckets (
   id text primary key,
@@ -41,6 +64,7 @@ psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611200001_puzzle_battles.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611200002_puzzle_battle_ratings_seasons.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261120210843_enable_online_game_realtime.sql
 psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611210001_audit_query_indexes_and_rls.sql
+psql -v ON_ERROR_STOP=1 -f supabase/migrations/202611210002_online_game_broadcast_fastpath.sql
 
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
@@ -76,6 +100,28 @@ begin
   ) then raise exception 'online_games must keep RLS enabled'; end if;
   if not has_table_privilege('authenticated', 'public.online_games', 'SELECT') then
     raise exception 'Authenticated participants need SELECT privilege for Realtime'; end if;
+  if not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.online_games'::regclass
+      and tgname = 'online_games_broadcast_update'
+      and not tgisinternal
+      and tgenabled = 'O'
+  ) then raise exception 'Committed online game Broadcast trigger is missing or disabled'; end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'realtime'
+      and tablename = 'messages'
+      and policyname = 'online game participants receive private broadcasts'
+      and cmd = 'SELECT'
+      and roles @> array['authenticated']::name[]
+  ) then raise exception 'Private Broadcast participant policy is missing'; end if;
+  if not exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'broadcast_online_game_update'
+      and p.prosecdef
+  ) then raise exception 'Broadcast trigger must run as a tightly scoped security definer'; end if;
 end;
 $online_realtime_test$;
 
