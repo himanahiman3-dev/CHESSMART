@@ -23,7 +23,7 @@ interface Props {
   profile: PlayerProfile;
   onFinished: (updatedProfile: PlayerProfile) => void;
   onPersonalReviewReady: (review: GameReview, color: Color) => void;
-  onOpenReview: (review: GameReview) => void;
+  onOpenReview: (review: GameReview, color: Color) => void;
   onBack: () => void;
 }
 
@@ -469,7 +469,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
           pgn={completedPgn}
           playerColor={playerColor}
           onAnalyzed={onPersonalReviewReady}
-          onOpenReview={onOpenReview}
+          onOpenReview={(review, color) => onOpenReview(review, color)}
         />
       )}
     </div>
