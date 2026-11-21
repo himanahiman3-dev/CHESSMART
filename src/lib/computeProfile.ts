@@ -66,7 +66,10 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
   // Stockfish remains multi-threaded, but must not occupy every logical core on large PCs.
   const renderReserve = cores <= 2 ? 1 : Math.max(2, Math.ceil(cores * 0.25));
   const maxThreads = Math.min(10, Math.max(1, cores - renderReserve));
-  const reviewWorkers = lowResourcePc ? 1 : highEndPc ? 3 : cores >= 6 ? 2 : 1;
+  // Keep whole-game review on the already initialized engine until concurrent
+  // WASM workers have passed real-browser stress tests. This avoids a regression
+  // where multiple Stockfish instances can stall the first search on some devices.
+  const reviewWorkers = 1;
   const verifierEnabled = cores >= 6 && (memory === undefined || memory >= 8);
 
   return {
