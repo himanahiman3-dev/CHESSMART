@@ -356,10 +356,10 @@ const handleSquareSelection = useCallback((square: Square) => {
       className={`cm-game-board relative aspect-square w-full select-none rounded-[4px] shadow-xl shadow-black/40 ${interactive || premoveEnabled ? "cm-game-board-interactive" : ""}`}
       style={{ containerType: "inline-size" }}
       onContextMenu={(event) => {
-        if (!premove && !promotionDraft) return;
+        if (!premoves.length && !promotionDraft) return;
         event.preventDefault();
         setPromotionDraft(null);
-        if (premove) onClearPremove?.();
+        if (premoves.length) onClearPremove?.();
         setSelected(null);
       }}
     >
@@ -387,7 +387,7 @@ const handleSquareSelection = useCallback((square: Square) => {
             const piece = chess.get(sourceSquare as Square);
             if (piece && canPremoveColor(piece.color)) {
               selectOrQueuePremove(sourceSquare, targetSquare, captureModifierPressed || captureModeEnabled);
-              return false; // Keep the live board unchanged; only draw the queued premove.
+              return false; // The projected board updates after the parent appends the queued move.
             }
             return tryMove(sourceSquare, targetSquare);
           },
