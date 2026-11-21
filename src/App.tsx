@@ -61,6 +61,8 @@ function SidebarIcon({ name }: { name: string }) {
     online: <><path d="M5 12a10 10 0 0 1 14 0M8 15a6 6 0 0 1 8 0M11 18a2 2 0 0 1 2 0" /><circle cx="12" cy="20" r=".8" fill="currentColor" stroke="none" /></>,
     more: <><circle cx="5" cy="12" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="19" cy="12" r="1" fill="currentColor" /></>,
     lessons: <><path d="m2 9 10-5 10 5-10 5z" /><path d="M6 11v5c3.5 3 8.5 3 12 0v-5M22 9v7" /></>,
+    train: <><path d="M4 9v6M8 6v12M16 6v12M20 9v6M2 12h20" /></>,
+    community: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
     search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></>,
     collapse: <><path d="M3 4h18M3 20h18M9 4v16M16 9l-3 3 3 3" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a8 8 0 0 1-1.5.9l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.5-.9l-1.7.6-1.4-2.4 1.4-1.1a7 7 0 0 1 0-1.8L6.3 12l1.4-2.4 1.7.6a8 8 0 0 1 1.5-.9l.3-1.8H14l.3 1.8a8 8 0 0 1 1.5.9l1.7-.6 1.4 2.4-1.4 1.1a7 7 0 0 1-.1 1.9Z" transform="translate(0 -1)" /></>,
@@ -85,7 +87,7 @@ function Main() {
   const [isRefining, setIsRefining] = useState(false);
   const [profile, setProfile] = useState<PlayerProfile>(() => loadPlayerProfile());
   const [mobileMore, setMobileMore] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [expandedNav, setExpandedNav] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -233,7 +235,7 @@ function Main() {
     setIsRefining(false);
     setMode(next);
     setMobileMore(false);
-    setMoreOpen(false);
+    setExpandedNav(null);
     setSearchOpen(false);
     setSearchTerm("");
     setStage("import");
@@ -311,38 +313,89 @@ function Main() {
   }
 
   const searchTargets: Array<{ id: MainMode; label: string }> = [
-    { id: "playHub", label: "Играть" },
-    { id: "puzzles", label: "Задачи" },
-    { id: "lessons", label: "Учёба" },
+    { id: "playHub", label: "Главная" },
     { id: "online", label: "Играть по сети" },
-    { id: "play", label: "Боты" },
-    { id: "coach", label: "Тренер" },
+    { id: "play", label: "Против бота" },
+    { id: "battle", label: "Дуэль задач" },
+    { id: "puzzles", label: "Библиотека задач" },
+    { id: "daily", label: "Ежедневная задача" },
+    { id: "lessons", label: "Учебный план" },
+    { id: "academy", label: "Академия" },
+    { id: "coach", label: "Персональный тренер" },
+    { id: "openings", label: "Дебюты" },
     { id: "review", label: "Анализ партий" },
-    { id: "battle", label: "Турниры" },
-    { id: "openings", label: "Варианты шахмат" },
+    { id: "mistakes", label: "Тренажёр ошибок" },
+    { id: "endgame", label: "Эндшпиль" },
+    { id: "lab", label: "Лаборатория позиций" },
+    { id: "diagnostics", label: "Grandmaster 300" },
     { id: "profile", label: "Профиль" },
+    { id: "profileDetails", label: "Архив партий" },
     { id: "stats", label: "Статистика" },
-    { id: "settings", label: "Настройки" },
     { id: "news", label: "Новости проекта" },
+    { id: "settings", label: "Настройки" },
+    { id: "systems", label: "Системы и диагностика" },
   ];
   const filteredSearchTargets = searchTargets.filter((item) => item.label.toLowerCase().includes(searchTerm.trim().toLowerCase()));
-  const communityActive = mode === "online" || mode === "battle";
-  const mainNavigation: Array<{ id: MainMode; label: string; icon: string }> = [
-    { id: "playHub", label: "Играть", icon: "play" },
-    { id: "puzzles", label: "Задачи", icon: "puzzle" },
-    { id: "lessons", label: "Учёба", icon: "lessons" },
+
+  const sidebarGroups: Array<{ id: string; label: string; icon: string; items: Array<{ id: MainMode; label: string }> }> = [
+    { id: "play", label: "Играть", icon: "play", items: [
+      { id: "playHub", label: "Главная" },
+      { id: "online", label: "Играть по сети" },
+      { id: "play", label: "Против бота" },
+      { id: "battle", label: "Дуэль задач" },
+    ] },
+    { id: "puzzles", label: "Задачи", icon: "puzzle", items: [
+      { id: "puzzles", label: "Библиотека задач" },
+      { id: "daily", label: "Ежедневная задача" },
+    ] },
+    { id: "learn", label: "Учёба", icon: "lessons", items: [
+      { id: "lessons", label: "Учебный план" },
+      { id: "academy", label: "Академия" },
+      { id: "coach", label: "Персональный тренер" },
+      { id: "openings", label: "Дебюты и варианты" },
+    ] },
+    { id: "train", label: "Тренировка", icon: "train", items: [
+      { id: "review", label: "Анализ партий" },
+      { id: "mistakes", label: "Тренажёр ошибок" },
+      { id: "endgame", label: "Тренировка эндшпиля" },
+      { id: "lab", label: "Лаборатория позиций" },
+      { id: "diagnostics", label: "Grandmaster 300" },
+      { id: "systems", label: "Системы и диагностика" },
+    ] },
+    { id: "news", label: "Новости", icon: "news", items: [
+      { id: "news", label: "Изменения CHESSMART" },
+    ] },
+    { id: "community", label: "Сообщество", icon: "community", items: [
+      { id: "profile", label: "Профиль игрока" },
+      { id: "stats", label: "Статистика" },
+      { id: "profileDetails", label: "Архив партий" },
+    ] },
+    { id: "other", label: "Ещё", icon: "more", items: [
+      { id: "settings", label: "Настройки" },
+    ] },
   ];
+  const currentNavGroup = sidebarGroups.find((group) => group.items.some((item) => item.id === mode))?.id ?? null;
+
   const mobileMoreNavigation: Array<{ id: MainMode; label: string; description: string }> = [
-    { id: "review", label: "Анализ партий", description: "Разбор ходов и Stockfish" },
     { id: "online", label: "Играть по сети", description: "Живые партии и вызовы друзьям" },
-    { id: "coach", label: "Тренер", description: "Персональные подсказки" },
-    { id: "battle", label: "Турниры и соревнования", description: "Шахматные испытания" },
-    { id: "academy", label: "Академия", description: "План обучения" },
-    { id: "openings", label: "Варианты и дебюты", description: "Изучение дебютов" },
-    { id: "stats", label: "Статистика", description: "Твои результаты" },
+    { id: "play", label: "Против бота", description: "Stockfish и уровни сложности" },
+    { id: "battle", label: "Дуэль задач", description: "Соревнование на скорость и точность" },
+    { id: "review", label: "Анализ партий", description: "Разбор ходов и несколько движков" },
+    { id: "puzzles", label: "Библиотека задач", description: "Тактика и тематические подборки" },
+    { id: "daily", label: "Ежедневная задача", description: "Короткая ежедневная тренировка" },
+    { id: "lessons", label: "Учебный план", description: "Последовательное обучение" },
+    { id: "academy", label: "Академия", description: "План тренировок" },
+    { id: "coach", label: "Персональный тренер", description: "Подсказки и разбор ошибок" },
+    { id: "openings", label: "Дебюты", description: "Дебютная база и планы" },
+    { id: "mistakes", label: "Тренажёр ошибок", description: "Повторение сложных позиций" },
+    { id: "endgame", label: "Эндшпиль", description: "Тренировка окончаний" },
+    { id: "lab", label: "Лаборатория позиций", description: "Создание и анализ позиций" },
+    { id: "profile", label: "Профиль", description: "Рейтинги и личный прогресс" },
+    { id: "profileDetails", label: "Архив партий", description: "История и резервные копии" },
+    { id: "stats", label: "Статистика", description: "Результаты и точность" },
     { id: "news", label: "Новости", description: "Изменения CHESSMART" },
-    { id: "settings", label: "Настройки", description: "Профиль и интерфейс" },
-    { id: "systems", label: "Помощь", description: "Инструменты и диагностика" },
+    { id: "settings", label: "Настройки", description: "Доска, интерфейс и аккаунт" },
+    { id: "systems", label: "Системы", description: "Диагностика инструментов" },
   ];
 
   return (
@@ -353,26 +406,40 @@ function Main() {
         </button>
 
         <nav className="cm-sidebar-nav" aria-label="Главная навигация">
-          {mainNavigation.map((item) => (
-            <button key={item.id} type="button" onClick={() => changeMode(item.id)} aria-current={(mode === item.id || (item.id === "playHub" && mode === "home")) ? "page" : undefined} className={(mode === item.id || (item.id === "playHub" && mode === "home")) ? "cm-side-item active" : "cm-side-item"}>
-              <span className="cm-side-icon"><SidebarIcon name={item.icon} /></span><span>{item.label}</span>
-            </button>
-          ))}
-          <div className="cm-side-group cm-more-group">
-            <button type="button" onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen} className={moreOpen ? "cm-side-item active" : "cm-side-item"}>
-              <span className="cm-side-icon"><SidebarIcon name="more" /></span><span>Ещё</span><span className="cm-side-chevron">{moreOpen ? "⌃" : "⌄"}</span>
-            </button>
-            {moreOpen && <div className="cm-side-submenu">
-              <button type="button" onClick={() => changeMode("review")}>Анализ партий</button>
-              <button type="button" onClick={() => changeMode("online")} className={communityActive ? "active" : ""}>Играть по сети</button>
-              <button type="button" onClick={() => changeMode("coach")}>Тренер</button>
-              <button type="button" onClick={() => changeMode("battle")}>Турниры и соревнования</button>
-              <button type="button" onClick={() => changeMode("academy")}>Академия</button>
-              <button type="button" onClick={() => changeMode("openings")}>Варианты и дебюты</button>
-              <button type="button" onClick={() => changeMode("stats")}>Статистика</button>
-              <button type="button" onClick={() => changeMode("news")}>Новости</button>
-            </div>}
-          </div>
+          {sidebarGroups.map((group) => {
+            const expanded = expandedNav === group.id;
+            const active = currentNavGroup === group.id;
+            return (
+              <div key={group.id} className={expanded ? "cm-side-group cm-nav-group expanded" : "cm-side-group cm-nav-group"}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedNav((current) => current === group.id ? null : group.id)}
+                  aria-expanded={expanded}
+                  aria-current={active ? "page" : undefined}
+                  className={active ? "cm-side-item cm-nav-parent active" : "cm-side-item cm-nav-parent"}
+                >
+                  <span className="cm-side-icon"><SidebarIcon name={group.icon} /></span>
+                  <span>{group.label}</span>
+                  <span className="cm-side-chevron" aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
+                </button>
+                {expanded && (
+                  <div className="cm-side-submenu cm-nav-submenu">
+                    {group.items.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={mode === item.id || (mode === "home" && item.id === "playHub") ? "active" : ""}
+                        aria-current={mode === item.id ? "page" : undefined}
+                        onClick={() => changeMode(item.id)}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="cm-sidebar-bottom">
@@ -416,11 +483,11 @@ function Main() {
         <main className="cm-main-content mobile-app-main">{page}</main>
       </div>
       <nav className="cm-mobile-nav" aria-label="Мобильная навигация">
-        <button type="button" onClick={() => changeMode("playHub")} className={mode === "playHub" || mode === "home" ? "active" : ""}><span>♟</span>Играть</button>
-        <button type="button" onClick={() => changeMode("puzzles")} className={mode === "puzzles" ? "active" : ""}><span>◆</span>Задачи</button>
-        <button type="button" onClick={() => changeMode("lessons")} className={mode === "lessons" ? "active" : ""}><span>♜</span>Учёба</button>
-        <button type="button" onClick={() => changeMode("profile")} className={mode === "profile" ? "active" : ""}><span>♙</span>Профиль</button>
-        <button type="button" onClick={() => { setMobileMore((open) => !open); setMoreOpen(false); }} className={mobileMore ? "active" : ""} aria-expanded={mobileMore} aria-haspopup="dialog"><span>•••</span>Ещё</button>
+        <button type="button" onClick={() => changeMode("playHub")} className={currentNavGroup === "play" ? "active" : ""}><span>♟</span>Играть</button>
+        <button type="button" onClick={() => changeMode("puzzles")} className={currentNavGroup === "puzzles" ? "active" : ""}><span>◆</span>Задачи</button>
+        <button type="button" onClick={() => changeMode("lessons")} className={currentNavGroup === "learn" ? "active" : ""}><span>♜</span>Учёба</button>
+        <button type="button" onClick={() => changeMode("review")} className={currentNavGroup === "train" ? "active" : ""}><span>⌁</span>Тренировка</button>
+        <button type="button" onClick={() => setMobileMore((open) => !open)} className={mobileMore ? "active" : ""} aria-expanded={mobileMore} aria-haspopup="dialog"><span>•••</span>Ещё</button>
       </nav>
       {mobileMore && (
         <div className="cm-mobile-more-backdrop" onClick={() => setMobileMore(false)}>
@@ -433,8 +500,8 @@ function Main() {
           >
             <header className="cm-mobile-more-header">
               <div>
-                <h2 id="cm-mobile-more-title">Ещё в CHESSMART</h2>
-                <p>Разделы, инструменты и настройки</p>
+                <h2 id="cm-mobile-more-title">Разделы CHESSMART</h2>
+                <p>Игры, обучение, анализ и профиль</p>
               </div>
               <button type="button" onClick={() => setMobileMore(false)} aria-label="Закрыть меню">×</button>
             </header>
