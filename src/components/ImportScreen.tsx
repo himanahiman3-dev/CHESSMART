@@ -4,7 +4,7 @@ import { SAMPLE_GAMES, fetchGameFromLink } from "../lib/importers";
 import { parseGame } from "../lib/analyze";
 import { clearPositionCache, positionCacheSize } from "../lib/db";
 import { clearEngineCache } from "../lib/engineFiles";
-import { ANALYSIS_TIME_MODES, DEFAULT_ANALYSIS_TIME_MS, normalizeAnalysisTimeMs } from "../lib/analysisBudget";
+import { ANALYSIS_PRESETS, DEFAULT_ANALYSIS_CONFIG, normalizeAnalysisConfig, type AnalysisConfig } from "../lib/analysisBudget";
 
 const PIECES = [
   ["♜", "♞", "♝", "♛", "♚", "♝", "♞", "♜"],
@@ -44,18 +44,21 @@ function formatResult(result: string | undefined) {
   return "Результат не указан";
 }
 
-export function ImportScreen({ onStart }: { onStart: (pgn: string, timePerPositionMs: number) => void }) {
+export function ImportScreen({ onStart }: { onStart: (pgn: string, config: AnalysisConfig) => void }) {
   const { info } = useEngine();
   const [pgn, setPgn] = useState("");
   const [link, setLink] = useState("");
-  const [timePerPositionMs, setTimePerPositionMs] = useState<number>(() => {
+  const [analysisConfig, setAnalysisConfig] = useState<AnalysisConfig>(() => {
     try {
-      const saved = localStorage.getItem("chess-review:analysis-time-ms:v1");
-      return saved === null ? DEFAULT_ANALYSIS_TIME_MS : normalizeAnalysisTimeMs(Number(saved));
+      const saved = localStorage.getItem("chess-review:analysis-config:v2");
+      if (saved) return normalizeAnalysisConfig(JSON.parse(saved) as AnalysisConfig);
+      const legacy = localStorage.getItem("chess-review:analysis-time-ms:v1");
+      return legacy === null ? { ...DEFAULT_ANALYSIS_CONFIG } : normalizeAnalysisConfig(Number(legacy));
     } catch {
-      return DEFAULT_ANALYSIS_TIME_MS;
+      return { ...DEFAULT_ANALYSIS_CONFIG };
     }
   });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -80,13 +83,28 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, timePerPositi
 
   useEffect(() => {
     try {
-      localStorage.setItem("chess-review:analysis-time-ms:v1", String(timePerPositionMs));
+      localStorage.setItem("chess-review:analysis-config:v2", JSON.stringify(analysisConfig));
     } catch {
       // Настройка необязательна и не должна мешать анализу.
     }
-  }, [timePerPositionMs]);
+  }, [analysisConfig]);
 
-  const selectedTimeMode = ANALYSIS_TIME_MODES.find((item) => item.timeMs === timePerPositionMs);
+  const selectedPreset = ANALYSIS_PRESETS.find((item) => item.id === analysisConfig.preset) ?? ANALYSIS_PRESETS[0];
+  const choosePreset = (preset: AnalysisConfig["preset"]) => {
+    const selected = ANALYSIS_PRESETS.find((item) => item.id === preset) ?? ANALYSIS_PRESETS[0];
+    setAnalysisConfig((current) => ({
+      ...current,
+      preset,
+      depth: selected.depth,
+      movetimeMs: selected.movetimeMs,
+      nodes: selected.nodes,
+    }));
+  };
+  const updateAdvanced = (patch: Partial<AnalysisConfig>) => setAnalysisConfig((current) => ({
+    ...current,
+    ...patch,
+    preset: current.preset === "auto" ? "standard" : current.preset,
+  }));
 
   const game = parsed.game;
   const displayError = error || (pgn.trim() ? parsed.error : null);
@@ -137,7 +155,7 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, timePerPositi
       return;
     }
     setError(null);
-    onStart(pgn, timePerPositionMs);
+    onStart(pgn, analysisConfig);
   };
 
   const chooseSample = (samplePgn: string) => {
@@ -357,25 +375,25 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, timePerPositi
             <section className="rounded-[24px] border border-[#464e40] bg-[#292d27] p-5 shadow-[0_18px_55px_rgba(0,0,0,.18)] sm:p-6">
               <div className="mb-4">
                 <div className="text-[10px] font-extrabold uppercase tracking-[0.17em] text-[#8d9a80]">02 / Analysis setup</div>
-                <h3 className="mt-1 text-base font-extrabold text-white">Время на позицию</h3>
-                <p className="mt-1 text-[11px] leading-relaxed text-[#87917e]">Каждая позиция получает отдельный лимит времени. Целевая глубина Stockfish — 22.</p>
+                <h3 className="mt-1 text-base font-extrabold text-white">Режим анализа</h3>
+                <p className="mt-1 text-[11px] leading-relaxed text-[#87917e]">Авто подбирает ограничения под устройство. Ручные пресеты дают больше контроля над поиском.</p>
               </div>
               <div className="space-y-2">
-                {ANALYSIS_TIME_MODES.map((item) => {
-                  const active = timePerPositionMs === item.timeMs;
+                {ANALYSIS_PRESETS.map((item) => {
+                  const active = analysisConfig.preset === item.id;
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setTimePerPositionMs(item.timeMs)}
+                      onClick={() => choosePreset(item.id)}
                       aria-pressed={active}
                       className={`group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all ${active ? "border-[#8eaf68] bg-gradient-to-r from-[#3b4d31] to-[#303b2a] shadow-[inset_0_0_0_1px_rgba(169,210,128,.08)]" : "border-[#434b3e] bg-[#222620] hover:border-[#69785b] hover:bg-[#2c3328]"}`}
                     >
-                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-mono text-xs font-black ${active ? "bg-[#a7cb7d] text-[#1b2516]" : "bg-[#343b30] text-[#9ca891]"}`}>{item.level}</span>
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-mono text-[10px] font-black ${active ? "bg-[#a7cb7d] text-[#1b2516]" : "bg-[#343b30] text-[#9ca891]"}`}>{item.level}</span>
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className={`text-sm font-extrabold ${active ? "text-white" : "text-[#d4dacd]"}`}>{item.title}</span>
-                          {item.id === "optimal" && <span className="rounded-full bg-[#a5c87b]/15 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#bad89b]">Советуем</span>}
+                          {item.id === "standard" && <span className="rounded-full bg-[#a5c87b]/15 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#bad89b]">Советуем</span>}
                         </span>
                         <span className="mt-0.5 block text-[10px] text-[#909a87]">{item.desc}</span>
                       </span>
@@ -387,24 +405,69 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, timePerPositi
                 })}
               </div>
 
+              <button
+                type="button"
+                aria-expanded={advancedOpen}
+                onClick={() => setAdvancedOpen((open) => !open)}
+                className="mt-4 flex w-full items-center justify-between rounded-xl border border-[#434b3e] bg-[#222620] px-3.5 py-3 text-left text-[11px] font-bold text-[#c6d0bd] hover:border-[#69785b]"
+              >
+                <span>Расширенные настройки</span>
+                <span className="font-mono text-[#a8ce7e]">{advancedOpen ? "−" : "+"}</span>
+              </button>
+
+              {advancedOpen && (
+                <div className="mt-3 space-y-4 rounded-xl border border-white/[0.06] bg-[#20241e] p-3.5">
+                  <label className="block text-[10px] font-bold text-[#aeb9a3]">
+                    Критерий остановки
+                    <select
+                      value={analysisConfig.limitMode}
+                      onChange={(event) => updateAdvanced({ limitMode: event.target.value as AnalysisConfig["limitMode"] })}
+                      className="mt-1.5 w-full rounded-lg border border-[#4b5544] bg-[#292f26] px-3 py-2 text-xs text-white outline-none focus:border-[#8eaf68]"
+                    >
+                      <option value="hybrid">Гибрид: глубина + узлы + время</option>
+                      <option value="depth">Только глубина</option>
+                      <option value="time">Только время</option>
+                      <option value="nodes">Только узлы</option>
+                    </select>
+                  </label>
+                  <label className="block text-[10px] font-bold text-[#aeb9a3]">
+                    Максимальная глубина: <b className="font-mono text-white">{analysisConfig.depth}</b>
+                    <input type="range" min="12" max="30" step="1" value={analysisConfig.depth}
+                      onChange={(event) => updateAdvanced({ depth: Number(event.target.value) })}
+                      className="mt-2 w-full accent-[#a7cb7d]" />
+                  </label>
+                  <label className="block text-[10px] font-bold text-[#aeb9a3]">
+                    Лимит времени: <b className="font-mono text-white">{analysisConfig.movetimeMs} мс</b>
+                    <input type="range" min="50" max="5000" step="50" value={analysisConfig.movetimeMs}
+                      onChange={(event) => updateAdvanced({ movetimeMs: Number(event.target.value) })}
+                      className="mt-2 w-full accent-[#a7cb7d]" />
+                  </label>
+                  <label className="block text-[10px] font-bold text-[#aeb9a3]">
+                    Лимит узлов
+                    <select value={analysisConfig.nodes}
+                      onChange={(event) => updateAdvanced({ nodes: Number(event.target.value) })}
+                      className="mt-1.5 w-full rounded-lg border border-[#4b5544] bg-[#292f26] px-3 py-2 text-xs text-white outline-none focus:border-[#8eaf68]">
+                      <option value={100000}>100 тыс.</option>
+                      <option value={250000}>250 тыс.</option>
+                      <option value={500000}>500 тыс.</option>
+                      <option value={1000000}>1 млн</option>
+                      <option value={2500000}>2,5 млн</option>
+                      <option value={5000000}>5 млн</option>
+                      <option value={10000000}>10 млн</option>
+                    </select>
+                  </label>
+                  <p className="text-[9px] leading-relaxed text-[#77816f]">Настройки сохраняются на устройстве. Гибридный поиск остановится при достижении первого из включённых ограничений. Фактическое время зависит от CPU, сложности позиции и кэша.</p>
+                </div>
+              )}
+
               <div className="mt-4 rounded-xl border border-[#8eaf68]/20 bg-[#20241e] px-3.5 py-3.5">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa58f]">Целевой максимум</span>
-                  <span className="font-mono text-base font-black tabular-nums text-[#c5e3a4]">Depth 22</span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa58f]">Режим и ограничения</span>
+                  <span className="font-mono text-sm font-black tabular-nums text-[#c5e3a4]">{selectedPreset.title}</span>
                 </div>
-                <p className="mt-2 text-[10px] leading-relaxed text-[#77816f]">Поиск завершится при достижении depth 22 или по истечении таймера — что наступит раньше. При таймауте сохраняется последняя завершённая оценка.</p>
-              </div>
-
-              <div className="mt-4 rounded-xl border border-white/[0.06] bg-[#20241e] px-3.5 py-3">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa58f]">
-                  <SparkIcon className="h-3.5 w-3.5 text-[#a8ce7e]" />
-                  Выбранный режим
-                </div>
-                <div className="mt-1.5 flex items-end justify-between gap-2">
-                  <div className="text-sm font-extrabold text-white">{selectedTimeMode?.title ?? "Оптимальный"}</div>
-                  <div className="font-mono text-lg font-black tabular-nums text-[#b5d98e]">{timePerPositionMs.toLocaleString("ru-RU")}<span className="ml-1 text-[9px] font-bold uppercase tracking-wider text-[#87947c]">мс / позицию</span></div>
-                </div>
-                <div className="mt-1 text-[10px] text-[#87917e]">{selectedTimeMode?.note ?? "Время на каждую позицию"}</div>
+                <p className="mt-2 text-[10px] leading-relaxed text-[#77816f]">
+                  {analysisConfig.limitMode === "hybrid" ? `До глубины ${analysisConfig.depth}, ${analysisConfig.nodes.toLocaleString("ru-RU")} узлов или ${analysisConfig.movetimeMs} мс на позицию.` : analysisConfig.limitMode === "depth" ? `Глубина до ${analysisConfig.depth} полуходов.` : analysisConfig.limitMode === "time" ? `До ${analysisConfig.movetimeMs} мс на позицию.` : `До ${analysisConfig.nodes.toLocaleString("ru-RU")} узлов на позицию.`}
+                </p>
               </div>
 
               <button

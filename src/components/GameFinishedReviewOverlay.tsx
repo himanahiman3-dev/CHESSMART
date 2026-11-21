@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Color, GameReview } from "../types";
 import { useEngine } from "../hooks/useEngine";
 import { reviewGame, type AnalyzeProgress } from "../lib/analyze";
+import { createAnalysisConfig } from "../lib/analysisBudget";
 
 interface Props {
   gameKey: string;
@@ -18,7 +19,7 @@ export function GameFinishedReviewOverlay({
   onAnalyzed,
   onOpenReview,
 }: Props) {
-  const { engine, status, start, computeProfile } = useEngine();
+  const { engine, status, start, computeProfile, createReviewPool } = useEngine();
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null);
   const [review, setReview] = useState<GameReview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,25 +47,32 @@ export function GameFinishedReviewOverlay({
     setReview(null);
     setError(null);
 
-    // Быстрый предварительный проход: полный отчёт будет готов к нажатию кнопки.
-    void reviewGame(pgn, 300, engine, (next) => {
-      if (current) setProgress(next);
-    }, controller.signal, computeProfile)
-      .then((result) => {
+    // Fast hybrid preview; the detailed review can be rerun with a deeper preset.
+    void (async () => {
+      try {
+        const reviewPool = await createReviewPool(controller.signal);
+        const result = await reviewGame(
+          pgn,
+          createAnalysisConfig("fast"),
+          reviewPool,
+          (next) => { if (current) setProgress(next); },
+          controller.signal,
+          computeProfile,
+        );
         if (!current || controller.signal.aborted) return;
         setReview(result);
         onAnalyzedRef.current(result, playerColor);
-      })
-      .catch((reason: unknown) => {
+      } catch (reason: unknown) {
         if (!current || controller.signal.aborted) return;
         setError(reason instanceof Error ? reason.message : String(reason));
-      });
+      }
+    })();
 
     return () => {
       current = false;
       controller.abort();
     };
-  }, [engine, pgn, playerColor, gameKey, computeProfile]);
+  }, [engine, pgn, playerColor, gameKey, computeProfile, createReviewPool]);
 
   const ownMoves = useMemo(
     () => review?.moves.filter((move) => move.color === playerColor) ?? [],
@@ -127,7 +135,7 @@ export function GameFinishedReviewOverlay({
           <div className="cm-game-review-progress-track"><span style={{ width: `${percent}%` }} /></div>
           {error
             ? <p className="cm-game-review-error">{error}</p>
-            : <small>{review ? `${ownMoves.length} твоих ходов проверено · предварительный анализ` : `${done} / ${total} позиций · ${elapsedSeconds} сек.`}</small>}
+            : <small>{review ? `${ownMoves.length} твоих ходов проверено · предварительный анализ` : `${done} / ${total} позиций · ${progress?.activeWorkers ?? 0} активных воркеров · ${elapsedSeconds} сек.`}</small>}
         </div>
 
         <button

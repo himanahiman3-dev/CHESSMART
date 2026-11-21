@@ -54,7 +54,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
 
         <section className="overflow-hidden rounded-[28px] border border-[#414a3b] bg-[#272c25] shadow-[0_28px_90px_rgba(0,0,0,.32)]">
           <div className="border-b border-white/[0.06] px-5 py-5 sm:px-8">
-            <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#8fa17f]">Анализ партии</div>
+            <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#8fa17f]">Параллельный анализ партии</div>
             <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h1 className="text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl">Разбираем каждый ход.</h1>
@@ -86,8 +86,8 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
                   <div className="mt-1.5 text-lg font-black tabular-nums text-white">{Math.min(done + 1, total)}<span className="ml-1 text-[10px] font-bold text-[#7f8b75]">/ {total}</span></div>
                 </div>
                 <div className="rounded-xl border border-white/[0.05] bg-[#20241e] p-3">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#77836f]">Глубина</div>
-                  <div className="mt-1.5 text-lg font-black tabular-nums text-white">{progress?.depth ?? 0}<span className="ml-1 text-[10px] font-bold text-[#7f8b75]">/ {progress?.targetDepth ?? "…"}</span></div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#77836f]">Активные воркеры</div>
+                  <div className="mt-1.5 text-lg font-black tabular-nums text-white">{progress?.activeWorkers ?? 0}<span className="ml-1 text-[10px] font-bold text-[#7f8b75]">шт.</span></div>
                 </div>
                 <div className="col-span-2 rounded-xl border border-white/[0.05] bg-[#20241e] p-3 sm:col-span-1">
                   <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#77836f]">Время</div>
@@ -98,8 +98,8 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
               <div className="mt-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-extrabold text-white">Основной проход</div>
-                    <div className="mt-1 text-[10px] text-[#87917e]">Позиции анализируются по очереди</div>
+                    <div className="text-sm font-extrabold text-white">{progress?.stage === "verify" ? "Проверка критических ходов" : progress?.stage === "finalize" ? "Формирование отчёта" : "Параллельный проход"}</div>
+                    <div className="mt-1 text-[10px] text-[#87917e]">Независимые позиции распределяются между воркерами Stockfish</div>
                   </div>
                   <span className="text-[10px] font-bold tabular-nums text-[#b5d98e]">{done} / {total}</span>
                 </div>
@@ -115,7 +115,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
                 </div>
                 <div className="mt-2 flex flex-wrap justify-between gap-2 text-[9px] text-[#7f8a76]">
                   <span>{progress?.cached ?? 0} позиций взято из кэша</span>
-                  <span>Depth 22 max · timed UCI search · NNUE</span>
+                  <span>MultiPV 1 · узлы + время · локальный WASM</span>
                 </div>
               </div>
 
@@ -125,7 +125,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
                   Что происходит
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-[#a9b59e]">
-                  Каждая позиция получает собственный лимит времени. Stockfish останавливается на depth 22 или по таймеру — что наступит раньше. Если лимит закончится раньше, CHESSMART сохраняет последнюю завершённую оценку и сразу переходит к следующей позиции.
+                  Независимые позиции распределяются между отдельными однопоточными Web Worker. Основной проход использует MultiPV 1 и гибридные лимиты узлов/времени; затем критические позиции перепроверяются с MultiPV 2. Анализ остаётся локальным в браузере.
                 </p>
               </div>
 

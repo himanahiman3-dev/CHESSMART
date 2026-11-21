@@ -24,6 +24,7 @@ import { applySuitePreferences, loadSuiteSettings } from "./lib/systemsSuite";
 import { MotivationBanner } from "./components/MotivationBanner";
 import { buildTrainingRecommendations } from "./lib/trainingAcademy";
 import { reviewGame, type AnalyzeProgress } from "./lib/analyze";
+import { createAnalysisConfig, type AnalysisConfig } from "./lib/analysisBudget";
 import { buildPgnFromSan } from "./lib/gameNotation";
 import {
   loadPlayerProfile,
@@ -136,7 +137,7 @@ function AvatarPlaceholder({ accountProfile, name }: { accountProfile: AccountPr
 }
 
 function Main() {
-  const { engine, computeProfile } = useEngine();
+  const { engine, computeProfile, createReviewPool } = useEngine();
   const [stage, setStage] = useState<Stage>("import");
   const [mode, setMode] = useState<MainMode>("playHub");
   const [progress, setProgress] = useState<AnalyzeProgress | null>(null);
@@ -260,40 +261,32 @@ function Main() {
       return;
     }
 
-    // The post-game card is a fast preview. Opening the report performs a
-    // second, more detailed local pass; it may legitimately change move labels.
     const pgn = buildPgnFromSan(
       result.moves.map((move) => move.san),
       result.headers,
       result.startFen,
     );
-    const detailedTimeMs = computeProfile.device === "mobile"
-      ? 1000
-      : Math.max(1000, Math.min(3000, computeProfile.timePerMoveMs));
+    const detailedConfig = createAnalysisConfig(computeProfile.device === "mobile" ? "standard" : "deep");
 
-    void reviewGame(
-      pgn,
-      detailedTimeMs,
-      engine,
-      setProgress,
-      controller.signal,
-      computeProfile,
-    ).then((refined) => {
-      if (controller.signal.aborted || abortRef.current !== controller) return;
-      setReview(refined);
-      setProfile((current) => recordPersonalGameReview(current, refined, playerColor, ratingType));
-      setIsRefining(false);
-      abortRef.current = null;
-    }).catch((reason: unknown) => {
-      if (controller.signal.aborted || abortRef.current !== controller) return;
-      // Keep the already available fast preview rather than losing the report.
-      setError(reason instanceof Error ? reason.message : String(reason));
-      setIsRefining(false);
-      abortRef.current = null;
-    });
-  }, [engine, computeProfile]);
+    void (async () => {
+      try {
+        const reviewPool = await createReviewPool(controller.signal);
+        const refined = await reviewGame(pgn, detailedConfig, reviewPool, setProgress, controller.signal, computeProfile);
+        if (controller.signal.aborted || abortRef.current !== controller) return;
+        setReview(refined);
+        setProfile((current) => recordPersonalGameReview(current, refined, playerColor, ratingType));
+        setIsRefining(false);
+        abortRef.current = null;
+      } catch (reason: unknown) {
+        if (controller.signal.aborted || abortRef.current !== controller) return;
+        setError(reason instanceof Error ? reason.message : String(reason));
+        setIsRefining(false);
+        abortRef.current = null;
+      }
+    })();
+  }, [engine, createReviewPool, computeProfile]);
 
-  const start = useCallback(async (pgn: string, timePerPositionMs: number) => {
+  const start = useCallback(async (pgn: string, analysisConfig: AnalysisConfig | number) => {
     if (!engine) return;
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -303,14 +296,8 @@ function Main() {
     setIsRefining(false);
     setStage("analyzing");
     try {
-      const result = await reviewGame(
-        pgn,
-        timePerPositionMs,
-        engine,
-        setProgress,
-        controller.signal,
-        computeProfile
-      );
+      const reviewPool = await createReviewPool(controller.signal);
+      const result = await reviewGame(pgn, analysisConfig, reviewPool, setProgress, controller.signal, computeProfile);
       if (controller.signal.aborted || abortRef.current !== controller) return;
       setReview(result);
       setProfile((current) => recordReviewedGame(current, result));
@@ -329,7 +316,7 @@ function Main() {
         setStage("import");
       }
     }
-  }, [engine, computeProfile]);
+  }, [engine, createReviewPool, computeProfile]);
 
   const changeMode = useCallback((next: MainMode) => {
     abortRef.current?.abort();
@@ -406,8 +393,8 @@ function Main() {
         </div>
         {engine
           ? <>
-              <ImportScreen onStart={(pgn, depth) => void start(pgn, depth)} />
-              <ProfileGamesPanel onSelectGame={(pgn) => void start(pgn, 14)} />
+              <ImportScreen onStart={(pgn, config) => void start(pgn, config)} />
+              <ProfileGamesPanel onSelectGame={(pgn) => void start(pgn, createAnalysisConfig("standard"))} />
             </>
           : <EngineLoader />}
       </>
