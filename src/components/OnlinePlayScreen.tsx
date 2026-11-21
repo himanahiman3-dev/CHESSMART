@@ -504,7 +504,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
             online: navigator.onLine,
             visible: document.visibilityState !== "hidden",
             consecutiveFailures: gamePollFailuresRef.current,
-            urgent: !!premove,
+            urgent: premoves.length > 0,
           });
       timer = window.setTimeout(() => { void poll(); }, delay);
     };
@@ -513,7 +513,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [game?.id, game?.status, session, refreshGame, premove, realtimeConnected]);
+  }, [game?.id, game?.status, session, refreshGame, premoves.length, realtimeConnected]);
 
   useEffect(() => {
     if (!session || game) return;
@@ -625,12 +625,16 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     }
   }, [premoves, game?.id, game?.fen, game?.status, myColor, turn, movePending, sendMove]);
   useEffect(() => {
-    if (premove && game?.status === "completed") {
+    if (premoves.length > 0 && game?.status === "completed") {
       premoveGameIdRef.current = null;
       setPremoves([]);
-      setNotice("Premove отменён: партия уже завершена.");
+      setNotice("Очередь premove отменена: партия уже завершена.");
     }
-  }, [premove, game?.id, game?.status]);
+  }, [premoves.length, game?.id, game?.status]);
+
+  useEffect(() => {
+    if (premoves.length === 0) premoveGameIdRef.current = null;
+  }, [premoves.length]);
 
   useEffect(() => {
     if (!session || !game || game.status !== "active" || timeoutRequestedRef.current) return;
@@ -1134,7 +1138,7 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
                 allowedColor={myColor}
                 onMove={handleBoardMove}
                 premoveEnabled={canQueuePremove}
-                premove={premove}
+                premoves={premoves}
                 onPremove={queueBoardPremove}
                 onClearPremove={clearBoardPremove}
                 theme={preferences.boardTheme}
@@ -1177,10 +1181,19 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
                 <div className="max-h-72 overflow-y-auto text-xs leading-7 text-[#c9c8c1]">
                   {game.moves.length ? game.moves.map((move, index) => <span key={move.at + move.uci} className="mr-2 inline-block"><span className="text-[#77766f]">{Math.floor(index / 2) + 1}{move.color === "w" ? "." : "…"}</span> {move.premove && <span title="Автоматический premove" className="text-[#ff7770]">▶ </span>}{move.san}</span>) : <span className="text-[#85847d]">Пока нет ходов.</span>}
                 </div>
-                {premove && (
-                  <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-[#8b4444] bg-[#3c2928] px-3 py-2 text-xs text-[#ffd4d1]">
-                    <span>Ожидающий premove: <b>{formatPremove(premove)}</b></span>
-                    <button type="button" onClick={() => { premoveGameIdRef.current = null; setPremoves([]); setNotice("Premove отменён."); }} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Отменить</button>
+                {premoves.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-[#8b4444] bg-[#3c2928] px-3 py-2 text-xs text-[#ffd4d1]">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <b>Очередь premove · {premoves.length}/{MAX_PREMOVE_QUEUE}</b>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setPremoves((queue) => queue.slice(0, -1))} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Убрать последний</button>
+                        <button type="button" onClick={clearBoardPremove} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Очистить</button>
+                      </div>
+                    </div>
+                    <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      {premoves.map((move, index) => <li key={index}><span className="text-[#ff9d95]">{index + 1}.</span> {formatPremove(move)}</li>)}
+                    </ol>
+                    <p className="mt-2 text-[10px] text-[#d5a6a0]">Каждый ход подтверждается сервером отдельно.</p>
                   </div>
                 )}
                 {exportNotice && <p role="status" className="mt-2 text-xs text-[#a3d160]">{exportNotice}</p>}
