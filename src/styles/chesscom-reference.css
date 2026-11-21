@@ -399,3 +399,21 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .cm-nav-parent, .cm-nav-submenu button, .cm-mobile-nav button { transition: none !important; }
 }
+
+/* The sidebar is itself the vertical scroll area; keep flyouts inside it so
+   no browser overflow-axis interaction can clip the submenu on narrow screens. */
+.cm-nav-submenu {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 2px 0 5px 39px !important;
+  padding: 3px 4px 3px 7px !important;
+  border: 0 !important;
+  border-left: 1px solid rgba(255,255,255,.12) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.cm-nav-submenu button { min-height: 32px !important; padding: 7px 8px !important; }
