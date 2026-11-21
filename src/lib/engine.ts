@@ -202,15 +202,7 @@ export class StockfishEngine {
   }
 
   newGame() {
-    this.tail = this.tail.then(async () => {
-      if (this.dead) return;
-      this.send("ucinewgame");
-      // ucinewgame may clear a large transposition table. Wait for the UCI
-      // ready handshake before allowing the next position/go pair onto the worker.
-      const ready = this.waitFor((line) => line === "readyok", 30_000);
-      this.send("isready");
-      await ready;
-    });
+    this.tail = this.tail.then(() => this.send("ucinewgame"));
   }
 
   private applyStrength(strength?: EngineStrength) {
