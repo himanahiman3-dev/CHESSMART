@@ -52,27 +52,27 @@ export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
           </div>
           <div className="cm-replica-play-actions">
             <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("online")}>
-              <span className="cm-replica-action-icon cm-play-icon-yellow" aria-hidden="true">⚡</span>
+              <span className="cm-replica-action-icon cm-play-icon-yellow" aria-hidden="true"><PlayActionIcon kind="online" /></span>
               <span className="cm-replica-action-copy"><strong>Играть по сети</strong><small>Играть с противником того же уровня</small></span>
             </button>
             <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("play")}>
-              <span className="cm-replica-action-icon cm-play-icon-blue" aria-hidden="true">♟</span>
+              <span className="cm-replica-action-icon cm-play-icon-blue" aria-hidden="true"><PlayActionIcon kind="bot" /></span>
               <span className="cm-replica-action-copy"><strong>Боты</strong><small>Играть с ботами от начинающих до мастеров</small></span>
             </button>
             <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("coach")}>
-              <span className="cm-replica-action-icon cm-play-icon-green" aria-hidden="true">♙</span>
+              <span className="cm-replica-action-icon cm-play-icon-green" aria-hidden="true"><PlayActionIcon kind="coach" /></span>
               <span className="cm-replica-action-copy"><strong>Играть с тренером</strong><small>Учиться, играя и рассуждая с тренером</small></span>
             </button>
             <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("online")}>
-              <span className="cm-replica-action-icon cm-play-icon-purple" aria-hidden="true">♟</span>
+              <span className="cm-replica-action-icon cm-play-icon-purple" aria-hidden="true"><PlayActionIcon kind="friend" /></span>
               <span className="cm-replica-action-copy"><strong>Играть с другом</strong><small>Пригласить друга на партию в шахматы</small></span>
             </button>
             <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("battle")}>
-              <span className="cm-replica-action-icon cm-play-icon-orange" aria-hidden="true">🏆</span>
+              <span className="cm-replica-action-icon cm-play-icon-orange" aria-hidden="true"><PlayActionIcon kind="tournament" /></span>
               <span className="cm-replica-action-copy"><strong>Турниры</strong><small>Присоединиться к арене, где победа означает многое</small></span>
             </button>
             <button type="button" className="cm-replica-play-action" onClick={() => onNavigate("openings")}>
-              <span className="cm-replica-action-icon cm-play-icon-cyan" aria-hidden="true">◆</span>
+              <span className="cm-replica-action-icon cm-play-icon-cyan" aria-hidden="true"><PlayActionIcon kind="variants" /></span>
               <span className="cm-replica-action-copy"><strong>Варианты шахмат</strong><small>Откройте для себя новые виды шахмат</small></span>
             </button>
           </div>
@@ -83,6 +83,20 @@ export function PlayHubScreen({ profile, accountProfile, onNavigate }: {
         </aside>
       </div>
     </div>
+  );
+}
+
+
+function PlayActionIcon({ kind }: { kind: "online" | "bot" | "coach" | "friend" | "tournament" | "variants" }) {
+  return (
+    <svg className="cm-replica-action-svg" viewBox="0 0 36 36" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {kind === "online" && <><circle cx="18" cy="18" r="12" /><path d="M6 18h24M18 6c4 4 4 20 0 24M18 6c-4 4-4 20 0 24" /><path d="m24 8 4-1-1 4" stroke="#f6c75b" strokeWidth="2.5"/></>}
+      {kind === "bot" && <><path d="M12 30c.8-3.7 2.5-6.4 5.8-8.4-2.8-1.5-4.2-4-3.8-7 .3-2.7 2-4.6 4.9-5.8l-1-3.3c3.2.6 5.3 2.2 6.1 5 3.3.1 5.3 2.3 5.5 5.5.3 3.6-1.4 6.5-3.7 8.4 2.2 1.5 3.5 3.5 4.2 5.6H12Z" fill="#d9e2eb" stroke="#8295a8"/><path d="M8 31h23" stroke="#77a3cc" strokeWidth="2"/></>}
+      {kind === "coach" && <><path d="m4 14 14-8 14 8-14 8-14-8Z" fill="#83b8e0" stroke="#4d7ea8"/><path d="M10 17v7c4.5 3.6 11.5 3.6 16 0v-7" fill="#5289b8" stroke="#376a96"/><path d="M31 14v9" stroke="#e0bd69" strokeWidth="2.4"/></>}
+      {kind === "friend" && <><circle cx="13" cy="12" r="5" fill="#efc18c" stroke="#ad8052"/><circle cx="25" cy="13" r="4.2" fill="#9dc5e5" stroke="#5882a5"/><path d="M4 30c.5-5 3.4-7.4 9-7.4s8.5 2.4 9 7.4H4ZM21 29.5c.4-4.1 2.1-6.1 5-6.1s4.6 2 5 6.1H21Z" fill="#78a4c4" stroke="#4c7696"/></>}
+      {kind === "tournament" && <><path d="M10 5h16v8c0 5.2-3.1 8.5-8 8.5s-8-3.3-8-8.5V5Z" fill="#e4b956" stroke="#ac7c2e"/><path d="M10 8H5v3c0 4 2.1 6 6 6M26 8h5v3c0 4-2.1 6-6 6M18 21.5V28M11 31h14" stroke="#c99540" strokeWidth="2.2"/></>}
+      {kind === "variants" && <><path d="M7 6h15l7 7v17H7V6Z" fill="#d7e3d2" stroke="#82977d"/><path d="M22 6v7h7M11 18h14M11 22h14M11 26h9" stroke="#72926d" strokeWidth="1.7"/></>}
+    </svg>
   );
 }
 
