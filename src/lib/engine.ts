@@ -315,9 +315,8 @@ export class StockfishEngine {
           const limit = options.movetimeMs && options.movetimeMs > 0
             ? Math.max(1, Math.round(options.movetimeMs))
             : 0;
-          this.send(buildSearchCommand(options));
-          if (this.dead) return;
-          // A broken/stalled Worker must never leave the review Promise pending forever.
+          // Arm watchdogs before "go": a very fast worker (or a synchronous test
+          // double) may emit bestmove during postMessage, and cleanup must see timers.
           // Timed searches first get a stop request, then a short window to return bestmove.
           // Depth/nodes-only searches get a generous absolute deadline.
           hardFailsafe = setTimeout(() => {
@@ -332,6 +331,8 @@ export class StockfishEngine {
               }, STOP_RESPONSE_GRACE_MS);
             }, limit + WATCHDOG_GRACE_MS);
           }
+          this.send(buildSearchCommand(options));
+          if (this.dead) return;
         })
     );
     this.tail = promise.then(() => undefined, () => undefined);
