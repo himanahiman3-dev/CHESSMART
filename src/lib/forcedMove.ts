@@ -1,7 +1,8 @@
 /**
- * Chess.com-style Forced classification: exactly one legal move exists.
- * "Only sensible move" or "only move that preserves the evaluation" is not enough.
+ * Internal search safeguard: with one legal move there is no alternative to
+ * compare against, so the move must not receive an avoidable-loss penalty.
+ * Chess.com does not expose "Forced" as a separate Game Review classification.
  */
-export function forcedMoveClass(legalMoveCount: number): "forced" | null {
-  return legalMoveCount === 1 ? "forced" : null;
+export function hasOnlyLegalMove(legalMoveCount: number): boolean {
+  return legalMoveCount === 1;
 }
