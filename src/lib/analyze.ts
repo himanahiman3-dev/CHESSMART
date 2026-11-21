@@ -74,6 +74,7 @@ export function parseGame(pgnText: string): ParsedGame {
 
 import { gameBudgetMs, REVIEW_TARGET_DEPTH, normalizeAnalysisTimeMs } from "./analysisBudget";
 import { isSacrificeVerificationCandidate, rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
+import { classifyMove } from "./moveClassification";
 import { forcedMoveClass } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
 
@@ -106,18 +107,6 @@ const MIN_CACHEABLE_DEPTH = 8;
 /** Числовые приближения критериев Brilliant вынесены в ./brilliant. */
 
 /** Best: лучший ход движка либо ход, теряющий пренебрежимо мало (п.п. ожидаемых очков). */
-/** Great: на сколько п.п. ожидаемых очков вторая линия хуже лучшей (для новичков щедрее; приближение). */
-function greatGapFor(elo?: number): number {
-  if (elo === undefined) return 14;
-  if (elo < 800) return 10;
-  if (elo < 1400) return 12;
-  return 14;
-}
-/** Границы «проигрыш / равенство / выигрыш» в ожидаемых очках, % (приближение). */
-const BAND_LOSING = 35;
-const BAND_WINNING = 65;
-const bandOf = (w: number) => (w >= BAND_WINNING ? 2 : w >= BAND_LOSING ? 1 : 0);
-
 function playerElo(headers: Record<string, string>, c: Color): number | undefined {
   const v = parseInt(headers[c === "w" ? "WhiteElo" : "BlackElo"] ?? "", 10);
   return Number.isFinite(v) && v > 0 ? v : undefined;
@@ -125,9 +114,9 @@ function playerElo(headers: Record<string, string>, c: Color): number | undefine
 
 export interface ReviewComputeProfile {
   mainMultiPv: number;
-  /** Maximum number of promising piece sacrifices to verify after the main pass. */
+  /** Maximum number of critical positions (including sacrifices and missed-mate candidates) to verify after the main pass. */
   verifierMaxMoves?: number;
-  /** Extra search time for each selected sacrifice candidate. */
+  /** Extra search time for each selected critical position. */
   verifierMoveTimeMs?: number;
   /** Total extra verification budget supplied by the device profile. */
   tacticalExtraBudgetMs?: number;
@@ -264,9 +253,13 @@ export function selectCriticalPositions(
       : false;
     const tactical = !!move.captured || move.san.includes("+") || move.san.includes("#")
       || move.uci.length > 4 || sacrifice;
+    // Mate scores are especially easy to miss with a short first pass because
+    // expected-points curves saturate near 100%. Recheck a candidate when the
+    // engine has found a forced mating route for the mover, even if EP loss is tiny.
+    const mateOpportunity = best.score.mate !== undefined
+      && cpFor(best.score, move.color) > 0;
     // A sound piece sacrifice may be the engine's first choice and therefore lose
-    // zero expected points. It still needs a deeper verification pass: filtering
-    // only by evaluation loss was silently excluding exactly these Brilliant candidates.
+    // zero expected points. It still needs a deeper verification pass.
     const sacrificeCandidate = isSacrificeVerificationCandidate(
       sacrifice,
       legal,
@@ -276,13 +269,14 @@ export function selectCriticalPositions(
     );
     if (sacrificesOnly && !sacrificeCandidate) continue;
 
-    if (!shouldRecheckCriticalPosition(estimatedLoss, secondLineGap, legal, tactical)
+    if (!shouldRecheckCriticalPosition(estimatedLoss, secondLineGap, legal, tactical, mateOpportunity)
       && !sacrificeCandidate) continue;
 
     const priority = estimatedLoss * 2
       + Math.min(secondLineGap, 30) * 0.55
       + (tactical ? 4 : 0)
       + (sacrificeCandidate ? 24 : 0)
+      + (mateOpportunity ? 36 : 0)
       + Math.min(legal, 40) * 0.04;
     candidates.push({ index: i, priority, estimatedLoss, secondLineGap, sacrifice: sacrificeCandidate });
   }
@@ -292,8 +286,8 @@ export function selectCriticalPositions(
 
 
 /**
- * Runs the timed main pass, then spends a small device-aware reserve on promising
- * piece sacrifices so a shallow first-pass MultiPV result cannot hide a Brilliant move.
+ * Runs the timed main pass, then spends a small device-aware reserve on critical
+ * positions so shallow MultiPV results cannot hide tactical errors, mate threats or sacrifices.
  */
 export async function reviewGame(
   pgn: string,
@@ -309,9 +303,9 @@ export async function reviewGame(
   const movetimeMs = normalizeAnalysisTimeMs(timePerPositionMs);
   const targetDepth = REVIEW_TARGET_DEPTH;
   const mainMultiPv = Math.min(4, Math.max(1, computeProfile?.mainMultiPv ?? 2));
-  const maxSacrificeChecks = Math.max(0, Math.min(3,
+  const maxVerificationChecks = Math.max(0, Math.min(3,
     Math.floor(computeProfile?.verifierMaxMoves ?? 1)));
-  const progressTotal = total + maxSacrificeChecks;
+  const progressTotal = total + maxVerificationChecks;
   const budgetMs = gameBudgetMs(N, movetimeMs);
   const startedAt = now();
 
@@ -374,21 +368,28 @@ export async function reviewGame(
     });
   }
 
-  // A first-pass MultiPV search is deliberately time-bounded. Recheck the most
-  // promising sound piece sacrifices with a longer search before assigning labels.
-  // This catches first-line sacrifices (estimated loss = 0) which the old critical
-  // position gate discarded, and stabilizes the alternative-line evaluation.
-  const sacrificeCandidates = maxSacrificeChecks > 0
-    ? selectCriticalPositions(game, positions, Math.max(1, maxSacrificeChecks), true)
+  // The first pass is deliberately time-bounded. Spend the device-aware reserve
+  // on critical positions of every type: large evaluation swings, tactical errors,
+  // forced-mate opportunities and sound sacrifices. Reserve one slot for the best
+  // sacrifice candidate so an ordinary blunder cannot starve Brilliant verification.
+  const rankedCriticalCandidates = maxVerificationChecks > 0
+    ? selectCriticalPositions(game, positions, game.moves.length, false)
     : [];
-  const perSacrificeBudget = Math.max(300, Math.min(
+  // The combined ranking already includes every sacrifice candidate, so no
+  // second pass through detectSacrifice() is needed just to reserve one slot.
+  const bestSacrificeCandidate = rankedCriticalCandidates.find((candidate) => candidate.sacrifice);
+  const verificationCandidates = [
+    ...(bestSacrificeCandidate ? [bestSacrificeCandidate] : []),
+    ...rankedCriticalCandidates.filter((candidate) => candidate.index !== bestSacrificeCandidate?.index),
+  ].slice(0, maxVerificationChecks);
+  const perVerificationBudget = Math.max(300, Math.min(
     computeProfile?.verifierMoveTimeMs ?? 900,
-    Math.floor((computeProfile?.tacticalExtraBudgetMs ?? 1800) / Math.max(1, maxSacrificeChecks || 1)),
+    Math.floor((computeProfile?.tacticalExtraBudgetMs ?? 1800) / Math.max(1, maxVerificationChecks || 1)),
   ));
 
-  for (let check = 0; check < sacrificeCandidates.length; check++) {
+  for (let check = 0; check < verificationCandidates.length; check++) {
     if (signal?.aborted) throw new Error("cancelled");
-    const candidate = sacrificeCandidates[check];
+    const candidate = verificationCandidates[check];
     const move = game.moves[candidate.index];
     const history = {
       startFen: game.startFen,
@@ -401,7 +402,7 @@ export async function reviewGame(
       mainMultiPv,
       signal,
       undefined,
-      perSacrificeBudget,
+      perVerificationBudget,
       history,
     );
     const previous = positions[candidate.index];
@@ -417,7 +418,7 @@ export async function reviewGame(
       targetDepth: targetDepth + 6,
       cached: cachedHits,
       fen: move.fenBefore,
-      budgetMs: budgetMs + sacrificeCandidates.length * perSacrificeBudget,
+      budgetMs: budgetMs + verificationCandidates.length * perVerificationBudget,
       elapsedMs: now() - startedAt,
     });
   }
@@ -431,7 +432,7 @@ export async function reviewGame(
     targetDepth: targetDepth + 6,
     cached: cachedHits,
     fen: game.fens[N],
-    budgetMs: budgetMs + sacrificeCandidates.length * perSacrificeBudget,
+    budgetMs: budgetMs + verificationCandidates.length * perVerificationBudget,
     elapsedMs: now() - startedAt,
   });
 
@@ -483,7 +484,13 @@ export function buildReview(
 
     const cpBefore = cpFor(scoreBefore, color);
     const cpAfter = cpFor(scoreAfter, color);
-    const prevLoss = i > 0 && reviews[i - 1].cls !== "forced" ? reviews[i - 1].winLoss : 0;
+    // Measure the opponent's previous error from this player's own rating curve.
+    // Using reviews[i - 1].winLoss mixed two different players' Elo mappings and
+    // could miss a blunder whenever the players had different ratings.
+    const previousPositionWin = i > 0 && reviews[i - 1].cls !== "forced"
+      ? winForRated(positions[i - 1].lines[0].score, color, elo)
+      : winBefore;
+    const prevLoss = Math.max(0, winBefore - previousPositionWin);
     const prevSan = i > 0 ? reviews[i - 1].san : undefined;
 
     // --- жертва для Brilliant ---
@@ -507,17 +514,9 @@ export function buildReview(
       gapWin = winBefore - winForRated(second.score, color, elo);
     }
 
-    let cls: Cls;
-
-    // Brilliant (Chess.com): хорошая жертва фигуры, ход лучший или почти лучший,
-    // после него позиция не плохая, и без него вы не были бы полностью выигрывающим.
-    // «Лучшая альтернатива»: если сыгран лучший ход — вторая линия; если почти лучший — лучшая линия.
+    // Brilliant: a verified short mating sacrifice may override the "already winning"
+    // cutoff, while all ordinary Brilliant safeguards remain in place.
     const altWin = playedIsBest ? (second ? winForRated(second.score, color, elo) : null) : winBefore;
-    // A short forced mate is decisive tactical proof that the sacrifice works.
-    // This narrowly overrides the "already completely winning" cutoff: a quiet
-    // alternative may also win, but it does not reproduce the mating combination.
-    // scoreAfter is always from the mover's point of view via cpAfter, even when
-    // Stockfish reports a negative mate score because the opponent is to move.
     const matingSacrifice = sac.sacrifice
       && !isForced
       && winLoss <= BRILLIANT_MAX_LOSS
@@ -538,58 +537,34 @@ export function buildReview(
       continuation: isDeferredBrilliant,
     });
 
-    if (forcedClass) {
-      cls = forcedClass;
-    } else if (isBook) {
-      cls = "book";
-    } else if (isBrilliant) {
-      cls = "brilliant";
-    } else if (playedIsBest) {
-      cls = "best";
-      // Great (Chess.com): критичный ход — единственный хороший ход (вторая линия заметно хуже)
-      // либо ход, сохраняющий/переводящий позицию в более высокую категорию, чем любая альтернатива.
-      const secondWin = winBefore - gapWin;
-      const crossesBand = bandOf(winBefore) > bandOf(secondWin) && gapWin >= 5;
-      if (
-        playedIsBest &&
-        second &&
-        legal > 1 &&
-        (gapWin >= greatGapFor(elo) || crossesBand) &&
-        winBefore <= 90 &&
-        winBefore >= 8
-      ) {
-        cls = "great";
-      }
-    } else {
-      if (winLoss < 2) cls = "excellent";
-      else if (winLoss < 5) cls = "good";
-      else if (winLoss < 10) cls = "inaccuracy";
-      else if (winLoss < 20) cls = "mistake";
-      else cls = "blunder";
+    const isMateMove = after.lines[0].score.terminal === true
+      && after.lines[0].score.mate !== undefined;
+    const bestMateIn = scoreBefore.mate !== undefined && cpBefore > 0
+      ? Math.abs(scoreBefore.mate)
+      : null;
+    const missedMateInOne = bestMateIn === 1 && !isMateMove;
 
-      if (lostMate && winLoss >= 5) cls = "blunder";
-      if (allowedMate) cls = "blunder";
-
-      // Miss (Chess.com): соперник ошибся, а ход не использовал это и вернул большую часть (от половины до
-      // двойного размера ошибки) выигрышных шансов → позиция стала равной или хуже. Пороги — приближение.
-      if (
-        (cls === "inaccuracy" || cls === "mistake" || cls === "blunder") &&
-        !allowedMate &&
-        prevLoss >= 10 &&
-        winLoss >= Math.max(8, prevLoss * 0.5) &&
-        winLoss <= prevLoss * 2 &&
-        winBefore >= 58 &&
-        winAfter >= 25 &&
-        winAfter <= 62
-      ) {
-        cls = "miss";
-      }
-    }
+    const cls: Cls = classifyMove({
+      forced: isForced,
+      book: isBook,
+      brilliant: isBrilliant,
+      playedIsBest,
+      winLoss,
+      winBefore,
+      winAfter,
+      secondLinePresent: !!second,
+      secondLineGap: gapWin,
+      legalMoves: legal,
+      previousOpponentLoss: prevLoss,
+      missedMateInOne,
+      lostForcedMate: lostMate,
+      allowedMate,
+      elo,
+    });
 
     const bestSan = uciToSan(m.fenBefore, bestUci);
     const secondSan = uciToSan(m.fenBefore, second?.pv[0]);
     const opening = book.opening[i];
-    const isMateMove = positions[i + 1].lines[0].score.terminal === true && positions[i + 1].lines[0].score.mate !== undefined;
     const isCheck = m.san.includes("+") || m.san.includes("#");
 
     const accuracy = moveAccuracy(accuracyLoss);
