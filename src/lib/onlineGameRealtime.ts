@@ -27,7 +27,11 @@ export function isOnlineGameSnapshotNewer(
   if (nextRank !== currentRank) return nextRank > currentRank;
   if (next.moves.length > current.moves.length) return true;
   if (Number.isFinite(currentTime) && Number.isFinite(nextTime)) return nextTime > currentTime;
-  return true;
+  // A same-ply snapshot without a usable timestamp has no provable ordering.
+  // Prefer the current authoritative board instead of letting a delayed response
+  // replace its clocks or turn metadata with an unknown-age copy.
+  if (!Number.isFinite(currentTime) && Number.isFinite(nextTime)) return true;
+  return false;
 }
 
 export interface OnlineGameRealtimeOptions {
