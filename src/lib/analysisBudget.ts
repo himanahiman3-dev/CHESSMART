@@ -84,7 +84,7 @@ function clampInteger(value: unknown, min: number, max: number, fallback: number
 
 export function normalizeAnalysisConfig(value: AnalysisConfig | number | null | undefined): AnalysisConfig {
   if (typeof value === "number") {
-    const preset: AnalysisPresetId = value <= 300 ? "fast" : value >= 2500 ? "deep" : "standard";
+    const preset: AnalysisPresetId = value === 300 ? "fast" : value === 3000 ? "deep" : "standard";
     return defaultsFor(preset);
   }
   if (!value || typeof value !== "object") return { ...DEFAULT_ANALYSIS_CONFIG };

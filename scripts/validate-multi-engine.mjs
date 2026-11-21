@@ -15,8 +15,10 @@ assert.equal(powerfulDesktop.hashMb, 512);
 assert.equal(powerfulDesktop.timePerMoveMs, 1400);
 assert.equal(powerfulDesktop.maxTimePerMoveMs, 4750);
 assert.equal(powerfulDesktop.depthBonus, 5);
-assert.equal(powerfulDesktop.mainMultiPv, 4);
-assert.equal(powerfulDesktop.verifierMaxMoves, 2);
+assert.equal(powerfulDesktop.mainMultiPv, 1, "Whole-game scan defaults to MultiPV 1.");
+assert.equal(powerfulDesktop.reviewWorkers, 3);
+assert.equal(powerfulDesktop.reviewHashMb, 64);
+assert.equal(powerfulDesktop.verifierMaxMoves, 6);
 assert.equal(powerfulDesktop.verifierBudgetMs, 5000);
 assert.equal(powerfulDesktop.verifierMoveTimeMs, 2400);
 
@@ -28,6 +30,9 @@ const ordinaryDesktop = getDeviceAnalysisProfile({
 assert.equal(ordinaryDesktop.device, "desktop");
 assert.equal(ordinaryDesktop.defaultVariant, "full");
 assert.equal(ordinaryDesktop.maxThreads, 6, "A typical desktop keeps two logical cores free for UI work.");
+assert.equal(ordinaryDesktop.reviewWorkers, 2);
+assert.equal(ordinaryDesktop.mainMultiPv, 1);
+assert.equal(ordinaryDesktop.verifierMaxMoves, 4);
 assert.equal(ordinaryDesktop.timePerMoveMs, 1000);
 assert.equal(ordinaryDesktop.maxTimePerMoveMs, 4750);
 assert.equal(ordinaryDesktop.depthBonus, 3);
@@ -45,7 +50,9 @@ assert.equal(lowEndPhone.hashMb, 64);
 assert.equal(lowEndPhone.timePerMoveMs, 400);
 assert.equal(lowEndPhone.maxTimePerMoveMs, 1100);
 assert.equal(lowEndPhone.depthBonus, 0);
-assert.equal(lowEndPhone.mainMultiPv, 2);
+assert.equal(lowEndPhone.mainMultiPv, 1);
+assert.equal(lowEndPhone.reviewWorkers, 1);
+assert.equal(lowEndPhone.verifierMaxMoves, 1);
 assert.equal(lowEndPhone.verifierEnabled, false);
 
 const powerfulPhone = getDeviceAnalysisProfile({
@@ -55,6 +62,7 @@ const powerfulPhone = getDeviceAnalysisProfile({
   deviceMemory: 8,
 });
 assert.equal(powerfulPhone.device, "mobile");
+assert.equal(powerfulPhone.reviewWorkers, 1);
 assert.equal(powerfulPhone.verifierEnabled, true);
 assert.equal(powerfulPhone.verifierMaxMoves, 1);
 assert.equal(powerfulPhone.verifierMoveTimeMs, 800);

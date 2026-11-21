@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { Chess } from "chess.js";
 import { fenKey } from "../src/lib/format.ts";
 import { positionKey } from "../src/lib/db.ts";
-import { buildPositionCommand } from "../src/lib/engine.ts";
+import { buildPositionCommand, buildSearchCommand } from "../src/lib/engine.ts";
 import { hasOnlyLegalMove } from "../src/lib/forcedMove.ts";
 import { shouldRecheckCriticalPosition } from "../src/lib/criticalPositionRanking.ts";
 import { qBalance } from "../src/lib/see.ts";
-import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES } from "../src/lib/analysisBudget.ts";
+import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES, DEFAULT_ANALYSIS_CONFIG, createAnalysisConfig, resolveAnalysisBudget } from "../src/lib/analysisBudget.ts";
 import { summarizeReview } from "../src/lib/learningStats.ts";
 import { getDeviceAnalysisProfile } from "../src/lib/computeProfile.ts";
 
@@ -15,6 +15,40 @@ assert.equal(ANALYSIS_TIME_MODES[0].timeMs, 300, "Fast mode gives each position 
 assert.equal(ANALYSIS_TIME_MODES[1].timeMs, 1000, "Optimal mode gives each position 1000 ms.");
 assert.equal(ANALYSIS_TIME_MODES[2].timeMs, 3000, "Deep mode gives each position 3000 ms.");
 assert.equal(normalizeAnalysisTimeMs(1700), 1000, "Unknown time values fall back to the optimal mode.");
+
+assert.equal(
+  buildSearchCommand({ depth: 18, nodes: 250000, movetimeMs: 180 }),
+  "go depth 18 nodes 250000 movetime 180",
+  "Hybrid searches must include all enabled stop limits",
+);
+assert.equal(buildSearchCommand({ nodes: 1000000 }), "go nodes 1000000",
+  "Nodes-only mode must not add a depth or time cap");
+assert.equal(buildSearchCommand({ movetimeMs: 400 }), "go movetime 400",
+  "Time-only mode must not add a depth cap");
+
+const autoMobile = resolveAnalysisBudget(DEFAULT_ANALYSIS_CONFIG, { device: "mobile", reviewWorkers: 1 }, 50);
+assert.equal(autoMobile.preset, "fast", "Auto should select the faster preset on phones");
+assert.equal(autoMobile.nodes, 250000);
+assert.equal(autoMobile.movetimeMs, 180);
+
+const standardDesktop = resolveAnalysisBudget(createAnalysisConfig("standard"), { device: "desktop", reviewWorkers: 2 }, 50);
+assert.equal(standardDesktop.preset, "standard");
+assert.equal(standardDesktop.depthLimit, 22);
+assert.equal(standardDesktop.nodes, 1000000);
+assert.equal(standardDesktop.movetimeMs, 400);
+
+const timeOnly = resolveAnalysisBudget(createAnalysisConfig("standard", "time"), { device: "desktop" }, 50);
+assert.equal(timeOnly.movetimeMs, 400);
+assert.equal(timeOnly.nodes, undefined);
+assert.equal(timeOnly.depthLimit, undefined);
+
+const nodesOnly = resolveAnalysisBudget(createAnalysisConfig("standard", "nodes"), { device: "desktop" }, 50);
+assert.equal(nodesOnly.nodes, 1000000);
+assert.equal(nodesOnly.movetimeMs, undefined);
+assert.equal(nodesOnly.depthLimit, undefined);
+
+assert.equal(normalizeAnalysisTimeMs(3000), 3000);
+
 
 assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 4 }).maxThreads, 2,
   "A four-thread desktop must reserve two logical cores for UI and OS work.");
