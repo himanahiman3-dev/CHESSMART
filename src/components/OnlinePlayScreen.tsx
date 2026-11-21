@@ -310,6 +310,61 @@ export function OnlinePlayScreen({ onBack, onPersonalReviewReady, onOpenReview }
     return () => { cancelled = true; };
   }, [configured, url, key, applyGameSnapshot]);
 
+  // Refresh Supabase auth before the access token expires. Without this,
+  // a long online session silently becomes unable to move after roughly an hour.
+  useEffect(() => {
+    if (!session?.refresh_token || !Number.isFinite(session.expires_at)) return;
+    let cancelled = false;
+    let refreshing = false;
+    let timer: number | undefined;
+    const scheduleRefresh = (delayMs: number) => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(() => { void refreshNow(); }, delayMs);
+    };
+    const refreshNow = async () => {
+      if (cancelled || refreshing) return;
+      refreshing = true;
+      try {
+        const refreshed = await refreshSession(url, key, session.refresh_token);
+        if (cancelled) return;
+        saveSession(refreshed);
+        setSession((current) => {
+          if (!current || current.user.id !== session.user.id || current.refresh_token !== session.refresh_token) {
+            return current;
+          }
+          return refreshed;
+        });
+        setError(null);
+      } catch (reason) {
+        if (cancelled) return;
+        const remainingMs = session.expires_at - Date.now();
+        setError(remainingMs > 0
+          ? "Обновляем сессию аккаунта… Проверь соединение, если сообщение не исчезнет."
+          : "Сессия аккаунта истекла. Пытаемся восстановить подключение…");
+        // Refresh tokens can rotate, so never log out on one transient network
+        // failure. Retry at a bounded rate until the session is renewed.
+        scheduleRefresh(remainingMs > 0
+          ? Math.min(30_000, Math.max(3_000, remainingMs - 1_000))
+          : 30_000);
+      } finally {
+        refreshing = false;
+      }
+    };
+    const refreshLeadMs = 5 * 60_000;
+    scheduleRefresh(Math.max(1_000, session.expires_at - Date.now() - refreshLeadMs));
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || session.expires_at > Date.now() + refreshLeadMs) return;
+      if (timer !== undefined) window.clearTimeout(timer);
+      void refreshNow();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [session?.user.id, session?.refresh_token, session?.expires_at, url, key]);
+
   const authenticate = async () => {
     setBusy(true); setError(null); setNotice(null);
     try {
