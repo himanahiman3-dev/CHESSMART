@@ -3,6 +3,7 @@ import { Chess } from "chess.js";
 import { detectSacrifice } from "../src/lib/see.ts";
 import { qualifiesAsBrilliant } from "../src/lib/brilliant.ts";
 import { isSacrificeVerificationCandidate } from "../src/lib/criticalPositionRanking.ts";
+import { findPersistentSacrificeContinuation } from "../src/lib/persistentSacrifice.ts";
 
 const pgn = `[Event "Paris Opera"]
 [Site "Paris FRA"]
@@ -165,6 +166,118 @@ assert.equal(qualifiesAsBrilliant({
   winLoss: 0,
   winAfter: 100,
   elo: 378,
-}), false, "A mating combination must not become Brilliant if the quiet alternative is already completely winning.");
+  matingSacrifice: true,
+}), true, "A verified short mating sacrifice may qualify even when a quiet line also wins.");
+
+assert.equal(qualifiesAsBrilliant({
+  sacrifice: true,
+  legalMoves: knightSacrificeLegalMoves,
+  alternativeWin: 99.9,
+  lostMate: false,
+  allowedMate: false,
+  winLoss: 0,
+  winAfter: 35,
+  elo: 378,
+  matingSacrifice: true,
+}), false, "The short-mate exception must not accept a sacrifice that leaves a bad position.");
+
+assert.equal(qualifiesAsBrilliant({
+  sacrifice: true,
+  legalMoves: knightSacrificeLegalMoves,
+  alternativeWin: 99.9,
+  lostMate: true,
+  allowedMate: false,
+  winLoss: 0,
+  winAfter: 100,
+  elo: 378,
+  matingSacrifice: true,
+}), false, "The short-mate exception must not override a lost forced mate.");
+
+assert.equal(qualifiesAsBrilliant({
+  sacrifice: true,
+  legalMoves: 24,
+  alternativeWin: 99.9,
+  lostMate: false,
+  allowedMate: false,
+  winLoss: 1,
+  winAfter: 75,
+  elo: 524,
+  continuation: true,
+}), true, "A verified persistent sacrifice continuation may bypass the unrelated quiet-line cutoff.");
+
+
+const coachGamePgn = `[Event "Play vs Coach"]
+[Site "Chess.com"]
+[Date "2026.11.21"]
+[Round "?"]
+[White "NOBODYCHESS9"]
+[Black "Coach-Mittens"]
+[Result "1-0"]
+[TimeControl "-"]
+[WhiteElo "524"]
+[BlackElo "3200"]
+[Termination "NOBODYCHESS9 поставил мат"]
+[ECO "C00"]
+[EndDate "2026.11.21"]
+[Link "https://www.chess.com/game/coach/363695780?move=0"]
+
+1. d4 e6 2. e4 b6 3. Nf3 Bb7 4. Bd3 Nf6 5. e5 Ne4 6. Qe2 f5
+7. Nbd2 Nxd2 8. Bxd2 Be7 9. Rg1 O-O 10. O-O-O Qe8 11. Ng5 h6
+12. Nh3 g5 13. Nf4 Nc6 14. c3 Nd8 15. g4 Kh8 16. d5 gxf4
+17. Bxf4 Bxd5 18. Bxh6 f4 19. g5 f3 20. g6 Rf5 21. Qc2 Bc4
+22. Bxf5 exf5 23. Qxf5 Kg8 24. Qh5 Ne6 25. Be3 Nf8 26. Rd4 Bd3
+27. Rxd3 d6 28. Bd4 c5 29. Rxf3 Bg5+ 30. Rxg5 Qd7 31. Rf7 Qe6
+32. Qh8+ Kxh8 33. g7+ Kh7 34. g8=Q+ Kh6 35. Qg7# 1-0`;
+
+const coachGame = new Chess();
+coachGame.loadPgn(coachGamePgn);
+const coachVerboseMoves = coachGame.history({ verbose: true });
+const coachSnapshots = coachVerboseMoves.map((move) => ({
+  color: move.color,
+  piece: move.piece,
+  from: move.from,
+  to: move.to,
+  fenBefore: move.before,
+  fenAfter: move.after,
+}));
+const coachOfferIndex = coachVerboseMoves.findIndex((move) => move.san === "Nf4");
+assert.ok(coachOfferIndex >= 0, "The Coach game must contain 13.Nf4.");
+const coachOffer = coachVerboseMoves[coachOfferIndex];
+const coachOfferSacrifice = detectSacrifice(
+  coachOffer.before,
+  coachOffer.from + coachOffer.to + (coachOffer.promotion ?? ""),
+  524,
+);
+assert.equal(coachOfferSacrifice.sacrifice, true,
+  "13.Nf4 must be recognized as the original piece offer.");
+
+const coachSoundOffers = new Array(coachVerboseMoves.length).fill(false);
+coachSoundOffers[coachOfferIndex] = true;
+for (const san of ["c3", "g4", "d5"]) {
+  const continuationIndex = coachVerboseMoves.findIndex(
+    (move, index) => index > coachOfferIndex && move.san === san && move.color === "w",
+  );
+  assert.ok(continuationIndex >= 0, `The Coach game must contain the ${san} continuation.`);
+  const continuation = findPersistentSacrificeContinuation(
+    coachSnapshots,
+    continuationIndex,
+    coachSoundOffers,
+  );
+  assert.deepEqual(continuation, {
+    originIndex: coachOfferIndex,
+    square: "f4",
+    pieceType: "n",
+  }, `${san} must retain the declined knight sacrifice while the knight remains capturable.`);
+}
+
+const afterKnightWasTakenIndex = coachVerboseMoves.findIndex(
+  (move) => move.san === "Bxf4" && move.color === "w",
+);
+assert.ok(afterKnightWasTakenIndex >= 0, "The Coach game must contain 17.Bxf4.");
+assert.equal(
+  findPersistentSacrificeContinuation(coachSnapshots, afterKnightWasTakenIndex, coachSoundOffers),
+  null,
+  "The old offer must expire after 16...gxf4 actually takes the knight.",
+);
 
 console.log("Brilliant regression fixtures passed: Morphy sacrifices and the 25.Nb5+ Chess.com knight sacrifice.");

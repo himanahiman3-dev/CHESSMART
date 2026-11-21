@@ -13,7 +13,8 @@ import type { PositionHistory, StockfishEngine } from "./engine";
 import { getCachedPosition, putCachedPosition } from "./db";
 import { analyzeBook, openingForCode } from "./openings";
 import { detectSacrifice } from "./see";
-import { BRILLIANT_MAX_LOSS, qualifiesAsBrilliant } from "./brilliant";
+import { findPersistentSacrificeContinuation } from "./persistentSacrifice";
+import { BRILLIANT_MAX_LOSS, BRILLIANT_MIN_AFTER, qualifiesAsBrilliant } from "./brilliant";
 import { buildComment } from "./coach";
 import { cpFor, estimateGameRating, gameAccuracy, moveAccuracy, winFor, winForRated, winPercent } from "./winprob";
 
@@ -449,6 +450,9 @@ export function buildReview(
   const book = analyzeBook(game.moves.map((m) => m.san));
   const reviews: MoveReview[] = [];
   const eloOf = (c: Color): number | undefined => playerElo(game.headers, c);
+  // Offers are seeded only by a real piece sacrifice that Stockfish evaluates as sound
+  // after the opponent gets the move. Later moves can inherit this live offer.
+  const verifiedSacrificeOffers: boolean[] = new Array(N).fill(false);
 
   for (let i = 0; i < N; i++) {
     const m = game.moves[i];
@@ -498,6 +502,26 @@ export function buildReview(
     if (!isBook && !isForced && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS) && m.piece !== "k" && m.piece !== "p") {
       sac = detectSacrifice(m.fenBefore, m.uci, elo);
     }
+
+    // A later pawn/quiet move may continue a piece sacrifice the opponent declined.
+    // The same offered piece must remain legally capturable after every reply.
+    const persistentContinuation = !isBook && !isForced
+      ? findPersistentSacrificeContinuation(game.moves, i, verifiedSacrificeOffers)
+      : null;
+    const sacrificeForBrilliant = sac.sacrifice || !!persistentContinuation;
+
+    // Seed an offer only if Stockfish evaluates the position after the offer
+    // as still good for the sacrificing side with the opponent to move.
+    const offerResponse = positions[i + 1]?.lines[0]?.score;
+    const offerResponseWin = offerResponse
+      ? winForRated(offerResponse, color, elo)
+      : 0;
+    verifiedSacrificeOffers[i] = !isBook
+      && !isForced
+      && sac.sacrifice
+      && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS)
+      && offerResponseWin >= BRILLIANT_MIN_AFTER;
+
     const mateForMoverBefore = scoreBefore.mate !== undefined && cpBefore > 0;
     const mateForMoverAfter = scoreAfter.mate !== undefined && cpAfter > 0;
     const lostMate = mateForMoverBefore && !mateForMoverAfter;
@@ -511,11 +535,18 @@ export function buildReview(
       gapWin = winBefore - winForRated(second.score, color, elo);
     }
 
-    // A mating line is tactical evidence, not an exemption from the Brilliant
-    // rule that the player must not already be completely winning without the sacrifice.
+    // Keep the alternative-line safeguard for ordinary sacrifices.
+    // A verified short mating sacrifice and a genuinely persistent declined offer
+    // are narrow tactical cases that qualify without an unrelated quiet-line cutoff.
     const altWin = playedIsBest ? (second ? winForRated(second.score, color, elo) : null) : winBefore;
+    const matingSacrifice = sac.sacrifice
+      && !isForced
+      && winLoss <= BRILLIANT_MAX_LOSS
+      && cpAfter > 0
+      && scoreAfter.mate !== undefined
+      && Math.abs(scoreAfter.mate) <= 4;
     const isBrilliant = qualifiesAsBrilliant({
-      sacrifice: sac.sacrifice,
+      sacrifice: sacrificeForBrilliant,
       legalMoves: legal,
       alternativeWin: altWin,
       lostMate,
@@ -523,6 +554,8 @@ export function buildReview(
       winLoss,
       winAfter,
       elo,
+      continuation: !!persistentContinuation,
+      matingSacrifice,
     });
 
     const isMateMove = after.lines[0].score.terminal === true
@@ -574,8 +607,8 @@ export function buildReview(
       winBefore,
       winAfter,
       winLoss,
-      sacrifice: sac.sacrifice,
-      sacrificePiece: sac.pieceType || m.piece,
+      sacrifice: sacrificeForBrilliant,
+      sacrificePiece: sac.pieceType || persistentContinuation?.pieceType || m.piece,
       opening,
       linesBefore: before.lines,
       linesAfter: after.lines,
@@ -611,7 +644,7 @@ export function buildReview(
       bestSan,
       secondUci: second?.pv[0],
       playedIsBest,
-      sacrifice: sac.sacrifice,
+      sacrifice: sacrificeForBrilliant,
       opening,
       comment,
       lines: before.lines,

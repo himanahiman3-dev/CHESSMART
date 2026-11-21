@@ -15,12 +15,16 @@ export interface BrilliantCriteria {
   lostMate: boolean;
   allowedMate: boolean;
   elo?: number;
+  /** A continuation of a previously established sacrifice that remains capturable. */
+  continuation?: boolean;
+  /** A sound piece sacrifice that Stockfish verifies leads to a short forced mate. */
+  matingSacrifice?: boolean;
 }
 
 /**
  * Approximation of Chess.com's unpublished "already completely winning" cutoff.
  * Expected-points values are in percent. Lower-rated players receive the more
- * generous cutoff, as described by Chess.com; higher-rated players remain stricter.
+ * generous cutoff, as described by Chess.com; this is a project heuristic.
  */
 export function brilliantAlternativeLimit(elo?: number): number {
   if (elo === undefined || !Number.isFinite(elo)) return 97;
@@ -39,8 +43,11 @@ export function qualifiesAsBrilliant(criteria: BrilliantCriteria): boolean {
     criteria.winAfter < BRILLIANT_MIN_AFTER
   ) return false;
 
-  // A tactical mating line does not waive the "not already completely winning"
-  // condition. The best available alternative must still fail that cutoff.
+  // The normal alternative-line safeguard stays in place. These two narrowly
+  // verified tactical cases are different: the move continues a live declined
+  // offer, or the sacrifice itself forces a short mate.
+  if (criteria.continuation || criteria.matingSacrifice) return true;
+
   return criteria.alternativeWin !== null
     && criteria.alternativeWin <= brilliantAlternativeLimit(criteria.elo);
 }
