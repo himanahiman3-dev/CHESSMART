@@ -28,7 +28,9 @@ create table realtime.messages (
 alter table realtime.messages enable row level security;
 create function realtime.topic() returns text
 language sql stable
-as $ select nullif(current_setting('realtime.topic', true), '') $;
+as $topic_stub$
+  select nullif(current_setting('realtime.topic', true), '')
+$topic_stub$;
 create function realtime.send(payload jsonb, event text, topic text, private boolean)
 returns void
 language plpgsql security definer
