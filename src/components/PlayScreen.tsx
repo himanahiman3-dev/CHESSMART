@@ -6,7 +6,7 @@ import type { BoardMove } from "./GameBoard";
 import { GameBoard } from "./GameBoard";
 import type { PlayerProfile } from "../lib/playerProfile";
 import { chooseBotMove, botMistakeLabel } from "../lib/botBrain";
-import { resolvePremove, type Premove, formatPremove } from "../lib/premoves";
+import { resolvePremove, type Premove, formatPremove, MAX_PREMOVE_QUEUE } from "../lib/premoves";
 import { loadGameplayPreferences, updateGameplayPreferences, getBoardOrientation, type GameplayPreferences } from "../lib/gameplayPreferences";
 import { playSound, preloadSounds, setSoundEnabled, soundForSan } from "../lib/sound";
 import { buildPgnFromSan, copyText, downloadTextFile, formatSanMoveList, pgnFilename } from "../lib/gameNotation";
@@ -43,7 +43,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
   const [engineError, setEngineError] = useState<string | null>(null);
   const [lastSan, setLastSan] = useState<string[]>([]);
   const [redoSan, setRedoSan] = useState<string[]>([]);
-  const [premove, setPremove] = useState<Premove | null>(null);
+  const [premoves, setPremoves] = useState<Premove[]>([]);
   const [premoveMessage, setPremoveMessage] = useState("");
   const [preferences, setPreferences] = useState<GameplayPreferences>(() => loadGameplayPreferences());
   const [boardFlipped, setBoardFlipped] = useState(false);
@@ -59,7 +59,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
     setPreferences(next);
     setSoundEnabled(next.soundEnabled);
     if (key === "premovesEnabled" && value === false) {
-      setPremove(null);
+      setPremoves([]);
       setPremoveMessage("Очередь premove очищена.");
     }
   };
@@ -73,7 +73,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
     setFen(START_FEN);
     setLastSan([]);
     setRedoSan([]);
-    setPremove(null);
+    setPremoves([]);
     setPremoveMessage("");
     setExportNotice("");
     setBoardFlipped(false);
@@ -94,7 +94,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
       terminalSoundPlayedRef.current = true;
       playSound("end");
     }
-    setPremove(null);
+    setPremoves([]);
     setFinished(result);
     setStarted(false);
     const resultTag = result === "draw" ? "1/2-1/2" : result === "win"
@@ -175,13 +175,15 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
     };
   }, [started, finished, fen, botColor, engine, strength, game, botElo]);
 
-  // Premove исполняется только после реального хода бота и повторной проверки новой FEN.
+  // Execute only the first queued move after the bot's real reply.
+  // Every remaining move waits for a later opponent turn and is revalidated then.
   useEffect(() => {
+    const premove = premoves[0];
     if (!premove || !started || thinking || finished || game.isGameOver() || game.turn() !== playerColor) return;
     const resolved = resolvePremove(fen, playerColor, premove);
-    setPremove(null);
     if (!resolved) {
-      setPremoveMessage("Premove отменён: после хода Stockfish он стал нелегальным.");
+      setPremoves([]);
+      setPremoveMessage("Очередь premove отменена: первый ход стал нелегальным после ответа Stockfish.");
       return;
     }
     const next = new Chess(fen);
@@ -191,16 +193,18 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
       ...(resolved.promotion ? { promotion: resolved.promotion } : {}),
     });
     if (!moved) {
-      setPremoveMessage("Premove отменён: позиция изменилась.");
+      setPremoves([]);
+      setPremoveMessage("Очередь premove отменена: позиция изменилась.");
       return;
     }
+    setPremoves((queue) => queue.slice(1));
     setPremoveMessage("Premove сыгран автоматически: " + moved.san);
     setRedoSan([]);
     setLastSan((items) => [...items, moved.san]);
     setFen(next.fen());
     if (next.isGameOver()) terminalSoundPlayedRef.current = true;
     playSound(soundForSan(moved.san, next.isGameOver(), undefined, "premove"));
-  }, [premove, started, thinking, finished, game, fen, playerColor]);
+  }, [premoves, started, thinking, finished, game, fen, playerColor]);
 
   // Фиксируем результат только один раз — в том числе если мат поставил бот.
   useEffect(() => {
@@ -218,7 +222,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
       const next = new Chess(fen);
       const played = next.move({ from: move.from as Square, to: move.to as Square, promotion: move.uci.length > 4 ? move.uci[4] : undefined });
       if (!played) return false;
-      setPremove(null);
+      setPremoves([]);
       setPremoveMessage("");
       setRedoSan([]);
       setLastSan((items) => [...items, played.san]);
@@ -233,7 +237,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
 
   const resign = () => {
     if (preferences.confirmResign && !window.confirm("Сдаться в текущей партии?")) return;
-    setPremove(null);
+    setPremoves([]);
     finish("loss");
   };
   const copyFen = async () => {
@@ -271,7 +275,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
       setRedoSan((current) => [...removed, ...current]);
       setLastSan(lastSan.slice(0, -count));
       setFen(replay.fen());
-      setPremove(null);
+      setPremoves([]);
       setPremoveMessage("Отменён последний ход и ответ Stockfish.");
     } catch (reason) {
       setEngineError(reason instanceof Error ? reason.message : String(reason));
@@ -291,7 +295,7 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
       setLastSan((current) => [...current, ...restored]);
       setRedoSan(redoSan.slice(restored.length));
       setFen(replay.fen());
-      setPremove(null);
+      setPremoves([]);
       setPremoveMessage("Ходы восстановлены.");
     } catch (reason) {
       setEngineError(reason instanceof Error ? reason.message : String(reason));
@@ -334,9 +338,12 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
               allowedColor={playerColor}
               onMove={handlePlayerMove}
               premoveEnabled={preferences.premovesEnabled && started && !finished && game.turn() === botColor && !game.isGameOver()}
-              premove={premove}
-              onPremove={(next) => { setPremove(next); setPremoveMessage(""); }}
-              onClearPremove={() => { setPremove(null); setPremoveMessage("Premove отменён."); }}
+              premoves={premoves}
+              onPremove={(next) => {
+                setPremoves((queue) => queue.length < MAX_PREMOVE_QUEUE ? [...queue, next] : queue);
+                setPremoveMessage("");
+              }}
+              onClearPremove={() => { setPremoves([]); setPremoveMessage("Очередь premove отменена."); }}
               theme={preferences.boardTheme}
               showLegalMoves={preferences.showLegalMoves}
               highlightLastMove={preferences.highlightLastMove}
@@ -355,10 +362,19 @@ export function PlayScreen({ engine, profile, onFinished, onPersonalReviewReady,
               <button onClick={() => void copyPgn()} disabled={!lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Копировать PGN</button>
               <button onClick={exportPgn} disabled={!lastSan.length} className="rounded-lg bg-[#3d3a37] px-3 py-2 text-xs font-bold disabled:opacity-40">Скачать PGN</button>
             </div>
-            {premove && (
-              <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-[#8b4444] bg-[#3c2928] px-3 py-2 text-xs text-[#ffd4d1]">
-                <span>Ожидающий premove: <b>{formatPremove(premove)}</b></span>
-                <button type="button" onClick={() => { setPremove(null); setPremoveMessage("Premove отменён."); }} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Отменить</button>
+            {premoves.length > 0 && (
+              <div className="mt-3 rounded-lg border border-[#8b4444] bg-[#3c2928] px-3 py-2 text-xs text-[#ffd4d1]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <b>Очередь premove · {premoves.length}/{MAX_PREMOVE_QUEUE}</b>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setPremoves((queue) => queue.slice(0, -1))} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Убрать последний</button>
+                    <button type="button" onClick={() => setPremoves([])} className="rounded-md border border-[#a95a55] px-2 py-1 font-bold">Очистить</button>
+                  </div>
+                </div>
+                <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                  {premoves.map((move, index) => <li key={index}><span className="text-[#ff9d95]">{index + 1}.</span> {formatPremove(move)}</li>)}
+                </ol>
+                <p className="mt-2 text-[10px] text-[#d5a6a0]">Каждый ход перепроверяется после ответа соперника.</p>
               </div>
             )}
             {premoveMessage && <p role="status" className="mt-2 text-xs text-[#d8c2a0]">{premoveMessage}</p>}
