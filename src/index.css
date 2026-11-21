@@ -2265,3 +2265,581 @@ body{margin:0;color:var(--cm-white)!important;background:var(--cm-page)!importan
   .cm-game-review-header h2{font-size:20px!important}
   .cm-game-review-stats{gap:6px!important}
 }
+
+
+/* ───────────────── CHESSMART unified chess platform visual system ─────────────────
+   An original CHESSMART implementation inspired by the public Chess.com interface:
+   warm charcoal surfaces, clear green actions, compact navigation and a consistent
+   hierarchy across play, analysis, training, profile and settings.
+*/
+:root {
+  --cm-page: #302e2b;
+  --cm-sidebar: #262522;
+  --cm-panel: #262522;
+  --cm-panel-deep: #211f1d;
+  --cm-panel-raised: #34322e;
+  --cm-control: #3c3a36;
+  --cm-control-hover: #4a4843;
+  --cm-hover: #3a3834;
+  --cm-row: #383531;
+  --cm-border: #41403b;
+  --cm-text: #ffffff;
+  --cm-text-soft: #c3c2c1;
+  --cm-muted: #989795;
+  --cm-green: #81b64c;
+  --cm-green-hover: #95cc5c;
+  --cm-green-shadow: #457524;
+  --cm-red: #d65d55;
+  --cm-gold: #e4bd5a;
+  --cm-board-light: #eeeed2;
+  --cm-board-dark: #769656;
+  --cm-radius: 6px;
+  --cm-radius-control: 5px;
+  --cm-shadow-menu: 0 12px 34px rgba(0,0,0,.34);
+}
+
+html, body, #root {
+  min-height: 100%;
+  background: var(--cm-page) !important;
+}
+
+body {
+  color: var(--cm-text);
+  font-family: Inter, Roboto, "Segoe UI", system-ui, -apple-system, sans-serif !important;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+.cm-app-shell {
+  min-height: 100vh;
+  color: var(--cm-text);
+  background: var(--cm-page) !important;
+}
+
+.cm-main-column {
+  background: var(--cm-page) !important;
+}
+
+.cm-main-content {
+  min-height: 100vh;
+  background: var(--cm-page) !important;
+  color: var(--cm-text);
+}
+
+.cm-sidebar {
+  width: 145px !important;
+  padding: 12px 8px 10px !important;
+  border-right: 1px solid var(--cm-border) !important;
+  background: var(--cm-sidebar) !important;
+  box-shadow: 3px 0 16px rgba(0,0,0,.08);
+}
+
+.cm-brand {
+  min-height: 46px !important;
+  margin-bottom: 13px !important;
+  padding: 4px 6px !important;
+  border-radius: 6px !important;
+  font-size: 14px !important;
+  letter-spacing: -.035em !important;
+}
+.cm-brand:hover { background: rgba(255,255,255,.045) !important; }
+.cm-brand svg { width: 30px !important; height: 30px !important; }
+
+.cm-sidebar-nav {
+  display: grid !important;
+  align-content: start;
+  gap: 3px !important;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.cm-nav-group {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.cm-nav-parent {
+  position: relative;
+  min-height: 39px !important;
+  gap: 9px !important;
+  padding: 7px 7px !important;
+  border-radius: var(--cm-radius-control) !important;
+  color: var(--cm-text-soft) !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+}
+.cm-nav-parent:hover {
+  background: var(--cm-hover) !important;
+  color: var(--cm-text) !important;
+}
+.cm-nav-parent.active {
+  background: #373530 !important;
+  color: var(--cm-text) !important;
+  box-shadow: inset 3px 0 0 var(--cm-green) !important;
+}
+.cm-nav-parent.active .cm-side-icon { color: var(--cm-green) !important; }
+.cm-nav-parent .cm-side-icon {
+  width: 22px !important;
+  flex-basis: 22px !important;
+}
+.cm-nav-parent .cm-side-chevron {
+  padding-left: 3px;
+  font-size: 12px;
+  opacity: .72;
+}
+.cm-nav-group.expanded .cm-nav-parent .cm-side-chevron { color: var(--cm-green); opacity: 1; }
+.cm-nav-submenu {
+  display: grid;
+  gap: 2px;
+  margin: 1px 0 6px 28px !important;
+  padding: 3px 0 3px 7px;
+  border-left: 1px solid rgba(255,255,255,.11);
+}
+.cm-nav-submenu button {
+  min-height: 30px;
+  padding: 6px 8px !important;
+  border-radius: 4px !important;
+  color: #aaa8a2 !important;
+  font-size: 10px !important;
+  font-weight: 650;
+  line-height: 1.25;
+}
+.cm-nav-submenu button:hover {
+  background: rgba(255,255,255,.055) !important;
+  color: #fff !important;
+}
+.cm-nav-submenu button.active {
+  background: rgba(129,182,76,.14) !important;
+  color: #cce7b2 !important;
+}
+.cm-sidebar-bottom {
+  gap: 8px !important;
+  padding-top: 10px !important;
+  border-top-color: var(--cm-border) !important;
+}
+.cm-sidebar-search {
+  min-height: 36px !important;
+  border-radius: 5px !important;
+  color: var(--cm-text-soft) !important;
+  font-size: 11px !important;
+}
+.cm-sidebar-search:hover,
+.cm-profile-shortcut:hover,
+.cm-bottom-actions button:hover {
+  background: var(--cm-hover) !important;
+}
+.cm-profile-shortcut {
+  min-height: 38px;
+}
+.cm-sidebar-avatar {
+  border-radius: 4px !important;
+}
+.cm-bottom-actions button {
+  border-radius: 5px !important;
+  color: var(--cm-muted) !important;
+}
+.cm-sidebar-search-panel {
+  border-color: var(--cm-border) !important;
+  border-radius: 6px !important;
+  background: var(--cm-panel) !important;
+  box-shadow: var(--cm-shadow-menu) !important;
+}
+.cm-sidebar-search-panel input {
+  border-color: var(--cm-border) !important;
+  border-radius: 5px !important;
+  background: var(--cm-panel-deep) !important;
+  color: var(--cm-text) !important;
+}
+.cm-sidebar-search-results button:hover {
+  background: var(--cm-hover) !important;
+}
+.cm-app-shell.cm-sidebar-is-collapsed .cm-sidebar { width: 60px !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-main-column { margin-left: 60px !important; }
+.cm-app-shell.cm-sidebar-is-collapsed .cm-nav-submenu { display: none !important; }
+
+.cm-content-page {
+  width: min(100%, 1440px) !important;
+  margin-inline: auto !important;
+  padding: 26px clamp(16px, 3vw, 42px) 46px !important;
+  color: var(--cm-text);
+}
+.cm-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+.cm-page-heading h1 {
+  margin: 2px 0 0;
+  color: var(--cm-text);
+  font-size: clamp(23px, 2.3vw, 30px);
+  font-weight: 850;
+  letter-spacing: -.035em;
+  line-height: 1.12;
+}
+.cm-page-heading p {
+  margin: 7px 0 0;
+  color: var(--cm-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.cm-eyebrow {
+  color: #a7c68c !important;
+  font-size: 9px !important;
+  font-weight: 850 !important;
+  letter-spacing: .14em !important;
+  text-transform: uppercase;
+}
+
+.cm-data-card,
+.cm-replica-card,
+.cm-settings-panel,
+.cm-settings-nav,
+.cm-news-summary,
+.cm-profile-hero,
+.cm-empty-account,
+.cm-stats-toolbar,
+.cm-stats-kpis > div,
+.cm-profile-stat-card {
+  border: 1px solid var(--cm-border) !important;
+  border-radius: var(--cm-radius) !important;
+  background: var(--cm-panel) !important;
+  box-shadow: none !important;
+}
+.cm-data-card,
+.cm-settings-panel,
+.cm-settings-nav,
+.cm-profile-hero,
+.cm-empty-account,
+.cm-stats-toolbar {
+  padding: 16px !important;
+}
+.cm-card-heading h2,
+.cm-section-title-row h2,
+.cm-profile-panel h2 {
+  color: var(--cm-text);
+  font-size: 13px;
+  font-weight: 800;
+}
+.cm-card-heading p,
+.cm-section-title-row p {
+  color: var(--cm-muted);
+  font-size: 10px;
+}
+.cm-profile-actions button,
+.cm-profile-actions a,
+.cm-stats-toolbar button,
+.cm-period-switch button,
+.cm-settings-nav button,
+.cm-settings-panel button {
+  border-radius: var(--cm-radius-control) !important;
+}
+
+.cm-main-content input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.cm-main-content select,
+.cm-main-content textarea {
+  border-color: var(--cm-border);
+  border-radius: var(--cm-radius-control);
+  background-color: var(--cm-panel-deep);
+  color: var(--cm-text);
+}
+.cm-main-content input::placeholder,
+.cm-main-content textarea::placeholder {
+  color: #77756f;
+}
+.cm-main-content input:focus,
+.cm-main-content select:focus,
+.cm-main-content textarea:focus {
+  border-color: var(--cm-green) !important;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(129,182,76,.14);
+}
+.cm-main-content button {
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.cm-main-content button:disabled {
+  filter: saturate(.55);
+}
+.cm-main-content button:focus-visible,
+.cm-sidebar button:focus-visible,
+.cm-mobile-nav button:focus-visible {
+  outline: 2px solid var(--cm-green-hover);
+  outline-offset: 2px;
+}
+.cm-main-content a {
+  color: #a8cf83;
+}
+.cm-main-content a:hover { color: #d5edbf; }
+
+/* Keep the route background consistent even in older screens with their own Tailwind colors. */
+.cm-main-content > .min-h-screen,
+.cm-main-content > .review-screen,
+.cm-main-content > .cm-online-screen {
+  min-height: 100vh;
+  background: var(--cm-page) !important;
+  color: var(--cm-text) !important;
+}
+.cm-online-screen {
+  background: var(--cm-page) !important;
+  color: var(--cm-text) !important;
+}
+.cm-online-board-panel,
+.cm-online-game-sidebar > section {
+  border-color: var(--cm-border) !important;
+  border-radius: var(--cm-radius) !important;
+  background: var(--cm-panel) !important;
+  box-shadow: none !important;
+}
+.cm-online-screen .cm-online-game-controls button {
+  border-radius: 5px !important;
+}
+.cm-online-screen .cm-online-game-controls button:hover {
+  filter: brightness(1.08);
+}
+
+/* Normalize the deep surfaces used by older Tailwind-heavy feature screens. */
+.cm-main-content [class*="bg-[#262421]"],
+.cm-main-content [class*="bg-[#292824]"],
+.cm-main-content [class*="bg-[#262522]"],
+.cm-main-content [class*="bg-[#30302b]"] {
+  background-color: var(--cm-panel) !important;
+}
+.cm-main-content [class*="bg-[#24231f]"],
+.cm-main-content [class*="bg-[#1f1d1b]"],
+.cm-main-content [class*="bg-[#201f1d]"] {
+  background-color: var(--cm-panel-deep) !important;
+}
+.cm-main-content [class*="bg-[#3d3a37]"],
+.cm-main-content [class*="bg-[#45433d]"],
+.cm-main-content [class*="bg-[#393831]"] {
+  background-color: var(--cm-control) !important;
+}
+.cm-main-content [class*="bg-[#1b241c]"],
+.cm-main-content [class*="bg-[#312e2b]"],
+.cm-main-content [class*="bg-[#302e2b]"] {
+  background-color: var(--cm-page) !important;
+}
+.cm-main-content [class*="border-[#41403a]"],
+.cm-main-content [class*="border-[#46443e]"],
+.cm-main-content [class*="border-[#4b4844]"],
+.cm-main-content [class*="border-[#4a4942]"] {
+  border-color: var(--cm-border) !important;
+}
+.cm-main-content [class*="text-[#96948c]"],
+.cm-main-content [class*="text-[#a7a6a2]"],
+.cm-main-content [class*="text-[#aaa89f]"],
+.cm-main-content [class*="text-[#b8b7b0]"] {
+  color: var(--cm-muted) !important;
+}
+.cm-main-content [class*="text-[#f1f0ec]"],
+.cm-main-content [class*="text-[#f0f0ed]"] {
+  color: var(--cm-text) !important;
+}
+.cm-main-content [class*="focus:border-[#81b64c]"]:focus {
+  border-color: var(--cm-green) !important;
+}
+
+/* Primary and neutral controls share one tactile shape and the chess-green action color. */
+.cm-main-content button[class*="bg-[#81b64c]"],
+.cm-main-content button[class*="bg-[#91bd69]"],
+.cm-main-content button[class*="bg-[#9bc66b]"],
+.cm-primary-button,
+.cm-replica-primary-button {
+  min-height: 37px;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: var(--cm-green) !important;
+  color: #fff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 3px 0 var(--cm-green-shadow) !important;
+}
+.cm-main-content button[class*="bg-[#81b64c]"]:hover,
+.cm-main-content button[class*="bg-[#91bd69]"]:hover,
+.cm-main-content button[class*="bg-[#9bc66b]"]:hover,
+.cm-primary-button:hover,
+.cm-replica-primary-button:hover {
+  background: var(--cm-green-hover) !important;
+}
+.cm-secondary-button,
+.cm-replica-secondary-button,
+.cm-profile-show-more {
+  min-height: 35px;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: var(--cm-control) !important;
+  color: var(--cm-text-soft) !important;
+  font-weight: 750;
+  box-shadow: none !important;
+}
+.cm-secondary-button:hover,
+.cm-replica-secondary-button:hover,
+.cm-profile-show-more:hover {
+  background: var(--cm-control-hover) !important;
+  color: var(--cm-text) !important;
+}
+
+/* Play hub retains its board-first hierarchy while matching the same surface system. */
+.cm-replica-page.cm-play-page {
+  min-height: calc(100vh - 12px);
+  background: var(--cm-page);
+}
+.cm-replica-play-panel,
+.cm-play-panel {
+  border: 1px solid var(--cm-border) !important;
+  border-radius: 7px !important;
+  background: var(--cm-panel) !important;
+}
+.cm-replica-play-action,
+.cm-play-action {
+  border-radius: 5px !important;
+  background: var(--cm-page) !important;
+}
+.cm-replica-play-action:hover,
+.cm-play-action:hover {
+  background: var(--cm-hover) !important;
+}
+
+/* Training, settings and stats use matching compact rows, dividers and controls. */
+.cm-settings-nav {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+.cm-settings-nav button {
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  color: var(--cm-text-soft);
+  text-align: left;
+}
+.cm-settings-nav button:hover,
+.cm-settings-nav button.active {
+  background: var(--cm-hover) !important;
+  color: var(--cm-text) !important;
+}
+.cm-settings-nav button.active {
+  box-shadow: inset 3px 0 0 var(--cm-green);
+}
+.cm-settings-panel {
+  border-radius: var(--cm-radius) !important;
+}
+.cm-setting-toggle,
+.cm-setting-select,
+.cm-setting-input {
+  border-bottom-color: var(--cm-border) !important;
+}
+.cm-setting-toggle strong,
+.cm-setting-select strong,
+.cm-setting-input strong {
+  color: var(--cm-text) !important;
+}
+.cm-setting-toggle small,
+.cm-setting-select small,
+.cm-setting-input small {
+  color: var(--cm-muted) !important;
+}
+.cm-settings-heading h2 {
+  color: var(--cm-text) !important;
+}
+.cm-settings-heading p,
+.cm-settings-note {
+  color: var(--cm-muted) !important;
+}
+
+/* Board colors are shared with the Play preview and profile theme sample. */
+.cm-preview-square,
+.cm-profile-theme-board {
+  image-rendering: auto;
+}
+.cm-board-caption { color: var(--cm-muted) !important; }
+
+/* Mobile layout: preserve touch targets, safe areas and the five-tab bottom dock. */
+.cm-mobile-nav {
+  border-top: 1px solid var(--cm-border) !important;
+  background: rgba(38,37,34,.98) !important;
+  box-shadow: 0 -6px 22px rgba(0,0,0,.16);
+}
+.cm-mobile-nav button {
+  min-height: 48px !important;
+  border-radius: 5px !important;
+  color: var(--cm-text-soft) !important;
+  font-size: 9px !important;
+  font-weight: 750 !important;
+}
+.cm-mobile-nav button.active {
+  background: rgba(129,182,76,.15) !important;
+  color: #d3ecbb !important;
+}
+.cm-mobile-more-sheet {
+  border-color: var(--cm-border) !important;
+  border-radius: 9px 9px 0 0 !important;
+  background: var(--cm-sidebar) !important;
+}
+.cm-mobile-more-header {
+  border-bottom-color: var(--cm-border) !important;
+}
+.cm-mobile-more-grid button {
+  min-height: 66px;
+  border: 1px solid var(--cm-border) !important;
+  border-radius: 5px !important;
+  background: var(--cm-page) !important;
+}
+.cm-mobile-more-grid button:active,
+.cm-mobile-more-grid button.active {
+  border-color: var(--cm-green) !important;
+  background: rgba(129,182,76,.12) !important;
+}
+.cm-mobile-more-grid button strong { color: var(--cm-text) !important; }
+.cm-mobile-more-grid button small { color: var(--cm-muted) !important; }
+
+@media (max-width: 700px) {
+  .cm-content-page {
+    padding: 16px 12px calc(28px + env(safe-area-inset-bottom)) !important;
+  }
+  .cm-page-heading {
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .cm-page-heading h1 { font-size: 22px; }
+  .cm-page-heading p { font-size: 11px; }
+  .cm-settings-layout { grid-template-columns: minmax(0,1fr) !important; }
+  .cm-settings-nav {
+    display: flex !important;
+    gap: 4px !important;
+    overflow-x: auto;
+    padding: 6px !important;
+    scrollbar-width: none;
+  }
+  .cm-settings-nav button {
+    flex: 0 0 auto;
+    min-height: 35px;
+    white-space: nowrap;
+  }
+  .cm-settings-nav button.active { box-shadow: inset 0 -2px 0 var(--cm-green) !important; }
+  .cm-settings-panel { padding: 13px !important; }
+  .cm-nav-group { min-height: 0; }
+  .cm-sidebar { display: none !important; }
+  .cm-main-column,
+  .cm-app-shell.cm-sidebar-is-collapsed .cm-main-column {
+    margin-left: 0 !important;
+  }
+}
+
+@media (max-height: 650px) and (min-width: 701px) {
+  .cm-sidebar { overflow-y: auto !important; }
+  .cm-sidebar-nav { overflow-y: visible !important; }
+  .cm-sidebar-bottom { margin-top: 10px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-nav-parent,
+  .cm-nav-submenu button,
+  .cm-mobile-nav button,
+  .cm-mobile-more-grid button {
+    transition: none !important;
+  }
+}

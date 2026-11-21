@@ -14,7 +14,7 @@ const HOME_BOARD_POSITION = [
   "♖♘♗♕♔♗♘♖",
 ];
 const BOARD_COLORS: Record<GameBoardTheme, { light: string; dark: string }> = {
-  classic: { light: "#eeeed2", dark: "#779556" }, blue: { light: "#e8edf5", dark: "#6b83a5" },
+  classic: { light: "#EEEED2", dark: "#769656" }, blue: { light: "#e8edf5", dark: "#6b83a5" },
   walnut: { light: "#ead7ba", dark: "#9a6748" }, violet: { light: "#ece4f4", dark: "#856a9b" },
 };
 function Avatar({ profile, localName, size = "large" }: { profile: AccountProfile | null; localName: string; size?: "small" | "large" }) {
