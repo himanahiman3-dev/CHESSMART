@@ -175,7 +175,30 @@ export const GameBoard = memo(function GameBoard({
     return true;
   }, [fen, allowedColor, onPremove, autoQueen, chess]);
 
-  const handleSquareSelection = useCallback((square: Square) => {
+  const tryMove = useCallback(
+    (from: string, to: string): boolean => {
+      if (!chess || !onMove) return false;
+      try {
+        const piece = chess.get(from as Square);
+        if (!piece || !canMoveColor(piece.color)) return false;
+        const isPromo = piece.type === "p" && (to[1] === "8" || to[1] === "1");
+        if (isPromo && !autoQueen) {
+          setPromotionDraft({ from, to, kind: "move" });
+          return false;
+        }
+        const mv = chess.move({ from: from as Square, to: to as Square, promotion: isPromo ? "q" : undefined });
+        const after = chess.fen();
+        chess.undo();
+        return onMove({ from, to, san: mv.san, uci: from + to + (mv.promotion ?? ""), fenAfter: after });
+      } catch {
+        playSound("illegal");
+        return false;
+      }
+    },
+    [chess, onMove, canMoveColor]
+  );
+
+const handleSquareSelection = useCallback((square: Square) => {
     if (!chess) return;
     const piece = chess.get(square);
     if (premove && square === premove.from && onClearPremove) {
@@ -215,28 +238,6 @@ export const GameBoard = memo(function GameBoard({
     canPremoveColor, captureModifierPressed, selectOrQueuePremove, canMoveColor, tryMove,
   ]);
 
-  const tryMove = useCallback(
-    (from: string, to: string): boolean => {
-      if (!chess || !onMove) return false;
-      try {
-        const piece = chess.get(from as Square);
-        if (!piece || !canMoveColor(piece.color)) return false;
-        const isPromo = piece.type === "p" && (to[1] === "8" || to[1] === "1");
-        if (isPromo && !autoQueen) {
-          setPromotionDraft({ from, to, kind: "move" });
-          return false;
-        }
-        const mv = chess.move({ from: from as Square, to: to as Square, promotion: isPromo ? "q" : undefined });
-        const after = chess.fen();
-        chess.undo();
-        return onMove({ from, to, san: mv.san, uci: from + to + (mv.promotion ?? ""), fenAfter: after });
-      } catch {
-        playSound("illegal");
-        return false;
-      }
-    },
-    [chess, onMove, canMoveColor]
-  );
 
   const squareStyles = useMemo(() => {
     const s: Record<string, CSSProperties> = {};
