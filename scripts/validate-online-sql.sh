@@ -163,8 +163,20 @@ begin
   end if;
 
   update public.online_games
-    set status = 'completed', result = 'white_win', reason = 'checkmate'
+    set status = 'completed', result = 'white_win', reason = 'checkmate', updated_at = clock_timestamp()
     where id = game_id;
+
+  if not exists (
+    select 1 from realtime.messages
+    where topic = 'topic:' || game_id::text
+      and extension = 'broadcast'
+      and private is true
+      and event = 'game_update'
+      and payload->'record'->>'status' = 'completed'
+      and payload->'record'->>'fen' = (select fen from public.online_games where id = game_id)
+  ) then
+    raise exception 'Committed online game update was not published to the private Realtime topic';
+  end if;
 
   perform * from public.apply_online_game_rating(game_id);
   select white_rating, black_rating into white_after, black_after
