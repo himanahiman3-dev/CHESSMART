@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Chess } from "chess.js";
 import { detectSacrifice } from "../src/lib/see.ts";
 import { qualifiesAsBrilliant } from "../src/lib/brilliant.ts";
-import { parseGame, selectCriticalPositions } from "../src/lib/analyze.ts";
+import { isSacrificeVerificationCandidate } from "../src/lib/criticalPositionRanking.ts";
 
 const pgn = `[Event "Paris Opera"]
 [Site "Paris FRA"]
@@ -105,35 +105,46 @@ const userGamePgn = `[Event "Live Chess"]
 22. Rad1 Rg8 23. Qxd7+ Kb8 24. Qd8+ Ka7 25. Nb5+ axb5
 26. Qa5+ Kb8 27. Rd8# 1-0`;
 
-const userGame = parseGame(userGamePgn);
-const knightSacrificeIndex = userGame.moves.findIndex((move) => move.san === "Nb5+");
-assert.ok(knightSacrificeIndex >= 0, "The supplied Chess.com game must contain 25.Nb5+.");
-const knightSacrifice = userGame.moves[knightSacrificeIndex];
-const knightSacrificeInfo = detectSacrifice(knightSacrifice.fenBefore, knightSacrifice.uci, 378);
+const userGame = new Chess();
+userGame.loadPgn(userGamePgn);
+const userMoves = userGame.history({ verbose: true });
+const replay = new Chess();
+let knightSacrificeBefore = "";
+let knightSacrificeUci = "";
+let knightSacrificeLegalMoves = 0;
+for (const move of userMoves) {
+  const before = replay.fen();
+  replay.move(move.san);
+  if (move.san === "Nb5+") {
+    knightSacrificeBefore = before;
+    knightSacrificeUci = move.from + move.to + (move.promotion ?? "");
+    knightSacrificeLegalMoves = new Chess(before).moves().length;
+  }
+}
+assert.ok(knightSacrificeBefore, "The supplied Chess.com game must contain 25.Nb5+.");
+const knightSacrificeInfo = detectSacrifice(knightSacrificeBefore, knightSacrificeUci, 378);
 assert.equal(
   knightSacrificeInfo.sacrifice,
   true,
   `25.Nb5+ must be recognized as a knight sacrifice; got ${JSON.stringify(knightSacrificeInfo)}`,
 );
 
-// Simulate a fast first pass where every played move is the top line and the
-// second line is equal in expected points. A sound first-line sacrifice must
-// still be selected for a deeper review even though its estimated loss is 0.
-const firstPass = userGame.fens.map((fen, index) => {
-  const played = userGame.moves[index];
-  return {
-    fen,
-    depth: 22,
-    lines: [
-      { multipv: 1, depth: 22, score: { cp: 0 }, pv: [played?.uci ?? "a2a3"] },
-      { multipv: 2, depth: 22, score: { cp: 0 }, pv: ["a2a3"] },
-    ],
-  };
-});
-const sacrificeCandidates = selectCriticalPositions(userGame, firstPass, 100, true);
-assert.ok(
-  sacrificeCandidates.some((candidate) => candidate.index === knightSacrificeIndex),
-  "25.Nb5+ must enter the deeper verification queue even when the first-pass evaluation loss is zero.",
+// Simulate a fast first pass: the move is the top engine line and loses 0
+// expected points. It must still enter the deeper sacrifice-verification queue.
+assert.equal(
+  isSacrificeVerificationCandidate(knightSacrificeInfo.sacrifice, knightSacrificeLegalMoves, true, 0),
+  true,
+  "25.Nb5+ must be queued for deeper verification even when first-pass loss is zero.",
+);
+assert.equal(
+  isSacrificeVerificationCandidate(true, 1, true, 0),
+  false,
+  "A move with exactly one legal alternative state must not be called a sacrifice candidate.",
+);
+assert.equal(
+  isSacrificeVerificationCandidate(true, 20, false, 4),
+  false,
+  "A non-best sacrifice outside the near-best loss threshold must not be queued.",
 );
 
 // Rating-aware leniency: a sound sacrifice by a 378-Elo player may qualify at
