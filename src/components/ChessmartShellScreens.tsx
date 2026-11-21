@@ -3,6 +3,7 @@ import type { PlayerProfile } from "../lib/playerProfile";
 import { updatePlayerName } from "../lib/playerProfile";
 import type { AccountProfile } from "../lib/accountProfile";
 import { loadGameplayPreferences, updateGameplayPreferences, type GameplayPreferences, type GameBoardTheme } from "../lib/gameplayPreferences";
+import { AccountAvatar } from "./AccountAvatar";
 
 export type ShellRoute = "home" | "playHub" | "review" | "online" | "play" | "coach" | "puzzles" | "battle" | "openings" | "lessons" | "academy" | "profile" | "profileDetails" | "stats" | "settings" | "news" | "daily" | "mistakes" | "endgame" | "lab" | "diagnostics" | "systems";
 type Navigate = (route: ShellRoute) => void;
@@ -19,8 +20,8 @@ const BOARD_COLORS: Record<GameBoardTheme, { light: string; dark: string }> = {
 };
 function Avatar({ profile, localName, size = "large" }: { profile: AccountProfile | null; localName: string; size?: "small" | "large" }) {
   const className = size === "large" ? "cm-avatar cm-avatar-large" : "cm-avatar cm-avatar-small";
-  if (profile?.avatar_url) return <img className={className} src={profile.avatar_url} alt={profile.username} />;
-  return <div className={className}>{(profile?.username ?? localName ?? "И").trim().slice(0, 1).toUpperCase() || "И"}</div>;
+  const username = profile?.username ?? localName ?? "И";
+  return <AccountAvatar src={profile?.avatar_url} name={username} className={className} />;
 }
 function RatingBadge({ label, value, games }: { label: string; value: number; games: number }) {
   return <div className="cm-rating-badge"><span className="cm-rating-label">{label}</span><strong>{value || 1200}</strong><small>{games} партий</small></div>;
