@@ -22,6 +22,12 @@ const AnalyzingBoard = memo(function AnalyzingBoard({ fen }: { fen: string }) {
 export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgress | null; onCancel: () => void }) {
   const total = progress?.total ?? 1;
   const done = progress?.done ?? 0;
+  const requestedWorkers = Math.max(1, progress?.queued ?? 4);
+  const workerCountLabel = requestedWorkers === 1
+    ? "1 воркер"
+    : requestedWorkers < 5
+      ? requestedWorkers + " воркера"
+      : requestedWorkers + " воркеров";
   const depthFrac = progress && progress.targetDepth ? Math.min(1, progress.depth / progress.targetDepth) : 0;
   const pct = Math.min(100, ((done + depthFrac) / total) * 100);
   const [screenElapsedSeconds, setScreenElapsedSeconds] = useState(0);
@@ -65,7 +71,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
             <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#8fa17f]">{progress?.stage === "prepare" ? "Подготовка движков" : "Параллельный анализ партии"}</div>
             <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h1 className="text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl">{progress?.stage === "prepare" ? "Запускаем четыре движка." : "Разбираем каждый ход."}</h1>
+                <h1 className="text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl">{progress?.stage === "prepare" ? "Запускаем пул из " + requestedWorkers + " движков." : "Разбираем каждый ход."}</h1>
                 <p className="mt-1.5 text-xs leading-relaxed text-[#929d89]">{progress?.stage === "prepare" ? "Загружаем и проверяем каждый воркер перед первым ходом. Поиск ещё не начат." : "Движок оценивает позиции и ищет лучшие продолжения."}</p>
               </div>
               <div className="font-mono text-2xl font-black tabular-nums text-[#b5d98e]">{pct.toFixed(0)}<span className="ml-1 text-sm text-[#839078]">%</span></div>
@@ -91,7 +97,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <div className="rounded-xl border border-white/[0.05] bg-[#20241e] p-3">
                   <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#77836f]">Позиция</div>
-                  <div className="mt-1.5 text-lg font-black tabular-nums text-white">{progress?.stage === "prepare" ? "Пул" : Math.min(done + 1, total)}<span className="ml-1 text-[10px] font-bold text-[#7f8b75]">{progress?.stage === "prepare" ? "4 воркера" : "/ " + total}</span></div>
+                  <div className="mt-1.5 text-lg font-black tabular-nums text-white">{progress?.stage === "prepare" ? "Пул" : Math.min(done + 1, total)}<span className="ml-1 text-[10px] font-bold text-[#7f8b75]">{progress?.stage === "prepare" ? workerCountLabel : "/ " + total}</span></div>
                 </div>
                 <div className="rounded-xl border border-white/[0.05] bg-[#20241e] p-3">
                   <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#77836f]">Активные воркеры</div>
@@ -106,7 +112,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
               <div className="mt-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-extrabold text-white">{progress?.stage === "prepare" ? "Проверяем пул воркеров" : progress?.stage === "verify" ? "Проверка критических ходов" : progress?.stage === "finalize" ? "Формирование отчёта" : "Параллельный проход"}</div>
+                    <div className="text-sm font-extrabold text-white">{progress?.stage === "prepare" ? "Проверяем " + workerCountLabel : progress?.stage === "verify" ? "Проверка критических ходов" : progress?.stage === "finalize" ? "Формирование отчёта" : "Параллельный проход"}</div>
                     <div className="mt-1 text-[10px] text-[#87917e]">{progress?.stage === "prepare" ? "Каждый движок должен вернуть полноценный поисковый результат" : "Независимые позиции распределяются между воркерами Stockfish"}</div>
                   </div>
                   <span className="text-[10px] font-bold tabular-nums text-[#b5d98e]">{done} / {total}</span>
