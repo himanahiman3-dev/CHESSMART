@@ -45,7 +45,13 @@ function makeWorker(id) {
       const played = index === undefined ? null : moves[index];
       const position = new Chess(options.fen);
       const chosenUci = played ? uci(played) : uci(position.moves({ verbose: true })[0]);
-      const depth = options.depth ?? 28;
+      const requestedDepth = options.depth ?? 28;
+      // A MultiPV 2 search can finish a few plies shallower than the earlier
+      // MultiPV 1 scan because it has to maintain a second principal variation.
+      // The review must still keep both useful alternatives.
+      const depth = options.multipv === 2
+        ? Math.max(12, requestedDepth - 6)
+        : requestedDepth;
       const legal = position.moves({ verbose: true });
       const alternative = legal.find((move) => uci(move) !== chosenUci);
       const lines = [{
@@ -121,7 +127,17 @@ for (const [san, fixtureMove] of expected) {
     searches[0].nodes >= 3_000_000,
     `${san} must receive at least 3M verifier nodes; got ${searches[0].nodes}`,
   );
-  assert.equal(searches[0].depth, 30, `${san} must be checked two plies deeper`);
+  assert.equal(searches[0].depth, 24,
+    `${san} verifier fixture must simulate a MultiPV result six plies shallower than the main scan`);
+  const positionIndex = moves.findIndex((move) =>
+    move.san === san && move.color === "w"
+  );
+  assert.equal(review.positions[positionIndex].depth, 24,
+    `${san} shallower MultiPV result must replace the single-PV scan result`);
+  assert.equal(review.positions[positionIndex].lines.length, 2,
+    `${san} must retain both MultiPV alternatives after verification`);
+  assert.equal(review.positions[positionIndex].lines[1].multipv, 2,
+    `${san} second principal variation must be present in the final report`);
 }
 
 console.log("Morphy full-review regression passed: Nxb5, Rxd7 and Qb8+ all reached the 3M-node MultiPV 2 verifier and remained Brilliant.");
