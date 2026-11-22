@@ -60,6 +60,7 @@ async function runUciSmoke(engine) {
 
   let phase = "uci";
   let maxDepth = 0;
+  let maxNodes = 0;
   const multipv = new Set();
   let bestMove = "";
   let stderr = "";
@@ -76,13 +77,15 @@ async function runUciSmoke(engine) {
     if (line === "readyok" && phase === "ready") {
       phase = "search";
       child.stdin.write("position startpos moves e2e4 e7e5 g1f3\n");
-      child.stdin.write("go depth 8\n");
+      child.stdin.write("go nodes 200000 depth 24\n");
       return;
     }
     if (phase === "search" && line.startsWith("info ")) {
       const depthMatch = line.match(/\bdepth (\d+)/);
       const pvMatch = line.match(/\bmultipv (\d+)/);
       if (depthMatch) maxDepth = Math.max(maxDepth, Number(depthMatch[1]));
+      const nodesMatch = line.match(/\bnodes (\d+)/);
+      if (nodesMatch) maxNodes = Math.max(maxNodes, Number(nodesMatch[1]));
       if (pvMatch) multipv.add(Number(pvMatch[1]));
       return;
     }
@@ -113,7 +116,8 @@ async function runUciSmoke(engine) {
       }
       try {
         assert.match(bestMove, /^[a-h][1-8][a-h][1-8][qrbn]?$/, "Stockfish must return a legal-shape UCI move");
-        assert.ok(maxDepth >= 6, `Expected a completed search, reached depth ${maxDepth}`);
+        assert.ok(maxDepth >= 6, `Expected a completed nodes-limited search, reached depth ${maxDepth}`);
+        assert.ok(maxNodes > 0, "Stockfish must report searched nodes for the node-budget command");
         assert.ok(multipv.has(1) && multipv.has(2), "MultiPV 2 must return both principal lines");
         resolveRun();
       } catch (error) {
@@ -122,7 +126,7 @@ async function runUciSmoke(engine) {
     });
   });
 
-  console.log(`✓ ${engine.label}: UCI handshake, readiness, MultiPV 2, depth ${maxDepth}, bestmove ${bestMove}`);
+  console.log(`✓ ${engine.label}: UCI handshake, readiness, MultiPV 2, nodes ${maxNodes}, depth cap ${maxDepth}, bestmove ${bestMove}`);
 }
 
 for (const engine of engines) {

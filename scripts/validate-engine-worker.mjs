@@ -57,6 +57,8 @@ class FakeWorker {
         setTimeout(() => this.line("bestmove e2e4"), 10);
       } else if (this.mode === "timed-watchdog") {
         queueMicrotask(() => this.line("info depth 14 multipv 1 score cp 29 pv d2d4 d7d5"));
+      } else if (this.mode === "hard-watchdog") {
+        queueMicrotask(() => this.line("info depth 15 multipv 1 score cp 32 pv e2e4 e7e5"));
       } else {
         queueMicrotask(() => {
           this.line("info depth 8 multipv 1 score cp 42 pv e2e4 e7e5");
@@ -64,8 +66,8 @@ class FakeWorker {
           else this.line("bestmove e2e4");
         });
       }
-    } else if (command === "stop" && this.mode === "timed-watchdog") {
-      queueMicrotask(() => this.line("bestmove d2d4"));
+    } else if (command === "stop" && (this.mode === "timed-watchdog" || this.mode === "hard-watchdog")) {
+      queueMicrotask(() => this.line(this.mode === "hard-watchdog" ? "bestmove e2e4" : "bestmove d2d4"));
     }
   }
 
@@ -109,6 +111,24 @@ try {
   assert.ok(workers.at(-1).terminated, "Terminating the engine must terminate its Worker.");
   assert.ok(revoked.has(successBundle.jsUrl) && revoked.has(successBundle.wasmUrl),
     "Terminating the engine must revoke both Blob URLs.");
+
+  nextMode = "success";
+  const nodeBundle = makeBundle();
+  const nodeEngine = await StockfishEngine.create(nodeBundle, 64);
+  const nodeWorker = workers.at(-1);
+  const nodeResult = await nodeEngine.search({
+    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    depth: 28,
+    nodes: 1_000_000,
+    hardTimeoutMs: 5_000,
+    multipv: 1,
+  }).promise;
+  assert.ok(nodeWorker.commands.includes("go nodes 1000000 depth 28"),
+    "Node-first review must send the node ceiling before the depth cap.");
+  assert.ok(!nodeWorker.commands.some((command) => command.startsWith("go ") && command.includes("movetime")),
+    "External hard timeout must not be serialized as UCI movetime.");
+  assert.equal(nodeResult[0]?.pv[0], "e2e4");
+  nodeEngine.terminate();
 
   nextMode = "info-burst";
   const burstBundle = makeBundle();
@@ -162,6 +182,23 @@ try {
     "The safety watchdog must resolve with the last info line, not discard the partial search.");
   watchdogEngine.terminate();
 
+  nextMode = "hard-watchdog";
+  const hardTimeoutBundle = makeBundle();
+  const hardTimeoutEngine = await StockfishEngine.create(hardTimeoutBundle, 64);
+  const hardTimeoutWorker = workers.at(-1);
+  const hardTimeoutResult = await hardTimeoutEngine.search({
+    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    depth: 28,
+    nodes: 1_000_000,
+    hardTimeoutMs: 5,
+    multipv: 1,
+  }).promise;
+  assert.ok(hardTimeoutWorker.commands.includes("stop"),
+    "The external hard timeout must stop a stalled node-budget search.");
+  assert.equal(hardTimeoutResult[0]?.depth, 15,
+    "The hard timeout must preserve the most recent completed info line.");
+  hardTimeoutEngine.terminate();
+
   nextMode = "search-crash";
   const crashBundle = makeBundle();
   const crashEngine = await StockfishEngine.create(crashBundle, 64);
@@ -184,7 +221,7 @@ try {
   assert.ok(revoked.has(initBundle.jsUrl) && revoked.has(initBundle.wasmUrl),
     "An initialization failure must release both Blob URLs.");
 
-  console.log("Stockfish worker lifecycle validated: timed depth-22 search, depth-16 timeout fallback, safety stop, crash handling, and Blob URL cleanup.");
+  console.log("Stockfish worker lifecycle validated: node-budget-first search, external hard timeout, timed fallback, crash handling, and Blob URL cleanup.");
 } finally {
   URL.revokeObjectURL = nativeRevoke;
 }
