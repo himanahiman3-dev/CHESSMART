@@ -104,8 +104,8 @@ const i3DesktopProfile = getDeviceAnalysisProfile({
   hardwareConcurrency: 8,
   deviceMemory: 8,
 });
-assert.equal(i3DesktopProfile.reviewWorkers, 3,
-  "An 8-thread desktop should request three independently verified review workers.");
+assert.equal(i3DesktopProfile.reviewWorkers, 4,
+  "An 8-thread desktop should request four independently verified review workers.");
 
 assert.equal(getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) Mobile",
@@ -123,8 +123,8 @@ assert.equal(getDeviceAnalysisProfile({
 assert.equal(getDeviceAnalysisProfile({
   hardwareConcurrency: 6,
   deviceMemory: 8,
-}).reviewWorkers, 2,
-  "A six-thread desktop should request a conservative two-worker pool.");
+}).reviewWorkers, 4,
+  "A six-thread desktop should request four verified workers.");
 
 assert.equal(getDeviceAnalysisProfile({
   hardwareConcurrency: 8,
