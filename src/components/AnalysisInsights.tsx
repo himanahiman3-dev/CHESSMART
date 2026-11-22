@@ -6,7 +6,7 @@ import { winFor } from "../lib/winprob";
 import { evaluatePositionDiagnostics } from "../lib/grandmasterDiagnostics";
 import { explainStockfishMove } from "../lib/engineCoach";
 import { countPositionPieces, lookupSyzygy, type SyzygyResult } from "../lib/endgameTablebase";
-import { formatScore, sanRu } from "../lib/format";
+import { sanRu } from "../lib/format";
 
 export interface FreeMoveAssessment {
   san: string;
