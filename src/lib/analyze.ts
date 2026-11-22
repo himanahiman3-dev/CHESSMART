@@ -658,7 +658,9 @@ export async function reviewGame(
         });
 
         const complexity = positionComplexityFactor(move.fenBefore);
-        const verifierNodes = scalePositionLimit(budget.verifierNodes, complexity, 20_000_000);
+        // Do not scale critical verifier searches below their calibrated node floor.
+        // The depth-2 confirmation needs its full budget even in quiet-looking positions.
+        const verifierNodes = scalePositionLimit(budget.verifierNodes, Math.max(1, complexity), 20_000_000);
         const verifierMovetimeMs = scalePositionLimit(budget.verifierMovetimeMs, complexity, 5_000);
         const verifierHardTimeoutMs = scalePositionLimit(budget.verifierHardTimeoutMs, complexity, 120_000)
           ?? budget.verifierHardTimeoutMs;
