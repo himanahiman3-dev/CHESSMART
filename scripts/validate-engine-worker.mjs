@@ -42,7 +42,7 @@ class FakeWorker {
     if (command === "uci") {
       queueMicrotask(() => {
         if (this.mode === "init-crash") this.emit("error", { message: "simulated init crash" });
-        else this.line("uciok");
+        else if (this.mode !== "init-stall") this.line("uciok");
       });
     } else if (command === "isready") {
       queueMicrotask(() => this.line("readyok"));
@@ -107,7 +107,9 @@ try {
     "A new review must clear Stockfish's per-game search state before starting.");
   assert.equal(result[0]?.pv[0], "e2e4", "A healthy worker must return its bestmove.");
   assert.equal(result[0]?.score.cp, 42, "A healthy worker must return its parsed score.");
+  assert.equal(successEngine.isAlive, true, "A newly initialized worker must report itself alive.");
   successEngine.terminate();
+  assert.equal(successEngine.isAlive, false, "A terminated worker must not be reused by a later review.");
   assert.ok(workers.at(-1).terminated, "Terminating the engine must terminate its Worker.");
   assert.ok(revoked.has(successBundle.jsUrl) && revoked.has(successBundle.wasmUrl),
     "Terminating the engine must revoke both Blob URLs.");
@@ -221,7 +223,19 @@ try {
   assert.ok(revoked.has(initBundle.jsUrl) && revoked.has(initBundle.wasmUrl),
     "An initialization failure must release both Blob URLs.");
 
-  console.log("Stockfish worker lifecycle validated: node-budget-first search, external hard timeout, timed fallback, crash handling, and Blob URL cleanup.");
+  nextMode = "init-stall";
+  const abortBundle = makeBundle();
+  const initController = new AbortController();
+  const abortInit = StockfishEngine.create(abortBundle, 64, 1, initController.signal);
+  setTimeout(() => initController.abort(), 5);
+  await assert.rejects(abortInit, /cancelled/,
+    "An initialization that never returns UCI readiness must be cancellable.");
+  assert.ok(workers.at(-1).terminated,
+    "Cancelling a stalled initialization must terminate the worker.");
+  assert.ok(revoked.has(abortBundle.jsUrl) && revoked.has(abortBundle.wasmUrl),
+    "Cancelling a stalled initialization must release both Blob URLs.");
+
+  console.log("Stockfish worker lifecycle validated: startup cancellation, node-budget-first search, external hard timeout, timed fallback, crash handling, and Blob URL cleanup.");
 } finally {
   URL.revokeObjectURL = nativeRevoke;
 }
