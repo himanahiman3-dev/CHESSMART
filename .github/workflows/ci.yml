@@ -105,5 +105,6 @@ jobs:
           curl --fail --location --retry 3 "$RELEASE/stockfish-19-single.js" --output "$STOCKFISH_DIR/stockfish-19-single.js"
           curl --fail --location --retry 3 "$RELEASE/stockfish-19-single.wasm" --output "$STOCKFISH_DIR/stockfish-19-single.wasm"
           node scripts/validate-stockfish-runtime.mjs "$STOCKFISH_DIR"
+          node --experimental-strip-types --experimental-loader ./scripts/ts-extension-loader.mjs scripts/validate-morphy-stockfish.mjs "$STOCKFISH_DIR"
       - name: Production build
         run: npm run build
