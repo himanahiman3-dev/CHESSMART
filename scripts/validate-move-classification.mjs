@@ -5,6 +5,7 @@ import {
   qualifiesAsGreat,
   qualifiesAsMiss,
 } from "../src/lib/moveClassification.ts";
+import { moveAccuracy } from "../src/lib/winprob.ts";
 
 const ordinaryCases = [
   [0, "excellent"],
@@ -15,12 +16,18 @@ const ordinaryCases = [
   [9.999, "inaccuracy"],
   [10, "mistake"],
   [19.999, "mistake"],
-  [20, "blunder"],
+  [20, "mistake"],
+  [20.001, "blunder"],
   [45, "blunder"],
 ];
 for (const [loss, expected] of ordinaryCases) {
   assert.equal(classifyOrdinaryMove(loss), expected, `loss=${loss}`);
 }
+
+assert.equal(moveAccuracy(30, true), 100,
+  "Chess.com book moves are counted as Best for Accuracy even if the local engine prefers another move.");
+assert.ok(moveAccuracy(30, false) < 100,
+  "Non-book inaccuracies must retain the normal move-accuracy calculation.");
 
 const base = {
   forced: false,
