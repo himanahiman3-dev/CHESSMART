@@ -145,7 +145,7 @@ export interface AnalyzeProgress {
   elapsedMs?: number;
   activeWorkers?: number;
   queued?: number;
-  stage?: "scan" | "verify" | "finalize";
+  stage?: "prepare" | "scan" | "verify" | "finalize";
 }
 
 function terminalEval(fen: string): PositionEval | null {
@@ -174,15 +174,19 @@ export async function evaluatePosition(
   const term = terminalEval(fen);
   if (term) return { evalResult: term, fromCache: true };
   const historyKey = history ? `${history.startFen}|${history.moves.join(" ")}` : undefined;
+  if (signal?.aborted) throw new Error("cancelled");
+  // Cache is best-effort. Its IndexedDB adapter has short internal deadlines,
+  // and a failed cache read must never prevent Stockfish from starting.
   const cached = await getCachedPosition(fen, depth, multipv, historyKey, cacheContext);
+  if (signal?.aborted) throw new Error("cancelled");
   // Reuse only a result that completed the target depth. Partial cache entries
   // remain available as fallbacks if a fresh timed search reaches less depth.
-  // A shallow timed-out cache entry must not skip a fresh timed search.
   const requiredCacheDepth = depth;
   if (cached && cached.depth >= requiredCacheDepth) return { evalResult: cached, fromCache: true };
   const handle = engine.search({ fen, depth: depthLimit, multipv, movetimeMs, nodes, hardTimeoutMs, onInfo, history });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
+  if (signal?.aborted) handle.stop();
   let lines: EngineLine[];
   try {
     lines = await handle.promise;
