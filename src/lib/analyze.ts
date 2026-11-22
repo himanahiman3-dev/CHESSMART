@@ -681,8 +681,15 @@ export async function reviewGame(
             cacheContext,
           );
           const previous = completePositions[candidate.index];
-          if (evalResult.depth > previous.depth
-            || (evalResult.depth === previous.depth && evalResult.lines.length > previous.lines.length)) {
+          // MultiPV verification is valuable even when its depth is a little lower:
+          // searching two principal variations costs more nodes per line than MultiPV 1.
+          // Previously we discarded that result whenever its depth was below the fast scan,
+          // which silently removed the second-best move and made Brilliant impossible to prove.
+          const hasUsableAlternative = evalResult.lines.length >= 2
+            && evalResult.depth >= Math.min(budget.targetDepth, 20);
+          const isMoreCompleteSearch = evalResult.depth > previous.depth
+            || (evalResult.depth === previous.depth && evalResult.lines.length > previous.lines.length);
+          if (hasUsableAlternative || isMoreCompleteSearch) {
             completePositions[candidate.index] = evalResult;
           }
           if (fromCache) cachedHits++;
