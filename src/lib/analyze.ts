@@ -622,84 +622,116 @@ export async function reviewGame(
     verifierWorstCaseMovetimeMs
       ? Math.min(verifierWorstCaseTimeoutMs, verifierWorstCaseMovetimeMs + 1_000)
       : verifierWorstCaseTimeoutMs,
-    engines.length,
+    Math.max(1, reviewWorkers.length),
   );
-  let verifyCursor = 0;
   let completedVerifications = 0;
-  firstWorkerError = null;
+  let pendingVerifierTasks = [...verifierTasks];
+  let verifierWorkers = reviewWorkers.filter((worker) => worker.isAlive);
+  let verifierWorkerError: unknown = null;
 
-  await Promise.all(engines.map(async (worker) => {
-    while (!signal?.aborted && !firstWorkerError) {
-      const taskIndex = verifyCursor++;
-      if (taskIndex >= verifierTasks.length) return;
-      const task = verifierTasks[taskIndex];
-      const { candidate, move, history } = task;
-      activeWorkers++;
-      onProgress({
-        done: scanDone + completedVerifications,
-        total: progressTotal,
-        depth: 0,
-        targetDepth: budget.verifierDepth,
-        cached: cachedHits,
-        fen: move.fenBefore,
-        budgetMs: scanBudgetMs + verifierEstimateMs,
-        elapsedMs: now() - startedAt,
-        activeWorkers,
-        queued: Math.max(0, verifierTasks.length - verifyCursor),
-        stage: "verify",
-      });
+  while (pendingVerifierTasks.length > 0 && verifierWorkers.length > 0) {
+    if (signal?.aborted) throw new Error("cancelled");
+    let verifyCursor = 0;
+    const retryTasks: typeof verifierTasks = [];
+    const failedWorkers = new Map<StockfishEngine, unknown>();
+    const currentRound = pendingVerifierTasks;
 
-      const complexity = positionComplexityFactor(move.fenBefore);
-      const verifierNodes = scalePositionLimit(budget.verifierNodes, complexity, 20_000_000);
-      const verifierMovetimeMs = scalePositionLimit(budget.verifierMovetimeMs, complexity, 5_000);
-      const verifierHardTimeoutMs = scalePositionLimit(budget.verifierHardTimeoutMs, complexity, 120_000)
-        ?? budget.verifierHardTimeoutMs;
+    await Promise.all(verifierWorkers.map(async (worker) => {
+      while (!signal?.aborted && !failedWorkers.has(worker)) {
+        const taskIndex = verifyCursor++;
+        if (taskIndex >= currentRound.length) return;
+        const task = currentRound[taskIndex];
+        const { candidate, move, history } = task;
+        activeWorkers++;
+        onProgress({
+          done: scanDone + completedVerifications,
+          total: progressTotal,
+          depth: 0,
+          targetDepth: budget.verifierDepth,
+          cached: cachedHits,
+          fen: move.fenBefore,
+          budgetMs: scanBudgetMs + verifierEstimateMs,
+          elapsedMs: now() - startedAt,
+          activeWorkers,
+          queued: Math.max(0, currentRound.length - verifyCursor),
+          stage: "verify",
+        });
 
-      try {
-        const { evalResult, fromCache } = await evaluatePosition(
-          worker,
-          move.fenBefore,
-          budget.verifierDepth,
-          2,
-          signal,
-          undefined,
-          verifierMovetimeMs,
-          history,
-          verifierNodes,
-          budget.depthLimit === undefined ? undefined : budget.verifierDepth,
-          verifierHardTimeoutMs,
-          cacheContext,
-        );
-        const previous = completePositions[candidate.index];
-        if (evalResult.depth > previous.depth
-          || (evalResult.depth === previous.depth && evalResult.lines.length > previous.lines.length)) {
-          completePositions[candidate.index] = evalResult;
+        const complexity = positionComplexityFactor(move.fenBefore);
+        const verifierNodes = scalePositionLimit(budget.verifierNodes, complexity, 20_000_000);
+        const verifierMovetimeMs = scalePositionLimit(budget.verifierMovetimeMs, complexity, 5_000);
+        const verifierHardTimeoutMs = scalePositionLimit(budget.verifierHardTimeoutMs, complexity, 120_000)
+          ?? budget.verifierHardTimeoutMs;
+
+        try {
+          const { evalResult, fromCache } = await evaluatePosition(
+            worker,
+            move.fenBefore,
+            budget.verifierDepth,
+            2,
+            signal,
+            undefined,
+            verifierMovetimeMs,
+            history,
+            verifierNodes,
+            budget.depthLimit === undefined ? undefined : budget.verifierDepth,
+            verifierHardTimeoutMs,
+            cacheContext,
+          );
+          const previous = completePositions[candidate.index];
+          if (evalResult.depth > previous.depth
+            || (evalResult.depth === previous.depth && evalResult.lines.length > previous.lines.length)) {
+            completePositions[candidate.index] = evalResult;
+          }
+          if (fromCache) cachedHits++;
+          completedVerifications++;
+        } catch (reason) {
+          if (signal?.aborted) throw reason;
+          verifierWorkerError ??= reason;
+          failedWorkers.set(worker, reason);
+          retryTasks.push(task);
+          return;
+        } finally {
+          activeWorkers = Math.max(0, activeWorkers - 1);
         }
-        if (fromCache) cachedHits++;
-        completedVerifications++;
-      } catch (reason) {
-        firstWorkerError ??= reason;
-      } finally {
-        activeWorkers = Math.max(0, activeWorkers - 1);
-      }
 
-      onProgress({
-        done: scanDone + completedVerifications,
-        total: progressTotal,
-        depth: completePositions[candidate.index]?.depth ?? 0,
-        targetDepth: budget.verifierDepth,
-        cached: cachedHits,
-        fen: move.fenBefore,
-        budgetMs: scanBudgetMs + verifierEstimateMs,
-        elapsedMs: now() - startedAt,
-        activeWorkers,
-        queued: Math.max(0, verifierTasks.length - verifyCursor),
-        stage: "verify",
+        onProgress({
+          done: scanDone + completedVerifications,
+          total: progressTotal,
+          depth: completePositions[candidate.index]?.depth ?? 0,
+          targetDepth: budget.verifierDepth,
+          cached: cachedHits,
+          fen: move.fenBefore,
+          budgetMs: scanBudgetMs + verifierEstimateMs,
+          elapsedMs: now() - startedAt,
+          activeWorkers,
+          queued: Math.max(0, currentRound.length - verifyCursor),
+          stage: "verify",
+        });
+      }
+    }));
+
+    if (signal?.aborted) throw new Error("cancelled");
+    if (failedWorkers.size > 0) {
+      failedWorkers.forEach((reason, worker) => {
+        console.warn("Stockfish verifier disabled; re-queueing its critical position:", reason);
+        worker.terminate();
       });
+      verifierWorkers = verifierWorkers.filter((worker) => !failedWorkers.has(worker) && worker.isAlive);
     }
-  }));
-  if (signal?.aborted) throw new Error("cancelled");
-  if (firstWorkerError) throw firstWorkerError;
+    pendingVerifierTasks = [...retryTasks, ...currentRound.slice(verifyCursor)];
+  }
+
+  // The main scan already has a complete result for every position. If every
+  // verifier fails, retain the report and use those scan evaluations rather
+  // than losing the entire review because an optional deeper pass crashed.
+  if (pendingVerifierTasks.length > 0) {
+    console.warn(
+      `Skipped ${pendingVerifierTasks.length} deeper verification checks because no healthy Stockfish worker remained.`,
+      verifierWorkerError,
+    );
+    progressTotal = scanDone + completedVerifications;
+  }
 
   onProgress({
     done: progressTotal,
