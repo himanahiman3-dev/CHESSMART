@@ -74,7 +74,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /* ------------------------------------------------------------------ */
 
 import { estimateParallelBudgetMs, normalizeAnalysisConfig, resolveAnalysisBudget, type AnalysisConfig } from "./analysisBudget";
-import { isSacrificeVerificationCandidate, rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
+import { isSacrificeVerificationCandidate, rankCriticalPositions, selectVerificationCandidates, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { classifyMove } from "./moveClassification";
 import { hasOnlyLegalMove } from "./forcedMove";
 export { TIME_PER_MOVE_MS, gameBudgetMs, slotForPosition } from "./analysisBudget";
@@ -347,9 +347,12 @@ export async function reviewGame(
   };
   // Same position is reusable only for an identical budget, engine/network, MultiPV and book revision.
   const cacheContext = JSON.stringify({ ...analysisMetadata, cacheSchema: 2 });
-  const maxVerificationChecks = Math.max(0, Math.min(10,
+  // Every material-sacrifice candidate gets a deeper check; the optional cap applies
+  // only to ordinary critical positions. This prevents a few large eval swings from
+  // starving later Brilliant candidates in the same game.
+  const maxOrdinaryVerificationChecks = Math.max(0, Math.min(10,
     Math.floor(computeProfile?.verifierMaxMoves ?? 4)));
-  const progressTotal = totalPositions + maxVerificationChecks;
+  let progressTotal = totalPositions + N + maxOrdinaryVerificationChecks;
   const startedAt = now();
   const positions: Array<PositionEval | undefined> = new Array(totalPositions);
   const forcedMoves = new Map<number, string>();
@@ -528,14 +531,16 @@ export async function reviewGame(
   });
 
   if (signal?.aborted) throw new Error("cancelled");
-  const rankedCriticalCandidates = maxVerificationChecks > 0
+  const rankedCriticalCandidates = N > 0
     ? selectCriticalPositions(game, completePositions, game.moves.length, false)
     : [];
-  // Reserve verification slots for sacrifices first so ordinary evaluation swings
-  // cannot starve promising Brilliant candidates.
-  const sacrificeCandidates = rankedCriticalCandidates.filter((candidate) => candidate.sacrifice);
-  const otherCandidates = rankedCriticalCandidates.filter((candidate) => !candidate.sacrifice);
-  const verificationCandidates = [...sacrificeCandidates, ...otherCandidates].slice(0, maxVerificationChecks);
+  // Do not cap sacrifice verification: each detected piece-offer must be checked
+  // against a deeper engine search. The user-configured cap is only for non-sacrifice
+  // critical positions (missed tactics, large eval swings, and unique alternatives).
+  const verificationCandidates = selectVerificationCandidates(
+    rankedCriticalCandidates,
+    maxOrdinaryVerificationChecks,
+  );
   const verifierTasks = verificationCandidates.map((candidate) => ({
     candidate,
     move: game.moves[candidate.index],
@@ -544,6 +549,7 @@ export async function reviewGame(
       moves: game.moves.slice(0, candidate.index).map((entry) => entry.uci),
     },
   }));
+  progressTotal = totalPositions + verifierTasks.length;
   const verifierEstimateMs = estimateParallelBudgetMs(
     verifierTasks.length,
     budget.verifierMovetimeMs
@@ -653,9 +659,6 @@ export function buildReview(
   const book = analyzeBook(game.moves.map((m) => m.san));
   const reviews: MoveReview[] = [];
   const eloOf = (c: Color): number | undefined => playerElo(game.headers, c);
-  // Offers are seeded only by a real piece sacrifice that Stockfish evaluates as sound
-  // after the opponent gets the move. Later moves can inherit this live offer.
-  const verifiedSacrificeOffers: boolean[] = new Array(N).fill(false);
 
   for (let i = 0; i < N; i++) {
     const m = game.moves[i];
@@ -702,28 +705,14 @@ export function buildReview(
 
     // --- жертва для Brilliant ---
     let sac = { sacrifice: false, amount: 0, pieceType: "" };
-    if (!isBook && !isForced && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS) && m.piece !== "k" && m.piece !== "p") {
+    // Inspect every non-pawn, non-king move. A shallow first-pass score must not
+    // suppress sacrifice detection: the deeper verifier may correct that score.
+    if (!isBook && !isForced && m.piece !== "k" && m.piece !== "p") {
       sac = detectSacrifice(m.fenBefore, m.uci, elo);
     }
-
-    // A later pawn/quiet move may continue a piece sacrifice the opponent declined.
-    // The same offered piece must remain legally capturable after every reply.
-    const persistentContinuation = !isBook && !isForced
-      ? findPersistentSacrificeContinuation(game.moves, i, verifiedSacrificeOffers)
-      : null;
-    const sacrificeForBrilliant = sac.sacrifice || !!persistentContinuation;
-
-    // Seed an offer only if Stockfish evaluates the position after the offer
-    // as still good for the sacrificing side with the opponent to move.
-    const offerResponse = positions[i + 1]?.lines[0]?.score;
-    const offerResponseWin = offerResponse
-      ? winForRated(offerResponse, color, elo)
-      : 0;
-    verifiedSacrificeOffers[i] = !isBook
-      && !isForced
-      && sac.sacrifice
-      && (playedIsBest || winLoss <= BRILLIANT_MAX_LOSS)
-      && offerResponseWin >= BRILLIANT_MIN_AFTER;
+    // Brilliant is a piece-sacrifice classification, not a label inherited by
+    // later quiet moves merely because an earlier offer remains capturable.
+    const sacrificeForBrilliant = sac.sacrifice;
 
     const mateForMoverBefore = scoreBefore.mate !== undefined && cpBefore > 0;
     const mateForMoverAfter = scoreAfter.mate !== undefined && cpAfter > 0;
@@ -738,16 +727,10 @@ export function buildReview(
       gapWin = winBefore - winForRated(second.score, color, elo);
     }
 
-    // Keep the alternative-line safeguard for ordinary sacrifices.
-    // A verified short mating sacrifice and a genuinely persistent declined offer
-    // are narrow tactical cases that qualify without an unrelated quiet-line cutoff.
+    // If the played move is not the top line, the pre-move position is the
+    // alternative: it must not already be completely winning. No tactical
+    // exception may bypass this defining Brilliant condition.
     const altWin = playedIsBest ? (second ? winForRated(second.score, color, elo) : null) : winBefore;
-    const matingSacrifice = sac.sacrifice
-      && !isForced
-      && winLoss <= BRILLIANT_MAX_LOSS
-      && cpAfter > 0
-      && scoreAfter.mate !== undefined
-      && Math.abs(scoreAfter.mate) <= 4;
     const isBrilliant = qualifiesAsBrilliant({
       sacrifice: sacrificeForBrilliant,
       legalMoves: legal,
@@ -757,8 +740,6 @@ export function buildReview(
       winLoss,
       winAfter,
       elo,
-      continuation: !!persistentContinuation,
-      matingSacrifice,
     });
 
     const isMateMove = after.lines[0].score.terminal === true
@@ -811,7 +792,7 @@ export function buildReview(
       winAfter,
       winLoss,
       sacrifice: sacrificeForBrilliant,
-      sacrificePiece: sac.pieceType || persistentContinuation?.pieceType || m.piece,
+      sacrificePiece: sac.pieceType || m.piece,
       opening,
       linesBefore: before.lines,
       linesAfter: after.lines,
