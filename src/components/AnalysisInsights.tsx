@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Color, Cls, EngineLine, GameReview, Score } from "../types";
 import { CLS_META } from "../types";
 import { classifyOrdinaryMove } from "../lib/moveClassification";
-import { winFor } from "../lib/winprob";
+import { winForRated } from "../lib/winprob";
 import { evaluatePositionDiagnostics } from "../lib/grandmasterDiagnostics";
 import { explainStockfishMove } from "../lib/engineCoach";
 import { countPositionPieces, lookupSyzygy, type SyzygyResult } from "../lib/endgameTablebase";
@@ -14,6 +14,7 @@ export interface FreeMoveAssessment {
   color: Color;
   baseScore: Score | null;
   baseBestUci?: string;
+  elo?: number;
   afterFen: string;
 }
 
@@ -41,8 +42,8 @@ function gradeFreeMove(assessment: FreeMoveAssessment, afterScore: Score): { cls
   if (assessment.baseBestUci && assessment.uci === assessment.baseBestUci) {
     return { cls: "best", loss: 0 };
   }
-  const before = winFor(assessment.baseScore!, assessment.color);
-  const after = winFor(afterScore, assessment.color);
+  const before = winForRated(assessment.baseScore!, assessment.color, assessment.elo);
+  const after = winForRated(afterScore, assessment.color, assessment.elo);
   const loss = Math.max(0, before - after);
   return { cls: classifyOrdinaryMove(loss), loss };
 }
@@ -52,7 +53,7 @@ function categoryLabel(category: string): string {
     "syzygy-win": "Табличный выигрыш",
     "win": "Выигрыш",
     "maybe-win": "Вероятный выигрыш",
-    "cursed-win": "Выигрыш без гарантии в правиле 50 ходов",
+    "cursed-win": "Теоретический выигрыш, но возможно действует правило 50 ходов",
     "draw": "Ничья",
     "blessed-loss": "Теоретический проигрыш, но ничья по правилу 50 ходов",
     "maybe-loss": "Вероятный проигрыш",
@@ -266,7 +267,7 @@ export function AnalysisInsights({ fen, enabled, lines, targetDepth, freeMoveAss
             ))}
           </div>
         )}
-        <p className="mt-2 text-[9px] leading-relaxed text-[#817e75]">Запрос отправляет текущую FEN-позицию в сервис tablebase.lichess.ovh. DTZ — расстояние до взятия или хода пешкой, а не число ходов до мата.</p>
+        <p className="mt-2 text-[9px] leading-relaxed text-[#817e75]">Запрос отправляет текущую FEN-позицию в сервис tablebase.lichess.org. DTZ — расстояние до взятия или хода пешкой, а не число ходов до мата.</p>
       </section>
 
       {criticalMoments.length > 0 && (
@@ -283,7 +284,7 @@ export function AnalysisInsights({ fen, enabled, lines, targetDepth, freeMoveAss
                   <span className="block text-[11px] font-bold text-[#e1dfd7]">{sanRu(move.san)} · {CLS_META[move.cls].ru}</span>
                   {move.bestSan && <span className="block text-[9px] text-[#99978f]">Вместо этого: {sanRu(move.bestSan)}</span>}
                 </span>
-                <span className="shrink-0 text-[10px] font-bold tabular-nums text-[#e2ae66]">−{move.winLoss.toFixed(1)}</span>
+                <span className="shrink-0 text-[10px] font-bold tabular-nums text-[#e2ae66]">−{Math.max(0, move.winLoss).toFixed(1)}</span>
               </button>
             ))}
           </div>
