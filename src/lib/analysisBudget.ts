@@ -206,7 +206,9 @@ export function resolveAnalysisBudget(
     hardTimeoutMs,
     verifierDepth: Math.min(32, depth + 2),
     verifierMovetimeMs: usesUciTime ? Math.min(5_000, Math.max(350, movetimeMs * 2)) : undefined,
-    verifierNodes: usesNodes ? Math.min(20_000_000, nodes * 2) : undefined,
+    // The second pass needs enough search to distinguish deep tactical alternatives from a shallow first-pass guess.
+    // Standard review therefore gets a 3M-node verifier budget (before complexity scaling).
+    verifierNodes: usesNodes ? Math.min(20_000_000, nodes * 3) : undefined,
     verifierHardTimeoutMs: Math.min(120_000, Math.round(hardTimeoutMs * 1.5)),
   };
 }
