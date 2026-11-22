@@ -114,7 +114,7 @@ export const CLS_ORDER: Cls[] = [
 
 export const CLS_META: Record<Cls, { color: string; symbol: string; ru: string; en: string }> = {
   brilliant: { color: "#1baca6", symbol: "!!", ru: "Блестящий", en: "Brilliant" },
-  great: { color: "#5c8bb0", symbol: "!", ru: "Отличный", en: "Great" },
+  great: { color: "#5c8bb0", symbol: "!", ru: "Сильный ход", en: "Great" },
   best: { color: "#96bc4b", symbol: "★", ru: "Лучший", en: "Best" },
   excellent: { color: "#96bc4b", symbol: "✓", ru: "Отличный ход", en: "Excellent" },
   good: { color: "#95af8a", symbol: "✓", ru: "Хороший", en: "Good" },
