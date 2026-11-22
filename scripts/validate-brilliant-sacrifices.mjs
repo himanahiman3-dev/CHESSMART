@@ -135,19 +135,29 @@ for (const label of targets.values()) {
 }
 
 assert.equal(qualifiesAsBrilliant({
+  sacrifice: true, legalMoves: 24, alternativeWin: 98.6,
+  lostMate: false, allowedMate: false, winLoss: 1, winAfter: 80, elo: 2690,
+}), false, "An alternative line that is already virtually a forced win must not be Brilliant");
+
+assert.equal(qualifiesAsBrilliant({
   sacrifice: true, legalMoves: 24, alternativeWin: 97,
   lostMate: false, allowedMate: false, winLoss: 1, winAfter: 80, elo: 2690,
-}), false, "Already completely winning alternatives must not be Brilliant");
+}), true, "A sound sacrifice should remain eligible when the alternative line is strongly favorable but not virtually forced.");
 
 assert.equal(qualifiesAsBrilliant({
   sacrifice: true, legalMoves: 24, alternativeWin: 90,
-  lostMate: false, allowedMate: false, winLoss: 4, winAfter: 80, elo: 2690,
-}), false, "A move that is not nearly best must not be Brilliant");
+  lostMate: false, allowedMate: false, winLoss: 6.1, winAfter: 80, elo: 2690,
+}), false, "A move that loses more than the expanded near-best allowance must not be Brilliant");
 
 assert.equal(qualifiesAsBrilliant({
   sacrifice: true, legalMoves: 24, alternativeWin: 90,
-  lostMate: false, allowedMate: false, winLoss: 1, winAfter: 35, elo: 2690,
+  lostMate: false, allowedMate: false, winLoss: 1, winAfter: 30, elo: 2690,
 }), false, "A sacrifice that leaves a bad position must not be Brilliant");
+
+assert.equal(qualifiesAsBrilliant({
+  sacrifice: true, legalMoves: 24, alternativeWin: 98.5,
+  lostMate: false, allowedMate: false, winLoss: 5, winAfter: 35, elo: 2690,
+}), true, "The expanded Brilliant boundaries are inclusive at the configured cutoffs.");
 
 
 const userGamePgn = `[Event "Live Chess"]

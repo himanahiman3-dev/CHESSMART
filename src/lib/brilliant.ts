@@ -3,8 +3,8 @@
  * the resulting position must not be bad, and the player must not already be
  * completely winning without finding it. Exact numeric thresholds are not public.
  */
-export const BRILLIANT_MAX_LOSS = 3;
-export const BRILLIANT_MIN_AFTER = 40;
+export const BRILLIANT_MAX_LOSS = 5;
+export const BRILLIANT_MIN_AFTER = 35;
 
 export interface BrilliantCriteria {
   sacrifice: boolean;
@@ -23,10 +23,10 @@ export interface BrilliantCriteria {
  * generous cutoff, as described by Chess.com; this is a project heuristic.
  */
 export function brilliantAlternativeLimit(elo?: number): number {
-  if (elo === undefined || !Number.isFinite(elo)) return 97;
-  if (elo < 1000) return 98;
-  if (elo < 1800) return 97;
-  return 96;
+  if (elo === undefined || !Number.isFinite(elo)) return 98.5;
+  if (elo < 1000) return 99.5;
+  if (elo < 1800) return 99;
+  return 98.5;
 }
 
 export function qualifiesAsBrilliant(criteria: BrilliantCriteria): boolean {

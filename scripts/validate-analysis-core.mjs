@@ -97,15 +97,15 @@ assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 8 }).maxThreads, 6,
 assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 32 }).maxThreads, 10,
   "Large desktop CPUs must cap Stockfish worker count to protect browser responsiveness.");
 
-// Whole-game review deliberately uses one initialized engine until concurrent
-// independent WASM workers pass browser stress tests.
+// Desktop review asks for 3–4 independent workers; runtime smoke tests can
+// downgrade the pool on browsers or devices that fail simultaneous searches.
 const i3DesktopProfile = getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/157.0.0.0",
   hardwareConcurrency: 8,
   deviceMemory: 8,
 });
-assert.equal(i3DesktopProfile.reviewWorkers, 1,
-  "A desktop must not spawn independent WASM workers before browser stress validation.");
+assert.equal(i3DesktopProfile.reviewWorkers, 3,
+  "An 8-thread desktop should request three independently verified review workers.");
 
 assert.equal(getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) Mobile",
@@ -118,13 +118,13 @@ assert.equal(getDeviceAnalysisProfile({
   hardwareConcurrency: 4,
   deviceMemory: 16,
 }).reviewWorkers, 1,
-  "Low-resource desktops must not be forced to create four workers.");
+  "Low-resource desktops must not be forced to create a multi-worker pool.");
 
 assert.equal(getDeviceAnalysisProfile({
   hardwareConcurrency: 6,
   deviceMemory: 8,
-}).reviewWorkers, 1,
-  "Mid-range desktops also stay on the initialized engine until worker stress validation.");
+}).reviewWorkers, 2,
+  "A six-thread desktop should request a conservative two-worker pool.");
 
 assert.equal(getDeviceAnalysisProfile({
   hardwareConcurrency: 8,

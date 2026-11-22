@@ -66,10 +66,19 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
   // Stockfish remains multi-threaded, but must not occupy every logical core on large PCs.
   const renderReserve = cores <= 2 ? 1 : Math.max(2, Math.ceil(cores * 0.25));
   const maxThreads = Math.min(10, Math.max(1, cores - renderReserve));
-  // Keep whole-game review on the already initialized engine until concurrent
-  // independent WASM workers pass real-browser stress tests. Multiple instances
-  // can stall their first search on some browsers/devices even when UCI works alone.
-  const reviewWorkers = 1;
+  // Parallel review is enabled only when the device has enough CPU and memory.
+  // Four workers are reserved for high-core desktops; the browser will still
+  // verify simultaneous real searches and reduce the pool if the device is unstable.
+  const reviewMemoryAvailable = memory === undefined || memory >= 8;
+  const reviewWorkers = lowResourcePc || !reviewMemoryAvailable
+    ? 1
+    : cores >= 16
+      ? 4
+      : cores >= 8
+        ? 3
+        : cores >= 6
+          ? 2
+          : 1;
   const verifierEnabled = cores >= 6 && (memory === undefined || memory >= 8);
 
   return {

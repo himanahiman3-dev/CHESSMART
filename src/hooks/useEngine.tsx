@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StockfishEngine } from "../lib/engine";
+import { verifyReviewWorkerPool } from "../lib/reviewPoolHealth";
 import { getDeviceAnalysisProfile, type DeviceAnalysisProfile } from "../lib/computeProfile";
 import {
   canUseThreads,
@@ -116,7 +117,8 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     // Phones and low-resource desktops keep the primary engine only.
     if (desiredWorkers <= 1) return [engine];
     if (reviewPoolRef.current?.variant === selectedVariant
-      && reviewPoolRef.current.engines.length === desiredWorkers) {
+      && reviewPoolRef.current.engines.length >= 2
+      && reviewPoolRef.current.engines.length <= desiredWorkers) {
       return reviewPoolRef.current.engines;
     }
     if (reviewPoolPromiseRef.current) return reviewPoolPromiseRef.current;
@@ -141,9 +143,25 @@ export function EngineProvider({ children }: { children: ReactNode }) {
           }
           created.push(worker);
         }
+        // UCI readiness alone does not prove that separate WASM instances can
+        // search together. Run two concurrent smoke rounds and keep only workers
+        // that return a completed PV in both rounds.
+        const healthy = await verifyReviewWorkerPool(created, signal);
+        if (signal?.aborted) throw new Error("cancelled");
+        if (healthy.length < 2) {
+          created.forEach((worker) => worker.terminate());
+          console.warn("Параллельный Stockfish не прошёл проверку; используем основной движок.");
+          return [engine];
+        }
+
+        const healthySet = new Set(healthy);
+        created.forEach((worker) => {
+          if (!healthySet.has(worker)) worker.terminate();
+        });
         reviewPoolRef.current?.engines.forEach((worker) => worker.terminate());
-        reviewPoolRef.current = { variant: selectedVariant, engines: created };
-        return created;
+        reviewPoolRef.current = { variant: selectedVariant, engines: healthy };
+        console.info(`Stockfish review pool verified: ${healthy.length}/${desiredWorkers} workers`);
+        return healthy;
       } catch (reason) {
         created.forEach((worker) => worker.terminate());
         if (signal?.aborted) throw reason;
