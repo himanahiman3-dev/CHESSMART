@@ -431,94 +431,123 @@ export async function reviewGame(
     stage: "scan",
   });
 
-  let cursor = 0;
+  // A worker failure is isolated to that worker. Requeue its current position
+  // and let the remaining healthy engines finish the game instead of aborting
+  // every search because one WASM instance crashed or stopped responding.
+  let pendingIndexes = [...tasks];
+  let reviewWorkers = engines.filter((worker) => worker.isAlive);
   let firstWorkerError: unknown = null;
-  await Promise.all(engines.map(async (worker) => {
-    while (!signal?.aborted && !firstWorkerError) {
-      const taskPosition = cursor++;
-      if (taskPosition >= tasks.length) return;
-      const index = tasks[taskPosition];
-      const fen = game.fens[index];
-      const history = {
-        startFen: game.startFen,
-        moves: game.moves.slice(0, index).map((move) => move.uci),
-      };
-      activeWorkers++;
-      onProgress({
-        done: doneCount(),
-        total: progressTotal,
-        depth: 0,
-        targetDepth: budget.targetDepth,
-        cached: cachedHits,
-        fen,
-        budgetMs: scanBudgetMs,
-        elapsedMs: now() - startedAt,
-        activeWorkers,
-        queued: Math.max(0, tasks.length - cursor),
-        stage: "scan",
-      });
+  while (pendingIndexes.length > 0 && reviewWorkers.length > 0) {
+    if (signal?.aborted) throw new Error("cancelled");
+    let cursor = 0;
+    const retryIndexes: number[] = [];
+    const failedWorkers = new Map<StockfishEngine, unknown>();
+    const currentRound = pendingIndexes;
 
-      const complexity = positionComplexityFactor(fen);
-      const positionNodes = scalePositionLimit(budget.nodes, complexity, 20_000_000);
-      const positionMovetimeMs = scalePositionLimit(budget.movetimeMs, complexity, 10_000);
-      const positionHardTimeoutMs = scalePositionLimit(budget.hardTimeoutMs, complexity, 120_000)
-        ?? budget.hardTimeoutMs;
-
-      try {
-        const { evalResult, fromCache } = await evaluatePosition(
-          worker,
+    await Promise.all(reviewWorkers.map(async (worker) => {
+      while (!signal?.aborted && !failedWorkers.has(worker)) {
+        const taskPosition = cursor++;
+        if (taskPosition >= currentRound.length) return;
+        const index = currentRound[taskPosition];
+        const fen = game.fens[index];
+        const history = {
+          startFen: game.startFen,
+          moves: game.moves.slice(0, index).map((move) => move.uci),
+        };
+        activeWorkers++;
+        onProgress({
+          done: doneCount(),
+          total: progressTotal,
+          depth: 0,
+          targetDepth: budget.targetDepth,
+          cached: cachedHits,
           fen,
-          budget.targetDepth,
-          1,
-          signal,
-          (lines) => {
-            onProgress({
-              done: doneCount(),
-              total: progressTotal,
-              depth: lines.length ? Math.min(...lines.map((line) => line.depth)) : 0,
-              targetDepth: budget.targetDepth,
-              cached: cachedHits,
-              fen,
-              budgetMs: scanBudgetMs,
-              elapsedMs: now() - startedAt,
-              activeWorkers,
-              queued: Math.max(0, tasks.length - cursor),
-              stage: "scan",
-            });
-          },
-          positionMovetimeMs,
-          history,
-          positionNodes,
-          budget.depthLimit,
-          positionHardTimeoutMs,
-          cacheContext,
-        );
-        positions[index] = evalResult;
-        if (fromCache) cachedHits++;
-        completedTasks++;
-      } catch (reason) {
-        firstWorkerError ??= reason;
-      } finally {
-        activeWorkers = Math.max(0, activeWorkers - 1);
-      }
+          budgetMs: scanBudgetMs,
+          elapsedMs: now() - startedAt,
+          activeWorkers,
+          queued: Math.max(0, currentRound.length - cursor),
+          stage: "scan",
+        });
 
-      onProgress({
-        done: doneCount(),
-        total: progressTotal,
-        depth: positions[index]?.depth ?? 0,
-        targetDepth: budget.targetDepth,
-        cached: cachedHits,
-        fen,
-        budgetMs: scanBudgetMs,
-        elapsedMs: now() - startedAt,
-        activeWorkers,
-        queued: Math.max(0, tasks.length - cursor),
-        stage: "scan",
+        const complexity = positionComplexityFactor(fen);
+        const positionNodes = scalePositionLimit(budget.nodes, complexity, 20_000_000);
+        const positionMovetimeMs = scalePositionLimit(budget.movetimeMs, complexity, 10_000);
+        const positionHardTimeoutMs = scalePositionLimit(budget.hardTimeoutMs, complexity, 120_000)
+          ?? budget.hardTimeoutMs;
+
+        try {
+          const { evalResult, fromCache } = await evaluatePosition(
+            worker,
+            fen,
+            budget.targetDepth,
+            1,
+            signal,
+            (lines) => {
+              onProgress({
+                done: doneCount(),
+                total: progressTotal,
+                depth: lines.length ? Math.min(...lines.map((line) => line.depth)) : 0,
+                targetDepth: budget.targetDepth,
+                cached: cachedHits,
+                fen,
+                budgetMs: scanBudgetMs,
+                elapsedMs: now() - startedAt,
+                activeWorkers,
+                queued: Math.max(0, currentRound.length - cursor),
+                stage: "scan",
+              });
+            },
+            positionMovetimeMs,
+            history,
+            positionNodes,
+            budget.depthLimit,
+            positionHardTimeoutMs,
+            cacheContext,
+          );
+          positions[index] = evalResult;
+          if (fromCache) cachedHits++;
+          completedTasks++;
+        } catch (reason) {
+          if (signal?.aborted) throw reason;
+          firstWorkerError ??= reason;
+          failedWorkers.set(worker, reason);
+          retryIndexes.push(index);
+          return;
+        } finally {
+          activeWorkers = Math.max(0, activeWorkers - 1);
+        }
+
+        onProgress({
+          done: doneCount(),
+          total: progressTotal,
+          depth: positions[index]?.depth ?? 0,
+          targetDepth: budget.targetDepth,
+          cached: cachedHits,
+          fen,
+          budgetMs: scanBudgetMs,
+          elapsedMs: now() - startedAt,
+          activeWorkers,
+          queued: Math.max(0, currentRound.length - cursor),
+          stage: "scan",
+        });
+      }
+    }));
+
+    if (signal?.aborted) throw new Error("cancelled");
+    if (failedWorkers.size > 0) {
+      failedWorkers.forEach((reason, worker) => {
+        console.warn("Stockfish review worker disabled; re-queueing its current position:", reason);
+        worker.terminate();
       });
+      reviewWorkers = reviewWorkers.filter((worker) => !failedWorkers.has(worker) && worker.isAlive);
     }
-  }));
+    pendingIndexes = [...retryIndexes, ...currentRound.slice(cursor)];
+  }
   if (signal?.aborted) throw new Error("cancelled");
-  if (firstWorkerError) throw firstWorkerError;
+  if (pendingIndexes.length > 0) {
+    const detail = firstWorkerError instanceof Error ? ": " + firstWorkerError.message : "";
+    throw new Error("Все доступные воркеры Stockfish завершились до окончания анализа" + detail);
+  }
 
   // Resolve chains of forced positions backwards from a fully evaluated child.
   for (let i = N - 1; i >= 0; i--) {
