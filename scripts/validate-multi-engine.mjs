@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { getDeviceAnalysisProfile } from "../src/lib/computeProfile.ts";
 import { rankCriticalPositions, shouldRecheckCriticalPosition } from "../src/lib/criticalPositionRanking.ts";
+import { verifyReviewWorkerPool } from "../src/lib/reviewPoolHealth.ts";
 
 const powerfulDesktop = getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0",
@@ -16,7 +17,7 @@ assert.equal(powerfulDesktop.timePerMoveMs, 1400);
 assert.equal(powerfulDesktop.maxTimePerMoveMs, 4750);
 assert.equal(powerfulDesktop.depthBonus, 5);
 assert.equal(powerfulDesktop.mainMultiPv, 1, "Whole-game scan defaults to MultiPV 1.");
-assert.equal(powerfulDesktop.reviewWorkers, 1, "Whole-game review stays on the stable initialized engine until parallel WASM stress tests pass.");
+assert.equal(powerfulDesktop.reviewWorkers, 4, "A 16-thread desktop may request four workers, subject to runtime parallel-search probes.");
 assert.equal(powerfulDesktop.reviewHashMb, 64);
 assert.equal(powerfulDesktop.verifierMaxMoves, 6);
 assert.equal(powerfulDesktop.verifierBudgetMs, 5000);
@@ -30,12 +31,28 @@ const ordinaryDesktop = getDeviceAnalysisProfile({
 assert.equal(ordinaryDesktop.device, "desktop");
 assert.equal(ordinaryDesktop.defaultVariant, "full");
 assert.equal(ordinaryDesktop.maxThreads, 6, "A typical desktop keeps two logical cores free for UI work.");
-assert.equal(ordinaryDesktop.reviewWorkers, 1, "Eight logical threads do not enable unvalidated independent WASM review workers.");
+assert.equal(ordinaryDesktop.reviewWorkers, 3, "An 8-thread desktop requests three independently verified review workers.");
 assert.equal(ordinaryDesktop.mainMultiPv, 1);
 assert.equal(ordinaryDesktop.verifierMaxMoves, 4);
 assert.equal(ordinaryDesktop.timePerMoveMs, 1000);
 assert.equal(ordinaryDesktop.maxTimePerMoveMs, 4750);
 assert.equal(ordinaryDesktop.depthBonus, 3);
+
+const midRangeDesktop = getDeviceAnalysisProfile({
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/157.0",
+  hardwareConcurrency: 6,
+  deviceMemory: 8,
+});
+assert.equal(midRangeDesktop.reviewWorkers, 2,
+  "A six-thread desktop should request two review workers rather than overloading the browser.");
+
+const memoryConstrainedDesktop = getDeviceAnalysisProfile({
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/157.0",
+  hardwareConcurrency: 16,
+  deviceMemory: 4,
+});
+assert.equal(memoryConstrainedDesktop.reviewWorkers, 1,
+  "A machine exposing only 4 GB must stay on its primary engine even with many logical cores.");
 
 const lowEndPhone = getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
@@ -90,4 +107,57 @@ assert.equal(shouldRecheckCriticalPosition(1.5, 0, 10, true), true,
 assert.equal(shouldRecheckCriticalPosition(1.4, 0, 10, false), false,
   "Quiet, stable positions should not use a second engine");
 
-console.log("Adaptive analysis validated: desktop-max, mobile-balanced, strong-phone verification, and critical-position ranking.");
+function fakeWorker({ fails = false } = {}) {
+  return {
+    probes: 0,
+    terminated: false,
+    search(options) {
+      this.probes++;
+      assert.equal(options.multipv, 1);
+      assert.ok(options.nodes >= 10_000);
+      assert.ok(options.hardTimeoutMs > 0);
+      return {
+        promise: fails
+          ? Promise.reject(new Error("simulated first-search failure"))
+          : Promise.resolve([{ multipv: 1, depth: 8, score: { cp: 12 }, pv: ["e2e4", "e7e5"] }]),
+        stop() {},
+      };
+    },
+    terminate() { this.terminated = true; },
+  };
+}
+
+const fourHealthy = Array.from({ length: 4 }, () => fakeWorker());
+const verifiedFour = await verifyReviewWorkerPool(fourHealthy);
+assert.equal(verifiedFour.length, 4,
+  "Four independent workers should be retained after two simultaneous successful probes.");
+assert.ok(fourHealthy.every((worker) => worker.probes === 2),
+  "Every worker must complete two concurrent smoke searches before being enabled.");
+
+const threeHealthyOneBroken = [
+  fakeWorker(), fakeWorker(), fakeWorker(), fakeWorker({ fails: true }),
+];
+const verifiedThree = await verifyReviewWorkerPool(threeHealthyOneBroken);
+assert.equal(verifiedThree.length, 3,
+  "A failed fourth worker must be removed while the three healthy workers are re-tested.");
+assert.equal(threeHealthyOneBroken[3].terminated, true,
+  "A worker that fails its first search must be terminated, not reused.");
+assert.ok(verifiedThree.every((worker) => worker.probes === 3),
+  "Surviving workers must pass two additional simultaneous probes after pool reduction.");
+
+const oneHealthy = [fakeWorker(), fakeWorker({ fails: true })];
+const verifiedFallback = await verifyReviewWorkerPool(oneHealthy);
+assert.deepEqual(verifiedFallback, [],
+  "Fewer than two verified independent workers must signal fallback to the primary engine.");
+assert.ok(oneHealthy.every((worker) => worker.terminated),
+  "All workers must be terminated when the independent pool is too small.");
+
+const abortedController = new AbortController();
+abortedController.abort();
+await assert.rejects(
+  verifyReviewWorkerPool([fakeWorker(), fakeWorker()], abortedController.signal),
+  /cancelled/,
+  "An aborted pool probe must stop rather than enabling unverified workers.",
+);
+
+console.log("Adaptive analysis validated: 2–4 desktop workers, mobile fallback, concurrent pool probes, and critical-position ranking.");
