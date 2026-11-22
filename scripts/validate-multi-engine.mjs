@@ -16,7 +16,7 @@ assert.equal(powerfulDesktop.timePerMoveMs, 1400);
 assert.equal(powerfulDesktop.maxTimePerMoveMs, 4750);
 assert.equal(powerfulDesktop.depthBonus, 5);
 assert.equal(powerfulDesktop.mainMultiPv, 1, "Whole-game scan defaults to MultiPV 1.");
-assert.equal(powerfulDesktop.reviewWorkers, 1, "Review stays on the initialized engine while parallel WASM worker stability is validated.");
+assert.equal(powerfulDesktop.reviewWorkers, 4, "A powerful desktop receives the maximum four independent review workers.");
 assert.equal(powerfulDesktop.reviewHashMb, 64);
 assert.equal(powerfulDesktop.verifierMaxMoves, 6);
 assert.equal(powerfulDesktop.verifierBudgetMs, 5000);
@@ -30,7 +30,7 @@ const ordinaryDesktop = getDeviceAnalysisProfile({
 assert.equal(ordinaryDesktop.device, "desktop");
 assert.equal(ordinaryDesktop.defaultVariant, "full");
 assert.equal(ordinaryDesktop.maxThreads, 6, "A typical desktop keeps two logical cores free for UI work.");
-assert.equal(ordinaryDesktop.reviewWorkers, 1, "Desktop review must not spawn an additional independent WASM engine yet.");
+assert.equal(ordinaryDesktop.reviewWorkers, 4, "An 8-logical-thread desktop such as the i3-12100F receives four review workers.");
 assert.equal(ordinaryDesktop.mainMultiPv, 1);
 assert.equal(ordinaryDesktop.verifierMaxMoves, 4);
 assert.equal(ordinaryDesktop.timePerMoveMs, 1000);
