@@ -9,6 +9,7 @@ import { qBalance } from "../src/lib/see.ts";
 import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES, DEFAULT_ANALYSIS_CONFIG, createAnalysisConfig, resolveAnalysisBudget, positionComplexityFactor, scalePositionLimit } from "../src/lib/analysisBudget.ts";
 import { summarizeReview } from "../src/lib/learningStats.ts";
 import { getDeviceAnalysisProfile } from "../src/lib/computeProfile.ts";
+import { countPositionPieces } from "../src/lib/endgameTablebase.ts";
 
 assert.equal(REVIEW_TARGET_DEPTH, 28, "Node-first review uses depth 28 as a safety ceiling.");
 assert.equal(ANALYSIS_TIME_MODES[0].timeMs, 300, "Fast mode gives each position 300 ms.");
@@ -82,6 +83,10 @@ assert.equal(scalePositionLimit(1_000_000, 0.7), 700_000);
 assert.equal(scalePositionLimit(1_000_000, 1.5), 1_500_000);
 assert.equal(scalePositionLimit(undefined, 1.5), undefined);
 assert.equal(scalePositionLimit(100_000, 4, 250_000), 250_000);
+assert.equal(countPositionPieces("4k3/8/8/8/8/8/8/4K3 w - - 0 1"), 2);
+assert.equal(countPositionPieces("4k3/8/8/8/8/8/PPPP4/4K2Q w - - 0 1"), 7);
+assert.equal(countPositionPieces(normalOpeningFen), 32,
+  "Syzygy guard must count every piece, including kings and pawns.");
 
 
 
