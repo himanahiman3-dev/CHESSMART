@@ -53,9 +53,13 @@ export function cpFor(score: Score, color: Color): number {
   return color === "w" ? v : -v;
 }
 
-/** Точность одного хода по потере Win% (формула Lichess; не формула CAPS2 Chess.com). */
-export function moveAccuracy(winLoss: number): number {
-  const a = 103.1668 * Math.exp(-0.04354 * winLoss) - 3.1669;
+/** Точность одного хода по потере Win% (формула Lichess; не формула CAPS2 Chess.com).
+ * Книжный ход всегда считается Best для точности, независимо от локальной оценки движка.
+ */
+export function moveAccuracy(winLoss: number, isBook = false): number {
+  if (isBook) return 100;
+  const loss = Number.isFinite(winLoss) ? Math.max(0, winLoss) : 100;
+  const a = 103.1668 * Math.exp(-0.04354 * loss) - 3.1669;
   return Math.max(0, Math.min(100, a));
 }
 
