@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import type { AnalyzeProgress } from "../lib/analyze";
@@ -24,7 +24,15 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
   const done = progress?.done ?? 0;
   const depthFrac = progress && progress.targetDepth ? Math.min(1, progress.depth / progress.targetDepth) : 0;
   const pct = Math.min(100, ((done + depthFrac) / total) * 100);
-  const elapsed = Math.max(0, Math.floor((progress?.elapsedMs ?? 0) / 1000));
+  const [screenElapsedSeconds, setScreenElapsedSeconds] = useState(0);
+  useEffect(() => {
+    const startedAt = Date.now();
+    const update = () => setScreenElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    update();
+    const timer = window.setInterval(update, 250);
+    return () => window.clearInterval(timer);
+  }, []);
+  const elapsed = Math.max(screenElapsedSeconds, Math.floor((progress?.elapsedMs ?? 0) / 1000));
   const mins = Math.floor(elapsed / 60);
   const secs = String(elapsed % 60).padStart(2, "0");
   const fen = useMemo(() => {
@@ -48,17 +56,17 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
           </div>
           <div className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#8eaf68]/20 bg-[#2c3627] px-3 py-2 text-[9px] font-extrabold uppercase tracking-[0.12em] text-[#c3d9ac]">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#a6d36e]" />
-            Stockfish работает
+            {progress?.stage === "prepare" ? "Подготовка Stockfish" : "Stockfish работает"}
           </div>
         </header>
 
         <section className="overflow-hidden rounded-[28px] border border-[#414a3b] bg-[#272c25] shadow-[0_28px_90px_rgba(0,0,0,.32)]">
           <div className="border-b border-white/[0.06] px-5 py-5 sm:px-8">
-            <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#8fa17f]">Параллельный анализ партии</div>
+            <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#8fa17f]">{progress?.stage === "prepare" ? "Подготовка движков" : "Параллельный анализ партии"}</div>
             <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h1 className="text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl">Разбираем каждый ход.</h1>
-                <p className="mt-1.5 text-xs leading-relaxed text-[#929d89]">Движок оценивает позиции и ищет лучшие продолжения.</p>
+                <h1 className="text-2xl font-black tracking-[-0.04em] text-white sm:text-3xl">{progress?.stage === "prepare" ? "Запускаем четыре движка." : "Разбираем каждый ход."}</h1>
+                <p className="mt-1.5 text-xs leading-relaxed text-[#929d89]">{progress?.stage === "prepare" ? "Загружаем и проверяем каждый воркер перед первым ходом. Поиск ещё не начат." : "Движок оценивает позиции и ищет лучшие продолжения."}</p>
               </div>
               <div className="font-mono text-2xl font-black tabular-nums text-[#b5d98e]">{pct.toFixed(0)}<span className="ml-1 text-sm text-[#839078]">%</span></div>
             </div>
@@ -83,7 +91,7 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <div className="rounded-xl border border-white/[0.05] bg-[#20241e] p-3">
                   <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#77836f]">Позиция</div>
-                  <div className="mt-1.5 text-lg font-black tabular-nums text-white">{Math.min(done + 1, total)}<span className="ml-1 text-[10px] font-bold text-[#7f8b75]">/ {total}</span></div>
+                  <div className="mt-1.5 text-lg font-black tabular-nums text-white">{progress?.stage === "prepare" ? "Пул" : Math.min(done + 1, total)}<span className="ml-1 text-[10px] font-bold text-[#7f8b75]">{progress?.stage === "prepare" ? "4 воркера" : "/ " + total}</span></div>
                 </div>
                 <div className="rounded-xl border border-white/[0.05] bg-[#20241e] p-3">
                   <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#77836f]">Активные воркеры</div>
@@ -98,8 +106,8 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
               <div className="mt-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-extrabold text-white">{progress?.stage === "verify" ? "Проверка критических ходов" : progress?.stage === "finalize" ? "Формирование отчёта" : "Параллельный проход"}</div>
-                    <div className="mt-1 text-[10px] text-[#87917e]">Независимые позиции распределяются между воркерами Stockfish</div>
+                    <div className="text-sm font-extrabold text-white">{progress?.stage === "prepare" ? "Проверяем пул воркеров" : progress?.stage === "verify" ? "Проверка критических ходов" : progress?.stage === "finalize" ? "Формирование отчёта" : "Параллельный проход"}</div>
+                    <div className="mt-1 text-[10px] text-[#87917e]">{progress?.stage === "prepare" ? "Каждый движок должен вернуть полноценный поисковый результат" : "Независимые позиции распределяются между воркерами Stockfish"}</div>
                   </div>
                   <span className="text-[10px] font-bold tabular-nums text-[#b5d98e]">{done} / {total}</span>
                 </div>
@@ -114,8 +122,8 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
                   <div className="h-full rounded-full bg-gradient-to-r from-[#83ad5f] to-[#b4d98b] transition-[width] duration-200" style={{ width: `${pct}%` }} />
                 </div>
                 <div className="mt-2 flex flex-wrap justify-between gap-2 text-[9px] text-[#7f8a76]">
-                  <span>{progress?.cached ?? 0} позиций взято из кэша</span>
-                  <span>MultiPV 1 · узлы + время · локальный WASM</span>
+                  <span>{progress?.stage === "prepare" ? "Первый поиск ещё не запущен" : (progress?.cached ?? 0) + " позиций взято из кэша"}</span>
+                  <span>{progress?.stage === "prepare" ? "Инициализация и проверка" : "MultiPV 1 · лимит узлов · локальный WASM"}</span>
                 </div>
               </div>
 
@@ -125,7 +133,9 @@ export function AnalyzingScreen({ progress, onCancel }: { progress: AnalyzeProgr
                   Что происходит
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-[#a9b59e]">
-                  Независимые позиции распределяются между отдельными однопоточными Web Worker. Основной проход использует MultiPV 1 и гибридные лимиты узлов/времени; затем критические позиции перепроверяются с MultiPV 2. Анализ остаётся локальным в браузере.
+                  {progress?.stage === "prepare"
+                    ? "Сначала загружаются файлы и запускаются четыре независимых однопоточных Web Worker. Если один из них падает во время партии, его незавершённая позиция передаётся оставшимся живым движкам."
+                    : "Независимые позиции распределяются между отдельными однопоточными Web Worker. Основной проход использует MultiPV 1 и лимит узлов с защитным таймаутом; затем критические позиции перепроверяются с MultiPV 2. Анализ остаётся локальным в браузере."}
                 </p>
               </div>
 
