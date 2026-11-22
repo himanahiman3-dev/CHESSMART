@@ -56,6 +56,32 @@ assert.deepEqual(coachReference.reportedCounts, {
 assert.equal(coachReference.countsComplete, false,
   "The supplied Chess.com count sample is partial; absent labels are unknown.");
 
+// Keep the user's Chess.com game and its reported counts as a calibration
+// reference. The counts are explicitly partial, so missing categories are not
+// treated as zero and are not used to reverse-engineer unprovided labels.
+const coachPgn = readFileSync(
+  new URL("./fixtures/chesscom-coach-365291218.pgn", import.meta.url),
+  "utf8",
+);
+const coachReference = JSON.parse(readFileSync(
+  new URL("./fixtures/chesscom-coach-365291218.review.json", import.meta.url),
+  "utf8",
+));
+const coachGame = new Chess();
+coachGame.loadPgn(coachPgn);
+const coachMoves = coachGame.history({ verbose: true });
+assert.equal(coachMoves.filter((move) => move.color === "w").length, 68,
+  "Calibration PGN must retain all 68 White moves.");
+assert.equal(coachMoves.filter((move) => move.color === "b").length, 67,
+  "Calibration PGN must retain all 67 Black moves.");
+assert.deepEqual(coachReference.reportedCounts, {
+  great: 2,
+  best: 35,
+  brilliant: 1,
+});
+assert.equal(coachReference.countsComplete, false,
+  "The supplied Chess.com count sample is partial; absent labels are unknown.");
+
 const base = {
   forced: false,
   book: false,
