@@ -1,7 +1,54 @@
+import { Chess } from "chess.js";
 /**
  * Device-aware local Stockfish review budgets.
  * Node counts are CHESSMART calibration starting points, not Chess.com settings.
  */
+/**
+ * Estimate positional complexity from legal move geometry, checks and captures.
+ * This only scales the engine's node/time allowance; it never substitutes for
+ * Stockfish's score or changes the requested depth ceiling.
+ */
+export const MIN_POSITION_COMPLEXITY_FACTOR = 0.7;
+export const MAX_POSITION_COMPLEXITY_FACTOR = 1.5;
+
+export function positionComplexityFactor(fen: string): number {
+  try {
+    const chess = new Chess(fen);
+    const moves = chess.moves({ verbose: true });
+    const legalCount = moves.length;
+    const captures = moves.filter((move) => Boolean(move.captured)).length;
+    const forcingMoves = moves.filter((move) => move.san.includes("+") || move.san.includes("#")).length;
+    const promotions = moves.filter((move) => Boolean(move.promotion)).length;
+    const pieces = chess.board().flat().filter(Boolean);
+    const queens = pieces.filter((piece) => piece?.type === "q").length;
+
+    let factor = 0.7;
+    factor += Math.min(0.28, Math.max(0, legalCount - 8) * 0.012);
+    factor += chess.isCheck() ? 0.24 : 0;
+    factor += Math.min(0.28, captures * 0.04 + forcingMoves * 0.025);
+    factor += queens > 0 ? 0.08 : 0;
+    factor += pieces.length <= 10 ? 0.08 : 0;
+    factor += promotions > 0 ? 0.15 : 0;
+    return Math.max(
+      MIN_POSITION_COMPLEXITY_FACTOR,
+      Math.min(MAX_POSITION_COMPLEXITY_FACTOR, Number(factor.toFixed(3))),
+    );
+  } catch {
+    // Malformed positions keep the neutral budget; validation happens elsewhere.
+    return 1;
+  }
+}
+
+export function scalePositionLimit(
+  base: number | undefined,
+  factor: number,
+  maximum = 120_000,
+): number | undefined {
+  if (base === undefined || !Number.isFinite(base) || base <= 0) return undefined;
+  const safeFactor = Number.isFinite(factor) ? factor : 1;
+  return Math.max(1, Math.min(maximum, Math.round(base * safeFactor)));
+}
+
 export const REVIEW_TARGET_DEPTH = 28;
 export const TIME_PER_MOVE_MS = 1000;
 export const DEFAULT_ANALYSIS_TIME_MS = 1000;
