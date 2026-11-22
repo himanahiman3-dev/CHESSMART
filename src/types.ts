@@ -62,6 +62,26 @@ export interface MoveReview {
   lines: EngineLine[];
 }
 
+export interface ReviewAnalysisMetadata {
+  requestedPreset: "auto" | "fast" | "standard" | "deep";
+  selectedPreset: "fast" | "standard" | "deep";
+  limitMode: "nodes-first" | "hybrid" | "depth" | "time" | "nodes";
+  nodesPerPosition?: number;
+  depthCap?: number;
+  hardTimeoutMs: number;
+  verifierNodes?: number;
+  verifierDepth: number;
+  verifierHardTimeoutMs: number;
+  engineVersion: string;
+  engineVariant: string;
+  nnueVersion: string;
+  threads: number;
+  threaded: boolean;
+  mainMultiPv: number;
+  verifierMultiPv: number;
+  openingBookVersion: string;
+}
+
 export interface GameReview {
   headers: Record<string, string>;
   startFen: string;
@@ -75,6 +95,8 @@ export interface GameReview {
   rating: { w: number; b: number };
   opening?: OpeningInfo;
   depth: number;
+  /** Exact local analysis policy used to produce this review. */
+  analysis?: ReviewAnalysisMetadata;
 }
 
 export const CLS_ORDER: Cls[] = [

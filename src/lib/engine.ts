@@ -32,10 +32,12 @@ export interface SearchOptions {
   history?: PositionHistory;
   depth?: number;
   multipv: number;
-  /** UCI wall-clock search budget for this position (ms). */
+  /** UCI wall-clock limit used only by explicit time/hybrid modes. */
   movetimeMs?: number;
-  /** UCI node ceiling; combined with movetime, whichever limit occurs first stops search. */
+  /** UCI node ceiling; normally the primary stop condition. */
   nodes?: number;
+  /** External wall-clock stop deadline; not included in the UCI go command. */
+  hardTimeoutMs?: number;
   onInfo?: (lines: EngineLine[]) => void;
   /** Если не задано, движок сбрасывается на максимальную силу. */
   strength?: EngineStrength;
@@ -47,11 +49,11 @@ export function buildPositionCommand(fen: string, history?: PositionHistory): st
   return `position fen ${history.startFen}${moves}`;
 }
 
-/** Build a UCI search command with every enabled independent stop limit. */
+/** Build a UCI search command; node budget is emitted before the safety depth cap. */
 export function buildSearchCommand(options: Pick<SearchOptions, "depth" | "nodes" | "movetimeMs">): string {
   const parts = ["go"];
-  if (options.depth && options.depth > 0) parts.push("depth", String(Math.max(1, Math.floor(options.depth))));
   if (options.nodes && options.nodes > 0) parts.push("nodes", String(Math.max(1, Math.floor(options.nodes))));
+  if (options.depth && options.depth > 0) parts.push("depth", String(Math.max(1, Math.floor(options.depth))));
   if (options.movetimeMs && options.movetimeMs > 0) parts.push("movetime", String(Math.max(1, Math.round(options.movetimeMs))));
   if (parts.length === 1) parts.push("depth", "22");
   return parts.join(" ");
@@ -315,21 +317,29 @@ export class StockfishEngine {
           const limit = options.movetimeMs && options.movetimeMs > 0
             ? Math.max(1, Math.round(options.movetimeMs))
             : 0;
-          // Arm watchdogs before "go": a very fast worker (or a synchronous test
-          // double) may emit bestmove during postMessage, and cleanup must see timers.
-          // Timed searches first get a stop request, then a short window to return bestmove.
-          // Depth/nodes-only searches get a generous absolute deadline.
+          const hardTimeout = options.hardTimeoutMs && options.hardTimeoutMs > 0
+            ? Math.max(1, Math.round(options.hardTimeoutMs))
+            : 0;
+          const watchdogDelay = hardTimeout
+            ? (limit ? Math.min(hardTimeout, limit + WATCHDOG_GRACE_MS) : hardTimeout)
+            : (limit ? limit + WATCHDOG_GRACE_MS : 0);
+          // Arm every watchdog before "go": fast workers can emit bestmove during postMessage.
+          // hardTimeout is external and deliberately does not become a UCI movetime limit.
+          const hardDeadline = Math.max(
+            SEARCH_FAILSAFE_MS,
+            watchdogDelay + STOP_RESPONSE_GRACE_MS + WATCHDOG_GRACE_MS,
+          );
           hardFailsafe = setTimeout(() => {
             if (active) this.failAll(new Error("Stockfish не ответил вовремя. Перезапусти анализ."));
-          }, SEARCH_FAILSAFE_MS);
-          if (limit) {
+          }, hardDeadline);
+          if (watchdogDelay) {
             watchdog = setTimeout(() => {
               if (!active) return;
               this.send("stop");
               stopFailsafe = setTimeout(() => {
                 if (active) this.failAll(new Error("Stockfish не завершил поиск после команды stop."));
               }, STOP_RESPONSE_GRACE_MS);
-            }, limit + WATCHDOG_GRACE_MS);
+            }, watchdogDelay);
           }
           this.send(buildSearchCommand(options));
           if (this.dead) return;

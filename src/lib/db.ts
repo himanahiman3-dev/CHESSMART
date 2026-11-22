@@ -127,17 +127,26 @@ interface StoredPosition {
 
 const memory = new Map<string, StoredPosition>();
 
-export function positionKey(fen: string, depth: number, multipv: number, historyKey?: string): string {
-  return `${fenKey(fen)}|d${depth}|pv${multipv}${historyKey ? `|h${historyKey}` : ""}`;
+export function positionKey(
+  fen: string,
+  depth: number,
+  multipv: number,
+  historyKey?: string,
+  cacheContext?: string,
+): string {
+  const historyPart = historyKey ? "|h" + historyKey : "";
+  const contextPart = cacheContext ? "|c" + encodeURIComponent(cacheContext) : "";
+  return fenKey(fen) + "|d" + depth + "|pv" + multipv + historyPart + contextPart;
 }
 
 export async function getCachedPosition(
   fen: string,
   depth: number,
   multipv: number,
-  historyKey?: string
+  historyKey?: string,
+  cacheContext?: string,
 ): Promise<PositionEval | undefined> {
-  const key = positionKey(fen, depth, multipv, historyKey);
+  const key = positionKey(fen, depth, multipv, historyKey, cacheContext);
   let rec = memory.get(key);
   if (!rec) {
     rec = await idbGet<StoredPosition>("positions", key);
@@ -153,10 +162,11 @@ export async function putCachedPosition(
   multipv: number,
   lines: EngineLine[],
   reachedDepth: number,
-  historyKey?: string
+  historyKey?: string,
+  cacheContext?: string,
 ): Promise<void> {
   if (!lines.length) return;
-  const key = positionKey(fen, depth, multipv, historyKey);
+  const key = positionKey(fen, depth, multipv, historyKey, cacheContext);
   // не затираем более глубокую оценку менее глубокой
   const prev = memory.get(key) ?? (await idbGet<StoredPosition>("positions", key));
   if (prev && prev.depth >= reachedDepth) return;

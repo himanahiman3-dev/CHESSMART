@@ -1,13 +1,13 @@
 /**
- * Device-aware limits for local Stockfish Game Review.
- * These are CHESSMART presets, not claims about Chess.com's private settings.
+ * Device-aware local Stockfish review budgets.
+ * Node counts are CHESSMART calibration starting points, not Chess.com settings.
  */
-export const REVIEW_TARGET_DEPTH = 22;
+export const REVIEW_TARGET_DEPTH = 28;
 export const TIME_PER_MOVE_MS = 1000;
 export const DEFAULT_ANALYSIS_TIME_MS = 1000;
 
 export type AnalysisPresetId = "auto" | "fast" | "standard" | "deep";
-export type AnalysisLimitMode = "hybrid" | "depth" | "time" | "nodes";
+export type AnalysisLimitMode = "nodes-first" | "hybrid" | "depth" | "time" | "nodes";
 
 export interface AnalysisConfig {
   preset: AnalysisPresetId;
@@ -15,6 +15,7 @@ export interface AnalysisConfig {
   depth: number;
   movetimeMs: number;
   nodes: number;
+  hardTimeoutMs: number;
 }
 
 export interface AnalysisDeviceProfile {
@@ -25,21 +26,25 @@ export interface AnalysisDeviceProfile {
 export interface ResolvedAnalysisBudget {
   preset: Exclude<AnalysisPresetId, "auto">;
   limitMode: AnalysisLimitMode;
-  /** Quality target; a timed/nodes search may stop before this depth. */
+  /** Maximum depth; nodes normally stop the search first. */
   targetDepth: number;
   depthLimit?: number;
+  /** UCI movetime is used only by explicit time/hybrid modes. */
   movetimeMs?: number;
   nodes?: number;
+  /** External stop deadline; never added to the UCI go command. */
+  hardTimeoutMs: number;
   verifierDepth: number;
   verifierMovetimeMs?: number;
   verifierNodes?: number;
+  verifierHardTimeoutMs: number;
 }
 
 export const ANALYSIS_PRESETS = [
-  { id: "auto", title: "Оптимальный · Авто", desc: "CHESSMART подберёт лимиты под устройство и длину партии", note: "Рекомендуемый режим", level: "AUTO", depth: 22, movetimeMs: 400, nodes: 1_000_000 },
-  { id: "fast", title: "Быстрый", desc: "250 тыс. узлов или 180 мс на позицию", note: "Экспресс-обзор", level: "01", depth: 18, movetimeMs: 180, nodes: 250_000 },
-  { id: "standard", title: "Стандартный", desc: "1 млн узлов или 400 мс на позицию", note: "Баланс скорости и точности", level: "02", depth: 22, movetimeMs: 400, nodes: 1_000_000 },
-  { id: "deep", title: "Глубокий", desc: "5 млн узлов или 1,5 секунды на позицию", note: "Для детальной проверки", level: "03", depth: 26, movetimeMs: 1_500, nodes: 5_000_000 },
+  { id: "auto", title: "Оптимальный · Авто", desc: "Обычно 1 млн узлов; Fast для мобильных, блица и длинных партий", note: "Рекомендуемый режим", level: "AUTO", depth: 28, movetimeMs: 400, nodes: 1_000_000, hardTimeoutMs: 15_000 },
+  { id: "fast", title: "Быстрый", desc: "350 тыс. узлов · глубина до 24 · таймаут 6 с", note: "Экспресс-обзор", level: "01", depth: 24, movetimeMs: 180, nodes: 350_000, hardTimeoutMs: 6_000 },
+  { id: "standard", title: "Стандартный", desc: "1 млн узлов · глубина до 28 · таймаут 15 с", note: "Баланс скорости и точности", level: "02", depth: 28, movetimeMs: 400, nodes: 1_000_000, hardTimeoutMs: 15_000 },
+  { id: "deep", title: "Глубокий", desc: "3 млн узлов · глубина до 30 · таймаут 45 с", note: "Для детальной проверки", level: "03", depth: 30, movetimeMs: 1_500, nodes: 3_000_000, hardTimeoutMs: 45_000 },
 ] as const;
 
 export type AnalysisTimeModeId = "fast" | "optimal" | "deep";
@@ -53,26 +58,28 @@ export const ANALYSIS_TIME_MODES = [
 
 export const DEFAULT_ANALYSIS_CONFIG: AnalysisConfig = {
   preset: "auto",
-  limitMode: "hybrid",
-  depth: 22,
+  limitMode: "nodes-first",
+  depth: 28,
   movetimeMs: 400,
   nodes: 1_000_000,
+  hardTimeoutMs: 15_000,
 };
 
 function defaultsFor(preset: AnalysisPresetId): AnalysisConfig {
   const item = ANALYSIS_PRESETS.find((entry) => entry.id === preset) ?? ANALYSIS_PRESETS[0];
   return {
     preset,
-    limitMode: "hybrid",
+    limitMode: "nodes-first",
     depth: item.depth,
     movetimeMs: item.movetimeMs,
     nodes: item.nodes,
+    hardTimeoutMs: item.hardTimeoutMs,
   };
 }
 
 export function createAnalysisConfig(
   preset: AnalysisPresetId = "auto",
-  limitMode: AnalysisLimitMode = "hybrid",
+  limitMode: AnalysisLimitMode = "nodes-first",
 ): AnalysisConfig {
   return { ...defaultsFor(preset), limitMode };
 }
@@ -91,15 +98,17 @@ export function normalizeAnalysisConfig(value: AnalysisConfig | number | null | 
   const preset = (["auto", "fast", "standard", "deep"] as const).includes(value.preset)
     ? value.preset
     : DEFAULT_ANALYSIS_CONFIG.preset;
-  const limitMode = (["hybrid", "depth", "time", "nodes"] as const).includes(value.limitMode)
+  const limitMode = (["nodes-first", "hybrid", "depth", "time", "nodes"] as const).includes(value.limitMode)
     ? value.limitMode
     : DEFAULT_ANALYSIS_CONFIG.limitMode;
+  const presetDefaults = defaultsFor(preset);
   return {
     preset,
     limitMode,
-    depth: clampInteger(value.depth, 12, 30, DEFAULT_ANALYSIS_CONFIG.depth),
-    movetimeMs: clampInteger(value.movetimeMs, 50, 10_000, DEFAULT_ANALYSIS_CONFIG.movetimeMs),
-    nodes: clampInteger(value.nodes, 50_000, 20_000_000, DEFAULT_ANALYSIS_CONFIG.nodes),
+    depth: clampInteger(value.depth, 12, 30, presetDefaults.depth),
+    movetimeMs: clampInteger(value.movetimeMs, 50, 10_000, presetDefaults.movetimeMs),
+    nodes: clampInteger(value.nodes, 50_000, 20_000_000, presetDefaults.nodes),
+    hardTimeoutMs: clampInteger(value.hardTimeoutMs, 1_000, 120_000, presetDefaults.hardTimeoutMs),
   };
 }
 
@@ -108,42 +117,57 @@ export function normalizeAnalysisTimeMs(value: number): number {
   return [300, 1000, 3000].includes(value) ? value : DEFAULT_ANALYSIS_TIME_MS;
 }
 
+function isFastTimeControl(timeControl?: string): boolean {
+  if (!timeControl) return false;
+  const match = timeControl.trim().match(/^(\d+)(?:\+(\d+))?$/);
+  if (!match) return false;
+  const initialSeconds = Number(match[1]);
+  const incrementSeconds = Number(match[2] ?? 0);
+  if (!Number.isFinite(initialSeconds) || !Number.isFinite(incrementSeconds)) return false;
+  // Approximate 40-move clock budget: bullet/blitz is at most 10 minutes.
+  return initialSeconds + incrementSeconds * 40 <= 600;
+}
+
 export function resolveAnalysisBudget(
   rawConfig: AnalysisConfig | number,
   profile: AnalysisDeviceProfile = {},
   moveCount = 0,
+  timeControl?: string,
 ): ResolvedAnalysisBudget {
   const config = normalizeAnalysisConfig(rawConfig);
+  const autoFast = profile.device === "mobile" || moveCount >= 160 || isFastTimeControl(timeControl);
   const preset: Exclude<AnalysisPresetId, "auto"> = config.preset === "auto"
-    ? (profile.device === "mobile" || moveCount >= 160 ? "fast" : "standard")
+    ? (autoFast ? "fast" : "standard")
     : config.preset;
   const selected = ANALYSIS_PRESETS.find((item) => item.id === preset)!;
   const isAuto = config.preset === "auto";
   const depth = isAuto ? selected.depth : config.depth;
   const movetimeMs = isAuto ? selected.movetimeMs : config.movetimeMs;
   const nodes = isAuto ? selected.nodes : config.nodes;
+  const hardTimeoutMs = isAuto ? selected.hardTimeoutMs : config.hardTimeoutMs;
+  const usesDepth = config.limitMode === "nodes-first" || config.limitMode === "hybrid" || config.limitMode === "depth";
+  const usesNodes = config.limitMode === "nodes-first" || config.limitMode === "hybrid" || config.limitMode === "nodes";
+  const usesUciTime = config.limitMode === "hybrid" || config.limitMode === "time";
 
   return {
     preset,
     limitMode: config.limitMode,
     targetDepth: depth,
-    depthLimit: config.limitMode === "hybrid" || config.limitMode === "depth" ? depth : undefined,
-    movetimeMs: config.limitMode === "hybrid" || config.limitMode === "time" ? movetimeMs : undefined,
-    nodes: config.limitMode === "hybrid" || config.limitMode === "nodes" ? nodes : undefined,
-    verifierDepth: Math.min(32, depth + 4),
-    verifierMovetimeMs: config.limitMode === "hybrid" || config.limitMode === "time"
-      ? Math.min(5_000, Math.max(350, movetimeMs * 2))
-      : undefined,
-    verifierNodes: config.limitMode === "hybrid" || config.limitMode === "nodes"
-      ? Math.min(20_000_000, nodes * 2)
-      : undefined,
+    depthLimit: usesDepth ? depth : undefined,
+    movetimeMs: usesUciTime ? movetimeMs : undefined,
+    nodes: usesNodes ? nodes : undefined,
+    hardTimeoutMs,
+    verifierDepth: Math.min(32, depth + 2),
+    verifierMovetimeMs: usesUciTime ? Math.min(5_000, Math.max(350, movetimeMs * 2)) : undefined,
+    verifierNodes: usesNodes ? Math.min(20_000_000, nodes * 2) : undefined,
+    verifierHardTimeoutMs: Math.min(120_000, Math.round(hardTimeoutMs * 1.5)),
   };
 }
 
-/** Planning estimate only; actual time depends on CPU, cache and position complexity. */
-export function estimateParallelBudgetMs(positionCount: number, movetimeMs: number | undefined, workerCount: number): number {
-  if (!movetimeMs || movetimeMs <= 0) return 0;
-  return Math.ceil(Math.max(0, positionCount) * movetimeMs / Math.max(1, Math.floor(workerCount || 1)));
+/** Planning ceiling only; nodes are the normal stop condition, so real time is usually lower. */
+export function estimateParallelBudgetMs(positionCount: number, perPositionTimeoutMs: number | undefined, workerCount: number): number {
+  if (!perPositionTimeoutMs || perPositionTimeoutMs <= 0) return 0;
+  return Math.ceil(Math.max(0, positionCount) * perPositionTimeoutMs / Math.max(1, Math.floor(workerCount || 1)));
 }
 
 /** Legacy serial estimate retained for older call sites. */
