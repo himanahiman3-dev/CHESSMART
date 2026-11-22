@@ -73,8 +73,10 @@ const review = await reviewGame(
 
 assert.equal(review.moves.length, 1, "The review must include the supplied 1.e4 game.");
 assert.equal(review.moves[0].san, "e4");
-assert.equal(review.moves[0].cls, "book",
-  "The stable worker's valid opening evaluation must still produce a complete review.");
+assert.equal(review.positions.length, 2, "Both the initial and post-e4 positions must be evaluated.");
+assert.equal(review.positions[0].lines[0].pv[0], "e2e4",
+  "The initial position must be re-evaluated by a surviving worker.");
+assert.equal(review.positions[0].depth, 12);
 assert.equal(workers[0].searches, 1, "The first failing worker must not be reused.");
 assert.equal(workers[1].searches, 1, "The second failing worker must not be reused.");
 assert.equal(workers[0].terminated, true);
