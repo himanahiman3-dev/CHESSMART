@@ -145,7 +145,7 @@ assert.equal(
 assert.equal(
   isSacrificeVerificationCandidate(true, 20, false, 4),
   false,
-  "A non-best sacrifice outside the near-best loss threshold must not be queued.",
+  "Every detected piece sacrifice must be queued for deeper verification, even when the shallow score is poor.",
 );
 
 // Rating-aware leniency: a sound sacrifice by a 378-Elo player may qualify at
@@ -167,7 +167,7 @@ assert.equal(qualifiesAsBrilliant({
   winAfter: 100,
   elo: 378,
   matingSacrifice: true,
-}), true, "A verified short mating sacrifice may qualify even when a quiet line also wins.");
+}), false, "A forced mate must not bypass the requirement that the alternative position is not already completely winning.");
 
 assert.equal(qualifiesAsBrilliant({
   sacrifice: true,
@@ -203,7 +203,7 @@ assert.equal(qualifiesAsBrilliant({
   winAfter: 75,
   elo: 524,
   continuation: true,
-}), true, "A verified persistent sacrifice continuation may bypass the unrelated quiet-line cutoff.");
+}), false, "A continuation must not bypass the alternative-line cutoff.");
 
 
 const coachGamePgn = `[Event "Play vs Coach"]
