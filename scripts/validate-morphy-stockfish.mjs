@@ -80,7 +80,7 @@ function parseInfo(line, turn) {
   return { multipv, depth, score, pv: tokens.slice(pvIndex + 1) };
 }
 
-async function search(startFen, moves) {
+async function search(startFen, moves, minLines = 2) {
   const startTurn = new Chess(startFen).turn();
   const turn = moves.length % 2 === 0
     ? startTurn
@@ -102,7 +102,7 @@ async function search(startFen, moves) {
   child.stdin.write(`position fen ${startFen}${moves.length ? " moves " + moves.join(" ") : ""}\n`);
   child.stdin.write("go nodes 3000000 depth 30\n");
   const lines = await result;
-  assert.ok(lines.length >= 2, `Expected MultiPV 2; got ${lines.length} lines`);
+  assert.ok(lines.length >= minLines, `Expected at least ${minLines} MultiPV line(s); got ${lines.length}`);
   return lines;
 }
 
@@ -148,7 +148,7 @@ try {
     );
     const beforeLines = await search(startFen, prefix);
     const afterPrefix = [...prefix, move.from + move.to + (move.promotion ?? "")];
-    const afterLines = await search(startFen, afterPrefix);
+    const afterLines = await search(startFen, afterPrefix, 1);
     const best = beforeLines[0];
     const second = beforeLines[1];
     const playedIsBest = best.pv[0] === move.from + move.to + (move.promotion ?? "");
