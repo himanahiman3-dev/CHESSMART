@@ -95,7 +95,8 @@ const MIN_CACHEABLE_DEPTH = 8;
 /*
  * Что известно из официальной справки Chess.com (support.chess.com, статья «How are moves classified?»):
  *  - ходы классифицируются по потере «ожидаемых очков» (0..1), которые зависят от рейтинга игрока и оценки движка:
- *    Best 0, Excellent ≤0.02, Good ≤0.05, Inaccuracy ≤0.10, Mistake ≤0.20, Blunder >0.20;
+ *    Best — точный top move движка; далее локальные интервалы: Excellent <0.02,
+ *    Good 0.02–<0.05, Inaccuracy 0.05–<0.10, Mistake 0.10–0.20, Blunder >0.20;
  *  - Brilliant: всегда лучший или почти лучший ход + хорошая жертва ФИГУРЫ; после него позиция не плохая;
  *    без него вы не были бы полностью выигрывающим; для новичков определение жертвы щедрее;
  *  - Great: ход, критичный для исхода (проигрыш → равенство, равенство → выигрыш, единственный хороший ход);
@@ -771,7 +772,7 @@ export function buildReview(
     const opening = book.opening[i];
     const isCheck = m.san.includes("+") || m.san.includes("#");
 
-    const accuracy = moveAccuracy(accuracyLoss);
+    const accuracy = moveAccuracy(accuracyLoss, isBook);
 
     const generatedComment = buildComment({
       cls,
