@@ -2,16 +2,16 @@
  * Конвейер обзора партии: разбор PGN → анализ Stockfish 19 (MultiPV 2, с кэшем и историей ходов)
  * → рейтинговый Expected Points (приближение) → классификация → собственная точность Chessmart → комментарии.
  *
- * Основной проход: каждая позиция получает отдельный UCI movetime (300 / 1000 / 3000 мс).
- * Поиск ограничен depth 22 и временем одновременно; выполняется то условие, которое наступит раньше.
- * При таймауте используется последняя завершённая строка info, затем очередь переходит дальше.
+ * Основной проход использует бюджет узлов как основной лимит и depth как верхнюю границу.
+ * Отдельный внешний hard timeout останавливает зависший Worker, не меняя команду UCI.
  */
 import { Chess, type Square } from "chess.js";
-import type { Cls, Color, EngineLine, GameReview, MoveReview, PositionEval, Score } from "../types";
+import type { Cls, Color, EngineLine, GameReview, MoveReview, PositionEval, ReviewAnalysisMetadata, Score } from "../types";
 import { emptyCounts } from "../types";
 import type { PositionHistory, StockfishEngine } from "./engine";
 import { getCachedPosition, putCachedPosition } from "./db";
-import { analyzeBook, openingForCode } from "./openings";
+import { analyzeBook, openingForCode, OPENING_BOOK_VERSION } from "./openings";
+import { ENGINE_VERSION } from "./engineFiles";
 import { detectSacrifice } from "./see";
 import { findPersistentSacrificeContinuation } from "./persistentSacrifice";
 import { BRILLIANT_MAX_LOSS, BRILLIANT_MIN_AFTER, qualifiesAsBrilliant } from "./brilliant";
@@ -73,7 +73,7 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { estimateParallelBudgetMs, resolveAnalysisBudget, type AnalysisConfig } from "./analysisBudget";
+import { estimateParallelBudgetMs, normalizeAnalysisConfig, resolveAnalysisBudget, type AnalysisConfig } from "./analysisBudget";
 import { isSacrificeVerificationCandidate, rankCriticalPositions, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { classifyMove } from "./moveClassification";
 import { hasOnlyLegalMove } from "./forcedMove";
@@ -160,17 +160,19 @@ export async function evaluatePosition(
   history?: PositionHistory,
   nodes?: number,
   depthLimit?: number,
+  hardTimeoutMs?: number,
+  cacheContext?: string,
 ): Promise<{ evalResult: PositionEval; fromCache: boolean }> {
   const term = terminalEval(fen);
   if (term) return { evalResult: term, fromCache: true };
   const historyKey = history ? `${history.startFen}|${history.moves.join(" ")}` : undefined;
-  const cached = await getCachedPosition(fen, depth, multipv, historyKey);
+  const cached = await getCachedPosition(fen, depth, multipv, historyKey, cacheContext);
   // Reuse only a result that completed the target depth. Partial cache entries
   // remain available as fallbacks if a fresh timed search reaches less depth.
   // A shallow timed-out cache entry must not skip a fresh timed search.
   const requiredCacheDepth = depth;
   if (cached && cached.depth >= requiredCacheDepth) return { evalResult: cached, fromCache: true };
-  const handle = engine.search({ fen, depth: depthLimit, multipv, movetimeMs, nodes, onInfo, history });
+  const handle = engine.search({ fen, depth: depthLimit, multipv, movetimeMs, nodes, hardTimeoutMs, onInfo, history });
   const onAbort = () => handle.stop();
   signal?.addEventListener("abort", onAbort);
   let lines: EngineLine[];
@@ -187,7 +189,7 @@ export async function evaluatePosition(
   // Недосчитанный по глубине (из-за лимита времени) результат кэшируем, только если он не слишком слабый.
   // В кэше хранится реально достигнутая глубина (reached), а ключ — запрошенная.
   if (reached >= Math.min(depth, MIN_CACHEABLE_DEPTH)) {
-    await putCachedPosition(fen, depth, multipv, lines, reached, historyKey);
+    await putCachedPosition(fen, depth, multipv, lines, reached, historyKey, cacheContext);
   }
   return { evalResult: { fen, depth: reached, lines }, fromCache: false };
 }
@@ -320,7 +322,31 @@ export async function reviewGame(
     analysisConfig,
     { device: computeProfile?.device, reviewWorkers: computeProfile?.reviewWorkers },
     N,
+    game.headers.TimeControl,
   );
+  const analysisEngine = engines[0];
+  const requestedPreset = normalizeAnalysisConfig(analysisConfig).preset;
+  const analysisMetadata: ReviewAnalysisMetadata = {
+    requestedPreset,
+    selectedPreset: budget.preset,
+    limitMode: budget.limitMode,
+    nodesPerPosition: budget.nodes,
+    depthCap: budget.depthLimit,
+    hardTimeoutMs: budget.hardTimeoutMs,
+    verifierNodes: budget.verifierNodes,
+    verifierDepth: budget.verifierDepth,
+    verifierHardTimeoutMs: budget.verifierHardTimeoutMs,
+    engineVersion: ENGINE_VERSION,
+    engineVariant: analysisEngine.variant,
+    nnueVersion: "stockfish-" + ENGINE_VERSION + "-" + analysisEngine.variant + "-bundled-nnue",
+    threads: analysisEngine.threads,
+    threaded: analysisEngine.threaded,
+    mainMultiPv: 1,
+    verifierMultiPv: 2,
+    openingBookVersion: OPENING_BOOK_VERSION,
+  };
+  // Same position is reusable only for an identical budget, engine/network, MultiPV and book revision.
+  const cacheContext = JSON.stringify({ ...analysisMetadata, cacheSchema: 2 });
   const maxVerificationChecks = Math.max(0, Math.min(10,
     Math.floor(computeProfile?.verifierMaxMoves ?? 4)));
   const progressTotal = totalPositions + maxVerificationChecks;
@@ -360,7 +386,10 @@ export async function reviewGame(
   // Current ECO data stores opening names/theory labels, not Polyglot positions
   // with precomputed scores. Keep these positions in the scan rather than fabricating evals.
   for (const worker of engines) worker.newGame();
-  const scanBudgetMs = estimateParallelBudgetMs(tasks.length, budget.movetimeMs, engines.length);
+  const scanPositionTimeoutMs = budget.movetimeMs
+    ? Math.min(budget.hardTimeoutMs, budget.movetimeMs + 1_000)
+    : budget.hardTimeoutMs;
+  const scanBudgetMs = estimateParallelBudgetMs(tasks.length, scanPositionTimeoutMs, engines.length);
   const doneCount = () => terminalPositions + completedTasks;
 
   onProgress({
@@ -430,6 +459,8 @@ export async function reviewGame(
           history,
           budget.nodes,
           budget.depthLimit,
+          budget.hardTimeoutMs,
+          cacheContext,
         );
         positions[index] = evalResult;
         if (fromCache) cachedHits++;
@@ -515,7 +546,9 @@ export async function reviewGame(
   }));
   const verifierEstimateMs = estimateParallelBudgetMs(
     verifierTasks.length,
-    budget.verifierMovetimeMs,
+    budget.verifierMovetimeMs
+      ? Math.min(budget.verifierHardTimeoutMs, budget.verifierMovetimeMs + 1_000)
+      : budget.verifierHardTimeoutMs,
     engines.length,
   );
   let verifyCursor = 0;
@@ -555,6 +588,8 @@ export async function reviewGame(
           history,
           budget.verifierNodes,
           budget.depthLimit === undefined ? undefined : budget.verifierDepth,
+          budget.verifierHardTimeoutMs,
+          cacheContext,
         );
         const previous = completePositions[candidate.index];
         if (evalResult.depth > previous.depth
@@ -604,14 +639,15 @@ export async function reviewGame(
     stage: "finalize",
   });
 
-  return buildReview(game, completePositions, budget.targetDepth);
+  return buildReview(game, completePositions, budget.targetDepth, undefined, analysisMetadata);
 }
 
 export function buildReview(
   game: ParsedGame,
   positions: PositionEval[],
   depth: number,
-  _legacyDeferredSacrifices?: Map<number, string>
+  _legacyDeferredSacrifices?: Map<number, string>,
+  analysisMetadata?: ReviewAnalysisMetadata,
 ): GameReview {
   const N = game.moves.length;
   const book = analyzeBook(game.moves.map((m) => m.san));
@@ -851,5 +887,6 @@ export function buildReview(
     rating,
     opening,
     depth,
+    analysis: analysisMetadata,
   };
 }

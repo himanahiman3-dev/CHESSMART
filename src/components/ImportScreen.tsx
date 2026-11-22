@@ -50,7 +50,7 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, config: Analy
   const [link, setLink] = useState("");
   const [analysisConfig, setAnalysisConfig] = useState<AnalysisConfig>(() => {
     try {
-      const saved = localStorage.getItem("chess-review:analysis-config:v2");
+      const saved = localStorage.getItem("chess-review:analysis-config:v3");
       if (saved) return normalizeAnalysisConfig(JSON.parse(saved) as AnalysisConfig);
       const legacy = localStorage.getItem("chess-review:analysis-time-ms:v1");
       return legacy === null ? { ...DEFAULT_ANALYSIS_CONFIG } : normalizeAnalysisConfig(Number(legacy));
@@ -98,6 +98,7 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, config: Analy
       depth: selected.depth,
       movetimeMs: selected.movetimeMs,
       nodes: selected.nodes,
+      hardTimeoutMs: selected.hardTimeoutMs,
     }));
   };
   const updateAdvanced = (patch: Partial<AnalysisConfig>) => setAnalysisConfig((current) => ({
@@ -424,7 +425,8 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, config: Analy
                       onChange={(event) => updateAdvanced({ limitMode: event.target.value as AnalysisConfig["limitMode"] })}
                       className="mt-1.5 w-full rounded-lg border border-[#4b5544] bg-[#292f26] px-3 py-2 text-xs text-white outline-none focus:border-[#8eaf68]"
                     >
-                      <option value="hybrid">Гибрид: глубина + узлы + время</option>
+                      <option value="nodes-first">Сначала узлы · depth-cap + hard timeout</option>
+                      <option value="hybrid">Совместимый гибрид: depth + nodes + UCI movetime</option>
                       <option value="depth">Только глубина</option>
                       <option value="time">Только время</option>
                       <option value="nodes">Только узлы</option>
@@ -456,7 +458,13 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, config: Analy
                       <option value={10000000}>10 млн</option>
                     </select>
                   </label>
-                  <p className="text-[9px] leading-relaxed text-[#77816f]">Настройки сохраняются на устройстве. Гибридный поиск остановится при достижении первого из включённых ограничений. Фактическое время зависит от CPU, сложности позиции и кэша.</p>
+                  <label className="block text-[10px] font-bold text-[#aeb9a3]">
+                    Внешний hard timeout: <b className="font-mono text-white">{(analysisConfig.hardTimeoutMs / 1000).toFixed(0)} с</b>
+                    <input type="range" min="1000" max="120000" step="1000" value={analysisConfig.hardTimeoutMs}
+                      onChange={(event) => updateAdvanced({ hardTimeoutMs: Number(event.target.value) })}
+                      className="mt-2 w-full accent-[#a7cb7d]" />
+                  </label>
+                  <p className="text-[9px] leading-relaxed text-[#77816f]">В режиме node-first Stockfish получает go nodes N depth D. Hard timeout работает снаружи UCI и отправляет stop при зависании. Числа пресетов — стартовые бюджеты CHESSMART для последующей калибровки.</p>
                 </div>
               )}
 
@@ -466,7 +474,15 @@ export function ImportScreen({ onStart }: { onStart: (pgn: string, config: Analy
                   <span className="font-mono text-sm font-black tabular-nums text-[#c5e3a4]">{selectedPreset.title}</span>
                 </div>
                 <p className="mt-2 text-[10px] leading-relaxed text-[#77816f]">
-                  {analysisConfig.limitMode === "hybrid" ? `До глубины ${analysisConfig.depth}, ${analysisConfig.nodes.toLocaleString("ru-RU")} узлов или ${analysisConfig.movetimeMs} мс на позицию.` : analysisConfig.limitMode === "depth" ? `Глубина до ${analysisConfig.depth} полуходов.` : analysisConfig.limitMode === "time" ? `До ${analysisConfig.movetimeMs} мс на позицию.` : `До ${analysisConfig.nodes.toLocaleString("ru-RU")} узлов на позицию.`}
+                  {analysisConfig.limitMode === "nodes-first"
+                    ? `${analysisConfig.nodes.toLocaleString("ru-RU")} узлов на позицию · depth cap ${analysisConfig.depth} · hard timeout ${(analysisConfig.hardTimeoutMs / 1000).toFixed(0)} с.`
+                    : analysisConfig.limitMode === "hybrid"
+                      ? `Depth ${analysisConfig.depth} + ${analysisConfig.nodes.toLocaleString("ru-RU")} узлов + UCI movetime ${analysisConfig.movetimeMs} мс.`
+                      : analysisConfig.limitMode === "depth"
+                        ? `Глубина до ${analysisConfig.depth} · hard timeout ${(analysisConfig.hardTimeoutMs / 1000).toFixed(0)} с.`
+                        : analysisConfig.limitMode === "time"
+                          ? `UCI movetime ${analysisConfig.movetimeMs} мс · hard timeout ${(analysisConfig.hardTimeoutMs / 1000).toFixed(0)} с.`
+                          : `${analysisConfig.nodes.toLocaleString("ru-RU")} узлов на позицию · hard timeout ${(analysisConfig.hardTimeoutMs / 1000).toFixed(0)} с.`}
                 </p>
               </div>
 

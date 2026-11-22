@@ -5,6 +5,9 @@
  */
 import type { OpeningInfo } from "../types";
 
+/** Increment when the bundled ECO name/theory dataset or its matching rules change. */
+export const OPENING_BOOK_VERSION = "eco-name-map-v1";
+
 type Row = [eco: string, en: string, ru: string, moves: string];
 
 const ROWS: Row[] = [
