@@ -6,7 +6,7 @@ import { buildPositionCommand, buildSearchCommand } from "../src/lib/engine.ts";
 import { hasOnlyLegalMove } from "../src/lib/forcedMove.ts";
 import { shouldRecheckCriticalPosition } from "../src/lib/criticalPositionRanking.ts";
 import { qBalance } from "../src/lib/see.ts";
-import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES, DEFAULT_ANALYSIS_CONFIG, createAnalysisConfig, resolveAnalysisBudget } from "../src/lib/analysisBudget.ts";
+import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES, DEFAULT_ANALYSIS_CONFIG, createAnalysisConfig, resolveAnalysisBudget, positionComplexityFactor, scalePositionLimit } from "../src/lib/analysisBudget.ts";
 import { summarizeReview } from "../src/lib/learningStats.ts";
 import { getDeviceAnalysisProfile } from "../src/lib/computeProfile.ts";
 
@@ -67,6 +67,22 @@ assert.equal(deep.depthLimit, 30);
 assert.equal(deep.hardTimeoutMs, 45000);
 
 assert.equal(normalizeAnalysisTimeMs(3000), 3000);
+
+const quietEndgameFen = "4k3/8/8/8/8/8/8/4K3 w - - 0 1";
+const normalOpeningFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const checkedTacticalFen = "4r2k/8/8/8/2b5/8/RP6/4K3 w - - 0 1";
+const quietFactor = positionComplexityFactor(quietEndgameFen);
+const openingFactor = positionComplexityFactor(normalOpeningFen);
+const tacticalFactor = positionComplexityFactor(checkedTacticalFen);
+assert.ok(quietFactor < openingFactor,
+  "Quiet low-branching positions must receive a smaller node/time budget than the opening.");
+assert.ok(tacticalFactor > openingFactor,
+  "A checked tactical position must receive a larger node/time budget.");
+assert.equal(scalePositionLimit(1_000_000, 0.7), 700_000);
+assert.equal(scalePositionLimit(1_000_000, 1.5), 1_500_000);
+assert.equal(scalePositionLimit(undefined, 1.5), undefined);
+assert.equal(scalePositionLimit(100_000, 4, 250_000), 250_000);
+
 
 
 assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 4 }).maxThreads, 2,
