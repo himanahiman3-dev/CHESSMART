@@ -121,4 +121,19 @@ assert.equal(classifyMove({
   winLoss: 0,
 }), "blunder");
 
+
+import { selectVerificationCandidates } from "../src/lib/criticalPositionRanking.ts";
+const verificationPool = [
+  { index: 0, priority: 100, estimatedLoss: 0, secondLineGap: 0, sacrifice: true },
+  { index: 1, priority: 90, estimatedLoss: 18, secondLineGap: 0, sacrifice: true },
+  { index: 2, priority: 80, estimatedLoss: 0, secondLineGap: 0, sacrifice: true },
+  { index: 3, priority: 70, estimatedLoss: 12, secondLineGap: 15, sacrifice: false },
+  { index: 4, priority: 60, estimatedLoss: 8, secondLineGap: 10, sacrifice: false },
+];
+assert.deepEqual(
+  selectVerificationCandidates(verificationPool, 1).map((candidate) => candidate.index),
+  [0, 1, 2, 3],
+  "All sacrifice candidates must be verified before the ordinary critical-position allowance is applied.",
+);
+
 console.log("All move-classification tests passed: Best, Excellent, Good, Inaccuracy, Mistake, Blunder, Great, Miss, Book and Brilliant.");
