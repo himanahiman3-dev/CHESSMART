@@ -14,11 +14,33 @@ const STORES = ["positions", "files", "meta"] as const;
 type StoreName = (typeof STORES)[number];
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
+const IDB_OPEN_TIMEOUT_MS = 5_000;
+const IDB_REQUEST_TIMEOUT_MS = 2_500;
+const IDB_WRITE_TIMEOUT_MS = 4_000;
 
+/**
+ * IndexedDB is an optional cache, never a dependency of the chess engine.
+ * A blocked upgrade or stalled browser transaction must degrade to a cache miss,
+ * not leave the review queue waiting forever on its first FEN.
+ */
 function openDb(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve) => {
     if (typeof indexedDB === "undefined") return resolve(null);
+    let settled = false;
+    const finish = (value: IDBDatabase | null) => {
+      if (settled) {
+        value?.close();
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      dbPromise = null;
+      finish(null);
+    }, IDB_OPEN_TIMEOUT_MS);
     try {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
@@ -27,7 +49,10 @@ function openDb(): Promise<IDBDatabase | null> {
       };
       req.onsuccess = () => {
         const db = req.result;
-        // другая вкладка обновляет схему / соединение закрыто браузером — не держим «мёртвое» соединение
+        if (settled) {
+          db.close();
+          return;
+        }
         db.onversionchange = () => {
           db.close();
           dbPromise = null;
@@ -35,20 +60,19 @@ function openDb(): Promise<IDBDatabase | null> {
         db.onclose = () => {
           dbPromise = null;
         };
-        resolve(db);
+        finish(db);
       };
-      // при ошибке не кэшируем null навсегда: следующий вызов попробует открыть базу заново
       req.onerror = () => {
         dbPromise = null;
-        resolve(null);
+        finish(null);
       };
       req.onblocked = () => {
         dbPromise = null;
-        resolve(null);
+        finish(null);
       };
     } catch {
       dbPromise = null;
-      resolve(null);
+      finish(null);
     }
   });
   return dbPromise;
@@ -56,8 +80,16 @@ function openDb(): Promise<IDBDatabase | null> {
 
 function wrap<T>(req: IDBRequest<T>): Promise<T | undefined> {
   return new Promise((resolve) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(undefined);
+    let settled = false;
+    const finish = (value: T | undefined) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(undefined), IDB_REQUEST_TIMEOUT_MS);
+    req.onsuccess = () => finish(req.result);
+    req.onerror = () => finish(undefined);
   });
 }
 
@@ -75,14 +107,22 @@ export async function idbPut(store: StoreName, key: string, value: unknown): Pro
   const db = await openDb();
   if (!db) return false;
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (success: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(success);
+    };
+    const timer = setTimeout(() => finish(false), IDB_WRITE_TIMEOUT_MS);
     try {
       const tx = db.transaction(store, "readwrite");
       tx.objectStore(store).put(value, key);
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-      tx.onabort = () => resolve(false);
+      tx.oncomplete = () => finish(true);
+      tx.onerror = () => finish(false);
+      tx.onabort = () => finish(false);
     } catch {
-      resolve(false);
+      finish(false);
     }
   });
 }

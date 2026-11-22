@@ -55,6 +55,8 @@ jobs:
         run: npm run validate:analysis-core
       - name: Validate selective multi-engine review
         run: npm run validate:multi-engine
+      - name: Validate recovery from first-position worker failures
+        run: npm run validate:review-resilience
       - name: Validate cloud profile sync core
         run: npm run validate:profile-sync
       - name: Validate premoves and gameplay features

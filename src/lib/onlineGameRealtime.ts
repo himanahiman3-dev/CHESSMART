@@ -68,6 +68,7 @@ export const ONLINE_GAME_REALTIME_COLUMNS = [
 ] as const;
 
 const HEARTBEAT_INTERVAL_MS = 20_000;
+const JOIN_TIMEOUT_MS = 10_000;
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000, 15_000] as const;
 
 interface RealtimeFrame {
@@ -152,6 +153,7 @@ export function subscribeToOnlineGameRealtime(
   let stopped = false;
   let socket: WebSocket | null = null;
   let heartbeatTimer: number | null = null;
+  let joinTimer: number | null = null;
   let reconnectTimer: number | null = null;
   let sequence = 0;
   let joinRef: string | null = null;
@@ -165,6 +167,12 @@ export function subscribeToOnlineGameRealtime(
     if (heartbeatTimer !== null) {
       window.clearInterval(heartbeatTimer);
       heartbeatTimer = null;
+    }
+  };
+  const clearJoinTimeout = () => {
+    if (joinTimer !== null) {
+      window.clearTimeout(joinTimer);
+      joinTimer = null;
     }
   };
   const send = (frame: unknown[]) => {
@@ -225,6 +233,12 @@ export function subscribeToOnlineGameRealtime(
         access_token: accessToken,
       };
       send([joinRef, joinRef, topic, "phx_join", config]);
+      clearJoinTimeout();
+      joinTimer = window.setTimeout(() => {
+        if (stopped || socket !== nextSocket || joinRef === null) return;
+        onStatus?.("disconnected");
+        nextSocket.close(4000, "Realtime join timed out");
+      }, JOIN_TIMEOUT_MS);
       clearHeartbeat();
       heartbeatTimer = window.setInterval(() => {
         const heartbeatRef = nextRef();
@@ -238,6 +252,7 @@ export function subscribeToOnlineGameRealtime(
       if (!frame) return;
 
       if (frame.event === "phx_reply" && frame.ref === joinRef) {
+        clearJoinTimeout();
         const status = frame.payload.status;
         if (status === "ok") {
           retryIndex = 0;
@@ -289,6 +304,7 @@ export function subscribeToOnlineGameRealtime(
       if (socket !== nextSocket) return;
       socket = null;
       joinRef = null;
+      clearJoinTimeout();
       clearHeartbeat();
       onStatus?.("disconnected");
       scheduleReconnect();
@@ -312,6 +328,7 @@ export function subscribeToOnlineGameRealtime(
     stopped = true;
     if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
+    clearJoinTimeout();
     clearHeartbeat();
     const active = socket;
     const activeJoinRef = joinRef;

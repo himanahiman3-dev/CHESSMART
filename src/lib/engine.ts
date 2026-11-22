@@ -87,6 +87,11 @@ export class StockfishEngine {
   private lastMultiPv = 0;
   private dead = false;
   private resourcesReleased = false;
+
+  /** Whether this instance can accept another search. */
+  get isAlive(): boolean {
+    return !this.dead;
+  }
   private bundle: EngineBundle;
 
   private constructor(bundle: EngineBundle, threads: number) {
@@ -130,14 +135,19 @@ export class StockfishEngine {
     this.releaseResources();
   }
 
-  static async create(bundle: EngineBundle, hashMb = 128, maxThreads = 8): Promise<StockfishEngine> {
+  static async create(
+    bundle: EngineBundle,
+    hashMb = 128,
+    maxThreads = 8,
+    signal?: AbortSignal,
+  ): Promise<StockfishEngine> {
     const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
     const threadCap = Math.max(1, Math.min(16, Math.floor(maxThreads) || 1));
     const threads = bundle.set.threaded ? Math.max(1, Math.min(threadCap, hw - 1)) : 1;
     let engine: StockfishEngine | null = null;
     try {
       engine = new StockfishEngine(bundle, threads);
-      await engine.init(hashMb);
+      await engine.init(hashMb, signal);
       return engine;
     } catch (error) {
       if (engine) engine.terminate();
@@ -155,17 +165,30 @@ export class StockfishEngine {
     }
   }
 
-  private waitFor(predicate: (line: string) => boolean, timeoutMs: number): Promise<string> {
+  private waitFor(
+    predicate: (line: string) => boolean,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       if (this.dead) {
         reject(new Error("Движок Stockfish завершён или недоступен"));
         return;
       }
+      if (signal?.aborted) {
+        reject(new Error("cancelled"));
+        return;
+      }
       let timer: ReturnType<typeof setTimeout> | undefined;
       const cleanup = () => {
         if (timer) clearTimeout(timer);
+        signal?.removeEventListener("abort", abortHandler);
         this.listeners.delete(handler);
         this.worker.removeEventListener("error", errorHandler);
+      };
+      const abortHandler = () => {
+        cleanup();
+        reject(new Error("cancelled"));
       };
       const errorHandler = (event: ErrorEvent) => {
         cleanup();
@@ -186,19 +209,23 @@ export class StockfishEngine {
         cleanup();
         reject(new Error("Таймаут ожидания движка"));
       }, timeoutMs);
+      signal?.addEventListener("abort", abortHandler, { once: true });
       this.worker.addEventListener("error", errorHandler);
       this.listeners.add(handler);
     });
   }
 
-  private async init(hashMb: number) {
-    const uciok = this.waitFor((line) => line === "uciok", 180000);
+  private async init(hashMb: number, signal?: AbortSignal) {
+    // Full NNUE startup can take a few seconds on slower machines, but a broken
+    // worker must not keep the whole-game review in its preparation stage forever.
+    const uciok = this.waitFor((line) => line === "uciok", 60_000, signal);
     this.send("uci");
     await uciok;
+    if (signal?.aborted) throw new Error("cancelled");
     this.send(`setoption name Threads value ${this.threads}`);
     const safeHashMb = this.threaded ? hashMb : Math.min(hashMb, this.variant === "full" ? 512 : 64);
     this.send(`setoption name Hash value ${safeHashMb}`);
-    const ready = this.waitFor((line) => line === "readyok", 120000);
+    const ready = this.waitFor((line) => line === "readyok", 30_000, signal);
     this.send("isready");
     await ready;
   }

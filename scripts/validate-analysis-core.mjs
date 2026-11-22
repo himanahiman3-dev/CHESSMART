@@ -97,15 +97,15 @@ assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 8 }).maxThreads, 6,
 assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 32 }).maxThreads, 10,
   "Large desktop CPUs must cap Stockfish worker count to protect browser responsiveness.");
 
-// Desktop review asks for 3–4 independent workers; runtime smoke tests can
-// downgrade the pool on browsers or devices that fail simultaneous searches.
+// Capable desktops request four independent workers; runtime smoke tests can
+// remove an instance that fails its simultaneous-search checks.
 const i3DesktopProfile = getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/157.0.0.0",
   hardwareConcurrency: 8,
   deviceMemory: 8,
 });
-assert.equal(i3DesktopProfile.reviewWorkers, 3,
-  "An 8-thread desktop should request three independently verified review workers.");
+assert.equal(i3DesktopProfile.reviewWorkers, 4,
+  "An 8-thread desktop should request four independently verified review workers.");
 
 assert.equal(getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) Mobile",
@@ -123,8 +123,8 @@ assert.equal(getDeviceAnalysisProfile({
 assert.equal(getDeviceAnalysisProfile({
   hardwareConcurrency: 6,
   deviceMemory: 8,
-}).reviewWorkers, 2,
-  "A six-thread desktop should request a conservative two-worker pool.");
+}).reviewWorkers, 4,
+  "A six-thread desktop should request four verified workers.");
 
 assert.equal(getDeviceAnalysisProfile({
   hardwareConcurrency: 8,

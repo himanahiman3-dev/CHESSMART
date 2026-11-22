@@ -5,10 +5,9 @@ import readline from "node:readline";
 
 const dir = resolve(process.argv[2] ?? "");
 assert.ok(process.argv[2], "Pass Stockfish single-thread JS/WASM directory.");
-const childPath = join(dir, "stockfish-19-lite-single.js");
 const count = 4;
 
-function start(index) {
+function start(childPath, index) {
   const child = spawn(process.execPath, [childPath], { cwd: dir, stdio: ["pipe", "pipe", "pipe"] });
   const lines = readline.createInterface({ input: child.stdout });
   const pending = [];
@@ -86,22 +85,29 @@ function start(index) {
   return { init, run, close };
 }
 
-const pool = Array.from({ length: count }, (_, i) => start(i + 1));
 const fens = [
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
   "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
 ];
-try {
-  await Promise.all(pool.map((worker) => worker.init()));
-  for (let round = 0; round < fens.length; round++) {
-    const results = await Promise.all(pool.map((worker) => worker.run(fens[round])));
-    results.forEach((result, i) => {
-      assert.ok(result.bestmove && result.bestmove !== "(none)", "Worker " + (i + 1) + " has no bestmove.");
-      assert.ok(result.depth > 0 && result.pv.length > 0, "Worker " + (i + 1) + " has no completed PV.");
-    });
-    console.log("Real Stockfish concurrent round " + (round + 1) + ": " + results.length + " workers passed.");
+
+async function runPool(label, fileName) {
+  const childPath = join(dir, fileName);
+  const pool = Array.from({ length: count }, (_, i) => start(childPath, i + 1));
+  try {
+    await Promise.all(pool.map((worker) => worker.init()));
+    for (let round = 0; round < fens.length; round++) {
+      const results = await Promise.all(pool.map((worker) => worker.run(fens[round])));
+      results.forEach((result, i) => {
+        assert.ok(result.bestmove && result.bestmove !== "(none)", label + " worker " + (i + 1) + " has no bestmove.");
+        assert.ok(result.depth > 0 && result.pv.length > 0, label + " worker " + (i + 1) + " has no completed PV.");
+      });
+      console.log(label + " concurrent round " + (round + 1) + ": " + results.length + " workers passed.");
+    }
+    console.log("Four independent " + label + " WASM instances passed two simultaneous search rounds.");
+  } finally {
+    pool.forEach((worker) => worker.close());
   }
-  console.log("Four independent Stockfish WASM instances passed two simultaneous search rounds.");
-} finally {
-  pool.forEach((worker) => worker.close());
 }
+
+await runPool("Stockfish 19 Lite single-thread", "stockfish-19-lite-single.js");
+await runPool("Stockfish 19 Full single-thread", "stockfish-19-single.js");
