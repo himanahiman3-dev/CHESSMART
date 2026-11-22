@@ -60,7 +60,8 @@ for (const [key, label] of targets) {
  * moves best and keep the alternative position non-winning, isolating the
  * integration path from Stockfish-version/depth variance.
  */
-const syntheticPositions = game.fens.map((fen, index) => {
+const gameFens = [history[0].before, ...history.map((move) => move.after)];
+const syntheticPositions = gameFens.map((fen, index) => {
   const position = new Chess(fen);
   if (position.isGameOver()) {
     const score = position.isCheckmate()
@@ -103,7 +104,7 @@ const integratedReview = buildReview(
       color: move.color,
       fenBefore: move.before,
       fenAfter: move.after,
-    })), fens: game.fens },
+    })), fens: gameFens },
   syntheticPositions,
   20,
 );
