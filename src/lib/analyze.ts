@@ -72,7 +72,15 @@ export function parseGame(pgnText: string): ParsedGame {
 /*                        Бюджет времени анализа                       */
 /* ------------------------------------------------------------------ */
 
-import { estimateParallelBudgetMs, normalizeAnalysisConfig, resolveAnalysisBudget, type AnalysisConfig } from "./analysisBudget";
+import {
+  estimateParallelBudgetMs,
+  MAX_POSITION_COMPLEXITY_FACTOR,
+  normalizeAnalysisConfig,
+  positionComplexityFactor,
+  resolveAnalysisBudget,
+  scalePositionLimit,
+  type AnalysisConfig,
+} from "./analysisBudget";
 import { isSacrificeVerificationCandidate, rankCriticalPositions, selectVerificationCandidates, shouldRecheckCriticalPosition } from "./criticalPositionRanking";
 import { classifyMove } from "./moveClassification";
 import { hasOnlyLegalMove } from "./forcedMove";
@@ -389,9 +397,19 @@ export async function reviewGame(
   // Current ECO data stores opening names/theory labels, not Polyglot positions
   // with precomputed scores. Keep these positions in the scan rather than fabricating evals.
   for (const worker of engines) worker.newGame();
-  const scanPositionTimeoutMs = budget.movetimeMs
-    ? Math.min(budget.hardTimeoutMs, budget.movetimeMs + 1_000)
-    : budget.hardTimeoutMs;
+  const scanWorstCaseTimeoutMs = scalePositionLimit(
+    budget.hardTimeoutMs,
+    MAX_POSITION_COMPLEXITY_FACTOR,
+    120_000,
+  ) ?? budget.hardTimeoutMs;
+  const scanWorstCaseMovetimeMs = scalePositionLimit(
+    budget.movetimeMs,
+    MAX_POSITION_COMPLEXITY_FACTOR,
+    10_000,
+  );
+  const scanPositionTimeoutMs = scanWorstCaseMovetimeMs
+    ? Math.min(scanWorstCaseTimeoutMs, scanWorstCaseMovetimeMs + 1_000)
+    : scanWorstCaseTimeoutMs;
   const scanBudgetMs = estimateParallelBudgetMs(tasks.length, scanPositionTimeoutMs, engines.length);
   const doneCount = () => terminalPositions + completedTasks;
 
@@ -436,6 +454,12 @@ export async function reviewGame(
         stage: "scan",
       });
 
+      const complexity = positionComplexityFactor(fen);
+      const positionNodes = scalePositionLimit(budget.nodes, complexity, 20_000_000);
+      const positionMovetimeMs = scalePositionLimit(budget.movetimeMs, complexity, 10_000);
+      const positionHardTimeoutMs = scalePositionLimit(budget.hardTimeoutMs, complexity, 120_000)
+        ?? budget.hardTimeoutMs;
+
       try {
         const { evalResult, fromCache } = await evaluatePosition(
           worker,
@@ -458,11 +482,11 @@ export async function reviewGame(
               stage: "scan",
             });
           },
-          budget.movetimeMs,
+          positionMovetimeMs,
           history,
-          budget.nodes,
+          positionNodes,
           budget.depthLimit,
-          budget.hardTimeoutMs,
+          positionHardTimeoutMs,
           cacheContext,
         );
         positions[index] = evalResult;
@@ -550,11 +574,21 @@ export async function reviewGame(
     },
   }));
   progressTotal = totalPositions + verifierTasks.length;
+  const verifierWorstCaseTimeoutMs = scalePositionLimit(
+    budget.verifierHardTimeoutMs,
+    MAX_POSITION_COMPLEXITY_FACTOR,
+    120_000,
+  ) ?? budget.verifierHardTimeoutMs;
+  const verifierWorstCaseMovetimeMs = scalePositionLimit(
+    budget.verifierMovetimeMs,
+    MAX_POSITION_COMPLEXITY_FACTOR,
+    5_000,
+  );
   const verifierEstimateMs = estimateParallelBudgetMs(
     verifierTasks.length,
-    budget.verifierMovetimeMs
-      ? Math.min(budget.verifierHardTimeoutMs, budget.verifierMovetimeMs + 1_000)
-      : budget.verifierHardTimeoutMs,
+    verifierWorstCaseMovetimeMs
+      ? Math.min(verifierWorstCaseTimeoutMs, verifierWorstCaseMovetimeMs + 1_000)
+      : verifierWorstCaseTimeoutMs,
     engines.length,
   );
   let verifyCursor = 0;
@@ -582,6 +616,12 @@ export async function reviewGame(
         stage: "verify",
       });
 
+      const complexity = positionComplexityFactor(move.fenBefore);
+      const verifierNodes = scalePositionLimit(budget.verifierNodes, complexity, 20_000_000);
+      const verifierMovetimeMs = scalePositionLimit(budget.verifierMovetimeMs, complexity, 5_000);
+      const verifierHardTimeoutMs = scalePositionLimit(budget.verifierHardTimeoutMs, complexity, 120_000)
+        ?? budget.verifierHardTimeoutMs;
+
       try {
         const { evalResult, fromCache } = await evaluatePosition(
           worker,
@@ -590,11 +630,11 @@ export async function reviewGame(
           2,
           signal,
           undefined,
-          budget.verifierMovetimeMs,
+          verifierMovetimeMs,
           history,
-          budget.verifierNodes,
+          verifierNodes,
           budget.depthLimit === undefined ? undefined : budget.verifierDepth,
-          budget.verifierHardTimeoutMs,
+          verifierHardTimeoutMs,
           cacheContext,
         );
         const previous = completePositions[candidate.index];
