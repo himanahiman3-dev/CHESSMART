@@ -6,9 +6,10 @@ import { buildPositionCommand, buildSearchCommand } from "../src/lib/engine.ts";
 import { hasOnlyLegalMove } from "../src/lib/forcedMove.ts";
 import { shouldRecheckCriticalPosition } from "../src/lib/criticalPositionRanking.ts";
 import { qBalance } from "../src/lib/see.ts";
-import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES, DEFAULT_ANALYSIS_CONFIG, createAnalysisConfig, resolveAnalysisBudget } from "../src/lib/analysisBudget.ts";
+import { gameBudgetMs, slotForPosition, normalizeAnalysisTimeMs, REVIEW_TARGET_DEPTH, ANALYSIS_TIME_MODES, DEFAULT_ANALYSIS_CONFIG, createAnalysisConfig, resolveAnalysisBudget, positionComplexityFactor, scalePositionLimit } from "../src/lib/analysisBudget.ts";
 import { summarizeReview } from "../src/lib/learningStats.ts";
 import { getDeviceAnalysisProfile } from "../src/lib/computeProfile.ts";
+import { countPositionPieces } from "../src/lib/endgameTablebase.ts";
 
 assert.equal(REVIEW_TARGET_DEPTH, 28, "Node-first review uses depth 28 as a safety ceiling.");
 assert.equal(ANALYSIS_TIME_MODES[0].timeMs, 300, "Fast mode gives each position 300 ms.");
@@ -68,6 +69,26 @@ assert.equal(deep.hardTimeoutMs, 45000);
 
 assert.equal(normalizeAnalysisTimeMs(3000), 3000);
 
+const quietEndgameFen = "4k3/8/8/8/8/8/8/4K3 w - - 0 1";
+const normalOpeningFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const checkedTacticalFen = "4r2k/8/8/8/2b5/8/RP6/4K3 w - - 0 1";
+const quietFactor = positionComplexityFactor(quietEndgameFen);
+const openingFactor = positionComplexityFactor(normalOpeningFen);
+const tacticalFactor = positionComplexityFactor(checkedTacticalFen);
+assert.ok(quietFactor < openingFactor,
+  "Quiet low-branching positions must receive a smaller node/time budget than the opening.");
+assert.ok(tacticalFactor > openingFactor,
+  "A checked tactical position must receive a larger node/time budget.");
+assert.equal(scalePositionLimit(1_000_000, 0.7), 700_000);
+assert.equal(scalePositionLimit(1_000_000, 1.5), 1_500_000);
+assert.equal(scalePositionLimit(undefined, 1.5), undefined);
+assert.equal(scalePositionLimit(100_000, 4, 250_000), 250_000);
+assert.equal(countPositionPieces("4k3/8/8/8/8/8/8/4K3 w - - 0 1"), 2);
+assert.equal(countPositionPieces("4k3/8/8/8/8/8/PPPP4/4K2Q w - - 0 1"), 7);
+assert.equal(countPositionPieces(normalOpeningFen), 32,
+  "Syzygy guard must count every piece, including kings and pawns.");
+
+
 
 assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 4 }).maxThreads, 2,
   "A four-thread desktop must reserve two logical cores for UI and OS work.");
@@ -76,16 +97,15 @@ assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 8 }).maxThreads, 6,
 assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 32 }).maxThreads, 10,
   "Large desktop CPUs must cap Stockfish worker count to protect browser responsiveness.");
 
-// Whole-game review pool sizing: the i3-12100F reports 8 logical threads,
-// so it receives four independent single-threaded workers while leaving
-// logical CPU capacity for the browser and operating system.
+// Whole-game review deliberately uses one initialized engine until concurrent
+// independent WASM workers pass browser stress tests.
 const i3DesktopProfile = getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/157.0.0.0",
   hardwareConcurrency: 8,
   deviceMemory: 8,
 });
-assert.equal(i3DesktopProfile.reviewWorkers, 4,
-  "An 8-logical-thread desktop such as the i3-12100F must receive four review workers.");
+assert.equal(i3DesktopProfile.reviewWorkers, 1,
+  "A desktop must not spawn independent WASM workers before browser stress validation.");
 
 assert.equal(getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) Mobile",
@@ -103,8 +123,8 @@ assert.equal(getDeviceAnalysisProfile({
 assert.equal(getDeviceAnalysisProfile({
   hardwareConcurrency: 6,
   deviceMemory: 8,
-}).reviewWorkers, 2,
-  "Mid-range desktops receive two review workers rather than being forced to four.");
+}).reviewWorkers, 1,
+  "Mid-range desktops also stay on the initialized engine until worker stress validation.");
 
 assert.equal(getDeviceAnalysisProfile({
   hardwareConcurrency: 8,

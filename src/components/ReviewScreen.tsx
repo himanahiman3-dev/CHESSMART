@@ -15,6 +15,7 @@ import { CoachCard, type RetryState } from "./CoachCard";
 import { ReportTab } from "./ReportTab";
 import { MovesTab } from "./MovesTab";
 import { AnalysisTab } from "./AnalysisTab";
+import { AnalysisInsights, type FreeMoveAssessment } from "./AnalysisInsights";
 import { Logo } from "./EngineLoader";
 
 const LIVE_DEPTH = 24;
@@ -49,6 +50,8 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
   const [tab, setTab] = useState<"report" | "moves" | "analysis">("report");
   const [analysisOn, setAnalysisOn] = useState(false);
   const [explore, setExplore] = useState<Explore | null>(null);
+  const [freeMoveAssessment, setFreeMoveAssessment] = useState<FreeMoveAssessment | null>(null);
+  const [liveFen, setLiveFen] = useState<string | null>(null);
   const [retry, setRetry] = useState<RetryState | null>(null);
   const [retryFen, setRetryFen] = useState<string | null>(null);
   const [showBest, setShowBest] = useState(true);
@@ -147,6 +150,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
       setRetry(null);
       setRetryFen(null);
       setExplore(null);
+      setFreeMoveAssessment(null);
       if (!silent && target !== plyRef.current && target > 0) {
         const m = review.moves[target - 1];
         playSound(soundForSan(m.san, target === N && m.san.includes("#"), m.cls));
@@ -242,11 +246,29 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
       if (!analysisOn) return false;
       const base = explore ? explore.base : review.fens[ply];
       const moves = explore ? explore.moves.slice(0, explore.idx) : [];
+      const currentFen = displayFen;
+      const baseLines = liveFen === currentFen
+        ? live
+        : !explore ? (review.positions[ply]?.lines ?? []) : [];
+      const rootLine = baseLines[0];
+      let color: "w" | "b" = "w";
+      try { color = new Chess(currentFen).turn(); } catch { /* the board already validates legal moves */ }
+      setFreeMoveAssessment({
+        san: m.san,
+        uci: m.uci,
+        color,
+        baseScore: rootLine?.score ?? null,
+        baseBestUci: rootLine?.pv[0],
+        elo: Number.isFinite(Number(review.headers[color === "w" ? "WhiteElo" : "BlackElo"]))
+          ? Number(review.headers[color === "w" ? "WhiteElo" : "BlackElo"])
+          : undefined,
+        afterFen: m.fenAfter,
+      });
       setExplore({ base, moves: [...moves, m], idx: moves.length + 1 });
       playSound(soundForSan(m.san));
       return true;
     },
-    [retry, review.moves, review.fens, analysisOn, explore, ply]
+    [retry, review.moves, review.fens, review.positions, analysisOn, explore, ply, displayFen, liveFen, live]
   );
 
   const playUci = useCallback(
@@ -266,6 +288,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
   const startRetry = () => {
     if (!move) return;
     setExplore(null);
+    setFreeMoveAssessment(null);
     setRetryFen(null);
     setRetry({ idx: ply - 1, status: "waiting", hint: false, attempts: 0 });
   };
@@ -274,11 +297,13 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
   useEffect(() => {
     if (!analysisOn || !engine || retry) {
       setLive([]);
+      setLiveFen(null);
       return;
     }
     let stale = false;
     let stopFn: (() => void) | null = null;
     const fen = displayFen;
+    setLiveFen(fen);
     setLive(!explore && review.positions[ply] ? review.positions[ply].lines : []);
     void (async () => {
       try {
@@ -286,6 +311,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
         if (stale) return;
         if (cached) {
           setLive(cached.lines);
+          setLiveFen(fen);
           return;
         }
         let over = false;
@@ -304,11 +330,18 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
           depth: LIVE_DEPTH,
           multipv: 3,
           onInfo: (lines) => {
-            if (!stale) setLive(lines);
+            if (!stale) {
+              setLive(lines);
+              setLiveFen(fen);
+            }
           },
         });
         stopFn = handle.stop;
         const lines = await handle.promise;
+        if (!stale) {
+          setLive(lines);
+          setLiveFen(fen);
+        }
         if (!stale && lines.length && Math.min(...lines.map((l) => l.depth)) >= LIVE_DEPTH) {
           await putCachedPosition(fen, LIVE_DEPTH, 3, lines, Math.min(...lines.map((l) => l.depth)), liveHistoryKey);
         }
@@ -316,6 +349,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
         // A worker failure is surfaced as an error, never cached as a successful evaluation.
         if (!stale) {
           setLive([]);
+          setLiveFen(fen);
           console.error("Ошибка свободного анализа Stockfish:", reason);
         }
       }
@@ -603,11 +637,15 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
             {tab === "report" && <ReportTab review={review} ply={ply} onSeek={(p) => seek(p)} />}
             {tab === "moves" && <MovesTab review={review} ply={ply} onSeek={(p) => seek(p)} />}
             {tab === "analysis" && (
+              <>
               <AnalysisTab
                 enabled={analysisOn}
                 onToggle={(v) => {
                   setAnalysisOn(v);
-                  if (!v) setExplore(null);
+                  if (!v) {
+                    setExplore(null);
+                    setFreeMoveAssessment(null);
+                  }
                 }}
                 lines={live}
                 fen={displayFen}
@@ -615,10 +653,24 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
                 threads={info?.threads ?? 1}
                 variantLabel={info?.variant === "full" ? "Полная" : "Lite"}
                 onPlayUci={playUci}
-                onReset={() => setExplore(null)}
+                onReset={() => {
+                  setExplore(null);
+                  setFreeMoveAssessment(null);
+                }}
                 exploring={!!explore}
                 disabled={!!retry}
               />
+              <AnalysisInsights
+                fen={displayFen}
+                enabled={analysisOn}
+                lines={live}
+                targetDepth={LIVE_DEPTH}
+                freeMoveAssessment={freeMoveAssessment}
+                review={review}
+                onSeek={(target) => seek(target)}
+                onPlayUci={playUci}
+              />
+              </>
             )}
           </div>
         </aside>}
