@@ -289,7 +289,9 @@ export async function prepareEngineFiles(
 
 export async function clearEngineCache(): Promise<void> {
   try {
-    if ("caches" in self) await caches.delete(CACHE_NAME);
+    if ("caches" in self) {
+      await withTimeout(caches.delete(CACHE_NAME), CACHE_OPERATION_TIMEOUT_MS, "Таймаут удаления кэша Stockfish.");
+    }
   } catch {
     /* ignore */
   }
