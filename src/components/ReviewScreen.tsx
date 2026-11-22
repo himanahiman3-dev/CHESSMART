@@ -634,6 +634,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
             {tab === "report" && <ReportTab review={review} ply={ply} onSeek={(p) => seek(p)} />}
             {tab === "moves" && <MovesTab review={review} ply={ply} onSeek={(p) => seek(p)} />}
             {tab === "analysis" && (
+              <>
               <AnalysisTab
                 enabled={analysisOn}
                 onToggle={(v) => {
@@ -649,7 +650,10 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
                 threads={info?.threads ?? 1}
                 variantLabel={info?.variant === "full" ? "Полная" : "Lite"}
                 onPlayUci={playUci}
-                onReset={() => setExplore(null)}
+                onReset={() => {
+                  setExplore(null);
+                  setFreeMoveAssessment(null);
+                }}
                 exploring={!!explore}
                 disabled={!!retry}
               />
@@ -663,6 +667,7 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
                 onSeek={(target) => seek(target)}
                 onPlayUci={playUci}
               />
+              </>
             )}
           </div>
         </aside>}
