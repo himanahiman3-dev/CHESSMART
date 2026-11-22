@@ -206,7 +206,7 @@ assert.equal(
 );
 assert.equal(
   isSacrificeVerificationCandidate(true, 20, false, 4),
-  false,
+  true,
   "Every detected piece sacrifice must be queued for deeper verification, even when the shallow score is poor.",
 );
 
