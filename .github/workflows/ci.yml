@@ -49,6 +49,8 @@ jobs:
         run: npm run validate:openings
       - name: Validate Brilliant sacrifice classification
         run: npm run validate:brilliant-sacrifices
+      - name: Validate Morphy Brilliant moves through full review pipeline
+        run: npm run validate:morphy-review
       - name: Validate all move classifications
         run: npm run validate:move-classification
       - name: Validate analysis core regressions
