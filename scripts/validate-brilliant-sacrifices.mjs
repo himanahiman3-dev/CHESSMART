@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { Chess } from "chess.js";
+import { buildReview } from "../src/lib/analyze.ts";
 import { detectSacrifice } from "../src/lib/see.ts";
 import { qualifiesAsBrilliant } from "../src/lib/brilliant.ts";
 import { isSacrificeVerificationCandidate } from "../src/lib/criticalPositionRanking.ts";
@@ -51,6 +52,66 @@ for (const move of history) {
 
 for (const [key, label] of targets) {
   assert.ok(found.has(key), `The sample game is missing target move ${label}`);
+}
+
+/*
+ * Exercise the actual review/classification pipeline, not only the sacrifice
+ * detector. The synthetic engine lines deliberately make the played Morphy
+ * moves best and keep the alternative position non-winning, isolating the
+ * integration path from Stockfish-version/depth variance.
+ */
+const syntheticPositions = game.fens.map((fen, index) => {
+  const position = new Chess(fen);
+  if (position.isGameOver()) {
+    const score = position.isCheckmate()
+      ? (position.turn() === "w" ? { mate: -1, terminal: true } : { mate: 1, terminal: true })
+      : { cp: 0 };
+    return { fen, depth: 0, lines: [{ multipv: 1, depth: 0, score, pv: [] }] };
+  }
+  const legal = position.moves({ verbose: true });
+  const played = history[index];
+  const playedUci = played
+    ? played.from + played.to + (played.promotion ?? "")
+    : legal[0].from + legal[0].to + (legal[0].promotion ?? "");
+  const alternative = legal.find((move) =>
+    move.from + move.to + (move.promotion ?? "") !== playedUci
+  );
+  const lines = [{
+    multipv: 1,
+    depth: 20,
+    score: { cp: 0 },
+    pv: [playedUci],
+  }];
+  if (alternative) {
+    lines.push({
+      multipv: 2,
+      depth: 20,
+      score: { cp: 10 },
+      pv: [alternative.from + alternative.to + (alternative.promotion ?? "")],
+    });
+  }
+  return { fen, depth: 20, lines };
+});
+const integratedReview = buildReview(
+  { headers: game.header(), startFen: history[0].before, moves: history.map((move) => ({
+      san: move.san,
+      uci: move.from + move.to + (move.promotion ?? ""),
+      from: move.from,
+      to: move.to,
+      piece: move.piece,
+      captured: move.captured,
+      color: move.color,
+      fenBefore: move.before,
+      fenAfter: move.after,
+    })), fens: game.fens },
+  syntheticPositions,
+  20,
+);
+for (const [key, label] of targets) {
+  const [san, color] = key.split(":");
+  const move = integratedReview.moves.find((entry) => entry.san === san && entry.color === color);
+  assert.ok(move, `The review pipeline omitted ${label}`);
+  assert.equal(move.cls, "brilliant", `${label} must survive the complete review/classification pipeline; got ${move.cls}`);
 }
 
 // The shared Brilliant rule must accept a strong sacrifice that is nearly best,
