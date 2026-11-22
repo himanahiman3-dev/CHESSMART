@@ -50,7 +50,9 @@ export function classifyOrdinaryMove(winLoss: number): Cls {
   if (loss < MOVE_LOSS_LIMITS.excellent) return "excellent";
   if (loss < MOVE_LOSS_LIMITS.good) return "good";
   if (loss < MOVE_LOSS_LIMITS.inaccuracy) return "inaccuracy";
-  if (loss < MOVE_LOSS_LIMITS.mistake) return "mistake";
+  // Chess.com defines Blunder as a loss GREATER than 0.20 Expected Points.
+  // Exactly 0.20 remains a Mistake.
+  if (loss <= MOVE_LOSS_LIMITS.mistake) return "mistake";
   return "blunder";
 }
 
