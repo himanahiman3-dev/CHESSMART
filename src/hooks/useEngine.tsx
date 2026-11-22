@@ -117,9 +117,15 @@ export function EngineProvider({ children }: { children: ReactNode }) {
     // Phones and low-resource desktops keep the primary engine only.
     if (desiredWorkers <= 1) return [engine];
     if (reviewPoolRef.current?.variant === selectedVariant
-      && reviewPoolRef.current.engines.length >= 2
-      && reviewPoolRef.current.engines.length <= desiredWorkers) {
+      && reviewPoolRef.current.engines.length === desiredWorkers
+      && reviewPoolRef.current.engines.every((worker) => worker.isAlive)) {
       return reviewPoolRef.current.engines;
+    }
+    // A worker may have failed during a previous review. Never hand a dead
+    // instance back to the next game; rebuild the requested four-worker pool.
+    if (reviewPoolRef.current) {
+      reviewPoolRef.current.engines.forEach((worker) => worker.terminate());
+      reviewPoolRef.current = null;
     }
     if (reviewPoolPromiseRef.current) return reviewPoolPromiseRef.current;
 
@@ -136,7 +142,7 @@ export function EngineProvider({ children }: { children: ReactNode }) {
             URL.revokeObjectURL(bundle.wasmUrl);
             throw new Error("cancelled");
           }
-          const worker = await StockfishEngine.create(bundle, computeProfile.reviewHashMb, 1);
+          const worker = await StockfishEngine.create(bundle, computeProfile.reviewHashMb, 1, signal);
           if (signal?.aborted) {
             worker.terminate();
             throw new Error("cancelled");
