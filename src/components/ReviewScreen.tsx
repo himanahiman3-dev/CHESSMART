@@ -259,6 +259,9 @@ export function ReviewScreen({ review, onNew, isRefining = false }: { review: Ga
         color,
         baseScore: rootLine?.score ?? null,
         baseBestUci: rootLine?.pv[0],
+        elo: Number.isFinite(Number(review.headers[color === "w" ? "WhiteElo" : "BlackElo"]))
+          ? Number(review.headers[color === "w" ? "WhiteElo" : "BlackElo"])
+          : undefined,
         afterFen: m.fenAfter,
       });
       setExplore({ base, moves: [...moves, m], idx: moves.length + 1 });
