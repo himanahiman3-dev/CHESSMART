@@ -50,6 +50,18 @@ const SETS: Record<EngineVariant, { multi: [EngineFileSpec, EngineFileSpec]; sin
 
 export const ENGINE_VERSION = "19.0.1";
 const CACHE_NAME = "stockfish19-engine-v1";
+const CACHE_OPERATION_TIMEOUT_MS = 5_000;
+const ENGINE_DOWNLOAD_TIMEOUT_MS = 90_000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
 
 export function canUseThreads(): boolean {
   return typeof SharedArrayBuffer !== "undefined" && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
@@ -95,10 +107,10 @@ async function readCached(spec: EngineFileSpec): Promise<Blob | null> {
   try {
     if (meta.store === "cache") {
       if (!("caches" in self)) return null;
-      const cache = await caches.open(CACHE_NAME);
-      const res = await cache.match(cacheRequest(spec.name));
+      const cache = await withTimeout(caches.open(CACHE_NAME), CACHE_OPERATION_TIMEOUT_MS, "Таймаут открытия кэша Stockfish.");
+      const res = await withTimeout(cache.match(cacheRequest(spec.name)), CACHE_OPERATION_TIMEOUT_MS, "Таймаут чтения кэша Stockfish.");
       if (!res) return null;
-      const blob = await res.blob();
+      const blob = await withTimeout(res.blob(), CACHE_OPERATION_TIMEOUT_MS, "Таймаут чтения файла Stockfish из кэша.");
       return blob.size === spec.size ? new Blob([blob], { type: spec.mime }) : null;
     }
     const rec = await idbGet<{ blob: Blob }>("files", spec.name);
@@ -137,10 +149,10 @@ async function storeFile(spec: EngineFileSpec, blob: Blob): Promise<void> {
   try {
     if ("caches" in self) {
       const cache = await caches.open(CACHE_NAME);
-      await cache.put(
+      await withTimeout(cache.put(
         cacheRequest(spec.name),
         new Response(blob, { headers: { "content-type": spec.mime, "content-length": String(blob.size) } })
-      );
+      ), CACHE_OPERATION_TIMEOUT_MS, "Таймаут сохранения кэша Stockfish.");
       store = "cache";
     }
   } catch {
@@ -161,9 +173,17 @@ async function downloadFile(
 ): Promise<Blob> {
   let lastErr: unknown = null;
   for (const url of sources(spec.name)) {
+    if (signal?.aborted) throw new Error("cancelled");
     let counted = 0;
+    const requestController = new AbortController();
+    const abortFromParent = () => requestController.abort(signal?.reason);
+    signal?.addEventListener("abort", abortFromParent, { once: true });
+    const timeout = setTimeout(
+      () => requestController.abort(new Error("Истёк таймаут загрузки " + spec.name)),
+      ENGINE_DOWNLOAD_TIMEOUT_MS,
+    );
     try {
-      const res = await fetch(url, { mode: "cors", signal });
+      const res = await fetch(url, { mode: "cors", signal: requestController.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
       const ct = res.headers.get("content-type") || "";
       if (ct.includes("text/html")) throw new Error(`Неверный тип ответа (${ct}) ${url}`);
@@ -192,8 +212,13 @@ async function downloadFile(
       return new Blob(chunks, { type: spec.mime });
     } catch (e) {
       if (signal?.aborted) throw e;
-      lastErr = e;
+      lastErr = requestController.signal.aborted
+        ? new Error("Загрузка " + spec.name + " превысила 90 секунд.")
+        : e;
       onBytes(-counted); // откат прогресса для следующего источника
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortFromParent);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error("Не удалось скачать " + spec.name);
@@ -223,6 +248,7 @@ export async function prepareEngineFiles(
 
   const blobs: Blob[] = [];
   for (const spec of [set.js, set.wasm]) {
+    if (signal?.aborted) throw new Error("cancelled");
     emit(spec.name, "check", true);
     let blob = await readCached(spec);
     if (blob) {
@@ -244,9 +270,11 @@ export async function prepareEngineFiles(
     blobs.push(blob);
   }
   try {
-    await navigator.storage?.persist?.();
+    if (navigator.storage?.persist) {
+      await withTimeout(navigator.storage.persist(), 1_500, "Таймаут запроса постоянного хранилища.");
+    }
   } catch {
-    /* ignore */
+    /* Storage persistence is best-effort and must never block engine startup. */
   }
   emit("", "ready", allCached);
   const jsUrl = URL.createObjectURL(blobs[0]);
