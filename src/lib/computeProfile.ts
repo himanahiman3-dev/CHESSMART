@@ -66,19 +66,11 @@ export function getDeviceAnalysisProfile(signals: DeviceSignals): DeviceAnalysis
   // Stockfish remains multi-threaded, but must not occupy every logical core on large PCs.
   const renderReserve = cores <= 2 ? 1 : Math.max(2, Math.ceil(cores * 0.25));
   const maxThreads = Math.min(10, Math.max(1, cores - renderReserve));
-  // Parallel review is enabled only when the device has enough CPU and memory.
-  // Four workers are reserved for high-core desktops; the browser will still
-  // verify simultaneous real searches and reduce the pool if the device is unstable.
+  // Keep the requested four-worker review pool on capable desktops.
+  // Each instance is single-threaded and must pass two simultaneous real searches
+  // before it is accepted; low-resource PCs and phones retain one safe engine.
   const reviewMemoryAvailable = memory === undefined || memory >= 8;
-  const reviewWorkers = lowResourcePc || !reviewMemoryAvailable
-    ? 1
-    : cores >= 16
-      ? 4
-      : cores >= 8
-        ? 3
-        : cores >= 6
-          ? 2
-          : 1;
+  const reviewWorkers = lowResourcePc || !reviewMemoryAvailable || cores < 6 ? 1 : 4;
   const verifierEnabled = cores >= 6 && (memory === undefined || memory >= 8);
 
   return {
