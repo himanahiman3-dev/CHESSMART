@@ -77,8 +77,37 @@ type AuthMode = "login" | "register";
 const SESSION_KEY = "chessmart:account-session:v2";
 const GAME_KEY = "chessmart:online-game:v2";
 
+const ONLINE_REQUEST_TIMEOUT_MS = 15_000;
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs = ONLINE_REQUEST_TIMEOUT_MS,
+  parentSignal?: AbortSignal,
+): Promise<Response> {
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort(parentSignal?.reason);
+  if (parentSignal?.aborted) controller.abort(parentSignal.reason);
+  else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  const timer = window.setTimeout(
+    () => controller.abort(new Error("Сервер не ответил за отведённое время.")),
+    timeoutMs,
+  );
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (reason) {
+    if (controller.signal.aborted && !parentSignal?.aborted) {
+      throw new Error("Сервер не ответил за 15 секунд. Проверь соединение и попробуй ещё раз.");
+    }
+    throw reason;
+  } finally {
+    window.clearTimeout(timer);
+    parentSignal?.removeEventListener("abort", abortFromParent);
+  }
+}
+
 async function callPublicAction(url: string, key: string, action: string, payload: Record<string, unknown> = {}): Promise<ActionResponse> {
-  const response = await fetch(url + "/functions/v1/game-action", {
+  const response = await fetchWithTimeout(url + "/functions/v1/game-action", {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: key },
     body: JSON.stringify({ action, ...payload }),
@@ -88,7 +117,7 @@ async function callPublicAction(url: string, key: string, action: string, payloa
   return data;
 }
 async function callAction(url: string, key: string, session: OnlineSession, action: string, payload: Record<string, unknown> = {}, signal?: AbortSignal): Promise<ActionResponse> {
-  const response = await fetch(url + "/functions/v1/game-action", {
+  const response = await fetchWithTimeout(url + "/functions/v1/game-action", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -96,14 +125,13 @@ async function callAction(url: string, key: string, session: OnlineSession, acti
       Authorization: "Bearer " + session.access_token,
     },
     body: JSON.stringify({ action, ...payload }),
-    signal,
-  });
+  }, ONLINE_REQUEST_TIMEOUT_MS, signal);
   const data = await response.json() as ActionResponse;
   if (!response.ok) throw new Error(data.error || "Сервер отклонил запрос.");
   return data;
 }
 async function refreshSession(url: string, key: string, refreshToken: string): Promise<OnlineSession> {
-  const response = await fetch(url + "/auth/v1/token?grant_type=refresh_token", {
+  const response = await fetchWithTimeout(url + "/auth/v1/token?grant_type=refresh_token", {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: key },
     body: JSON.stringify({ refresh_token: refreshToken }),
