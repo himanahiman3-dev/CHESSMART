@@ -1,0 +1,14 @@
+{
+  "id": "chesscom-coach-365291218",
+  "source": "Chess.com Game Review counts reported by the user",
+  "date": "2026-11-22",
+  "url": "https://www.chess.com/game/coach/365291218",
+  "reportedCounts": {
+    "great": 2,
+    "best": 35,
+    "brilliant": 1
+  },
+  "countScope": "not specified",
+  "countsComplete": false,
+  "note": "These are partial aggregate counts only. No complete totals or move-by-move Chess.com labels were provided; omitted categories must not be treated as zero or used to tune their thresholds."
+}
