@@ -75,6 +75,42 @@ assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 8 }).maxThreads, 6,
   "A typical desktop must keep two logical cores available for rendering.");
 assert.equal(getDeviceAnalysisProfile({ hardwareConcurrency: 32 }).maxThreads, 10,
   "Large desktop CPUs must cap Stockfish worker count to protect browser responsiveness.");
+
+// Whole-game review pool sizing: the i3-12100F reports 8 logical threads,
+// so it receives four independent single-threaded workers while leaving
+// logical CPU capacity for the browser and operating system.
+const i3DesktopProfile = getDeviceAnalysisProfile({
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/157.0.0.0",
+  hardwareConcurrency: 8,
+  deviceMemory: 8,
+});
+assert.equal(i3DesktopProfile.reviewWorkers, 4,
+  "An 8-logical-thread desktop such as the i3-12100F must receive four review workers.");
+
+assert.equal(getDeviceAnalysisProfile({
+  userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9) Mobile",
+  hardwareConcurrency: 8,
+  deviceMemory: 8,
+}).reviewWorkers, 1,
+  "Mobile devices must retain a single review worker.");
+
+assert.equal(getDeviceAnalysisProfile({
+  hardwareConcurrency: 4,
+  deviceMemory: 16,
+}).reviewWorkers, 1,
+  "Low-resource desktops must not be forced to create four workers.");
+
+assert.equal(getDeviceAnalysisProfile({
+  hardwareConcurrency: 6,
+  deviceMemory: 8,
+}).reviewWorkers, 2,
+  "Mid-range desktops receive two review workers rather than being forced to four.");
+
+assert.equal(getDeviceAnalysisProfile({
+  hardwareConcurrency: 8,
+  deviceMemory: 4,
+}).reviewWorkers, 1,
+  "Desktop devices with 4 GB memory remain on one worker to avoid memory pressure.");
 assert.equal(gameBudgetMs(10, 300), 3300, "A 10-ply game reviews 11 positions at 300 ms each.");
 assert.equal(gameBudgetMs(10, 1000), 11000, "A 10-ply game reviews 11 positions at one second each.");
 assert.equal(gameBudgetMs(10, 3000), 33000, "A 10-ply game reviews 11 positions at three seconds each.");
