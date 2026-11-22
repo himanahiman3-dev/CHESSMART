@@ -81,9 +81,10 @@ function parseInfo(line, turn) {
 }
 
 async function search(startFen, moves) {
-  const turn = moves.length
-    ? (new Chess(startFen).turn() === "w" ? "b" : "w")
-    : new Chess(startFen).turn();
+  const startTurn = new Chess(startFen).turn();
+  const turn = moves.length % 2 === 0
+    ? startTurn
+    : startTurn === "w" ? "b" : "w";
   const result = new Promise((resolveSearch, rejectSearch) => {
     const timer = setTimeout(() => {
       activeSearch = null;
@@ -152,7 +153,9 @@ try {
     const second = beforeLines[1];
     const playedIsBest = best.pv[0] === move.from + move.to + (move.promotion ?? "");
     const playedSecond = !playedIsBest && second.pv[0] === move.from + move.to + (move.promotion ?? "");
-    const playedScore = playedIsBest ? best.score : playedSecond ? second.score : afterLines[0].score;
+    const preferSecond = playedSecond && afterLines[0].depth > 0 && afterLines[0].depth < second.depth;
+    const playedScore = playedIsBest ? best.score : preferSecond ? second.score : afterLines[0].score;
+    const scoreAfterForClassification = playedIsBest ? best.score : playedScore;
     const winBefore = winForRated(best.score, move.color, target.elo);
     const winAfter = playedIsBest ? winBefore : winForRated(playedScore, move.color, target.elo);
     const winLoss = Math.max(0, winBefore - winAfter);
@@ -161,10 +164,10 @@ try {
       : winBefore;
     const scoreAfter = afterLines[0].score;
     const mateBefore = best.score.mate !== undefined && cpFor(best.score, move.color) > 0;
-    const mateAfter = scoreAfter.mate !== undefined && cpFor(scoreAfter, move.color) > 0;
+    const mateAfter = scoreAfterForClassification.mate !== undefined && cpFor(scoreAfterForClassification, move.color) > 0;
     const lostMate = mateBefore && !mateAfter;
-    const allowedMate = scoreAfter.mate !== undefined
-      && cpFor(scoreAfter, move.color) < 0
+    const allowedMate = scoreAfterForClassification.mate !== undefined
+      && cpFor(scoreAfterForClassification, move.color) < 0
       && !(best.score.mate !== undefined && cpFor(best.score, move.color) < 0);
     const sacrifice = detectSacrifice(move.before, move.from + move.to + (move.promotion ?? ""), target.elo);
     const legalMoves = new Chess(move.before).moves().length;
