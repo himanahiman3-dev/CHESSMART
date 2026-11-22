@@ -42,7 +42,7 @@ export function positionComplexityFactor(fen: string): number {
 export function scalePositionLimit(
   base: number | undefined,
   factor: number,
-  maximum = 120_000,
+  maximum = 20_000_000,
 ): number | undefined {
   if (base === undefined || !Number.isFinite(base) || base <= 0) return undefined;
   const safeFactor = Number.isFinite(factor) ? factor : 1;
