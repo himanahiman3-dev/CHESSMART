@@ -42,7 +42,7 @@ export async function lookupSyzygy(fen: string, signal?: AbortSignal): Promise<S
   try {
     const queryFen = normalizedFen.replace(/\s+/g, "_");
     const response = await fetch(
-      "https://tablebase.lichess.ovh/standard?fen=" + encodeURIComponent(queryFen),
+      "https://tablebase.lichess.org/standard?fen=" + encodeURIComponent(queryFen),
       { signal: controller.signal, headers: { Accept: "application/json" } },
     );
     if (response.status === 404) return null;
