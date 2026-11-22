@@ -130,9 +130,9 @@ export async function isEngineCached(set: EngineFileSet): Promise<boolean> {
     try {
       if (meta.store === "cache") {
         if (!("caches" in self)) return false;
-        const cache = await caches.open(CACHE_NAME);
-        const response = await cache.match(cacheRequest(spec.name));
-        if (!response || (await response.blob()).size !== spec.size) return false;
+        const cache = await withTimeout(caches.open(CACHE_NAME), CACHE_OPERATION_TIMEOUT_MS, "Таймаут проверки кэша Stockfish.");
+        const response = await withTimeout(cache.match(cacheRequest(spec.name)), CACHE_OPERATION_TIMEOUT_MS, "Таймаут проверки файла Stockfish.");
+        if (!response || (await withTimeout(response.blob(), CACHE_OPERATION_TIMEOUT_MS, "Таймаут чтения файла Stockfish.")).size !== spec.size) return false;
       } else {
         const rec = await idbGet<{ blob: Blob }>("files", spec.name);
         if (!rec?.blob || rec.blob.size !== spec.size) return false;
@@ -148,7 +148,7 @@ async function storeFile(spec: EngineFileSpec, blob: Blob): Promise<void> {
   let store: "cache" | "idb" = "idb";
   try {
     if ("caches" in self) {
-      const cache = await caches.open(CACHE_NAME);
+      const cache = await withTimeout(caches.open(CACHE_NAME), CACHE_OPERATION_TIMEOUT_MS, "Таймаут открытия кэша для сохранения Stockfish.");
       await withTimeout(cache.put(
         cacheRequest(spec.name),
         new Response(blob, { headers: { "content-type": spec.mime, "content-length": String(blob.size) } })
