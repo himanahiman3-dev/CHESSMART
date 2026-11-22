@@ -253,7 +253,17 @@ function Main() {
     setStage("review");
     setIsRefining(true);
     setError(null);
-    setProgress(null);
+    setProgress({
+      done: 0,
+      total: 1,
+      depth: 0,
+      targetDepth: 28,
+      cached: 0,
+      fen: result.startFen,
+      activeWorkers: 0,
+      queued: computeProfile.reviewWorkers,
+      stage: "prepare",
+    });
 
     if (!engine) {
       setIsRefining(false);
@@ -292,7 +302,17 @@ function Main() {
     const controller = new AbortController();
     abortRef.current = controller;
     setError(null);
-    setProgress(null);
+    setProgress({
+      done: 0,
+      total: 1,
+      depth: 0,
+      targetDepth: 28,
+      cached: 0,
+      fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      activeWorkers: 0,
+      queued: computeProfile.reviewWorkers,
+      stage: "prepare",
+    });
     setIsRefining(false);
     setStage("analyzing");
     try {
