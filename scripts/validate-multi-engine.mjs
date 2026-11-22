@@ -31,7 +31,7 @@ const ordinaryDesktop = getDeviceAnalysisProfile({
 assert.equal(ordinaryDesktop.device, "desktop");
 assert.equal(ordinaryDesktop.defaultVariant, "full");
 assert.equal(ordinaryDesktop.maxThreads, 6, "A typical desktop keeps two logical cores free for UI work.");
-assert.equal(ordinaryDesktop.reviewWorkers, 3, "An 8-thread desktop requests three independently verified review workers.");
+assert.equal(ordinaryDesktop.reviewWorkers, 4, "An 8-thread desktop requests four independently verified review workers.");
 assert.equal(ordinaryDesktop.mainMultiPv, 1);
 assert.equal(ordinaryDesktop.verifierMaxMoves, 4);
 assert.equal(ordinaryDesktop.timePerMoveMs, 1000);
@@ -43,8 +43,8 @@ const midRangeDesktop = getDeviceAnalysisProfile({
   hardwareConcurrency: 6,
   deviceMemory: 8,
 });
-assert.equal(midRangeDesktop.reviewWorkers, 2,
-  "A six-thread desktop should request two review workers rather than overloading the browser.");
+assert.equal(midRangeDesktop.reviewWorkers, 4,
+  "A six-thread desktop should request four workers on a capable desktop.");
 
 const memoryConstrainedDesktop = getDeviceAnalysisProfile({
   userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/157.0",
