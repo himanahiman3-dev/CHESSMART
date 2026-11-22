@@ -13,8 +13,7 @@ import { getCachedPosition, putCachedPosition } from "./db";
 import { analyzeBook, openingForCode, OPENING_BOOK_VERSION } from "./openings";
 import { ENGINE_VERSION } from "./engineFiles";
 import { detectSacrifice } from "./see";
-import { findPersistentSacrificeContinuation } from "./persistentSacrifice";
-import { BRILLIANT_MAX_LOSS, BRILLIANT_MIN_AFTER, qualifiesAsBrilliant } from "./brilliant";
+import { BRILLIANT_MAX_LOSS, qualifiesAsBrilliant } from "./brilliant";
 import { buildComment } from "./coach";
 import { cpFor, estimateGameRating, gameAccuracy, moveAccuracy, winFor, winForRated, winPercent } from "./winprob";
 
