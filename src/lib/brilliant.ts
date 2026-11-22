@@ -15,10 +15,6 @@ export interface BrilliantCriteria {
   lostMate: boolean;
   allowedMate: boolean;
   elo?: number;
-  /** A continuation of a previously established sacrifice that remains capturable. */
-  continuation?: boolean;
-  /** A sound piece sacrifice that Stockfish verifies leads to a short forced mate. */
-  matingSacrifice?: boolean;
 }
 
 /**
@@ -43,11 +39,8 @@ export function qualifiesAsBrilliant(criteria: BrilliantCriteria): boolean {
     criteria.winAfter < BRILLIANT_MIN_AFTER
   ) return false;
 
-  // The normal alternative-line safeguard stays in place. These two narrowly
-  // verified tactical cases are different: the move continues a live declined
-  // offer, or the sacrifice itself forces a short mate.
-  if (criteria.continuation || criteria.matingSacrifice) return true;
-
+  // This is a defining condition, not a heuristic that tactical exceptions may
+  // bypass: without the sacrifice, the player must not already be completely won.
   return criteria.alternativeWin !== null
     && criteria.alternativeWin <= brilliantAlternativeLimit(criteria.elo);
 }
